@@ -9129,6 +9129,7408 @@ const captiveLesson = {
   ]
 };
 
+
+// ---------------------------------------------------------------- lesson: EF change tracker
+
+const efTrackingLesson = {
+  id: "ef-tracking",
+  moduleId: "efcore",
+  title: { en: "How the tracker works", ar: "كيف يعمل الـ tracker" },
+  summary: {
+    en: "EF Core remembers every entity it hands you and compares it to a saved copy, so SaveChanges can write only what you actually changed.",
+    ar: "EF Core يتذكر كل entity يعطيك إياه ويقارنه بنسخة محفوظة، فيكتب SaveChanges ما غيّرته أنت فقط."
+  },
+  mins: 18,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "Change tracking is how EF Core turns normal C# object edits into SQL. You load an Order, set order.Status = \"Shipped\", call SaveChanges, and an UPDATE statement appears. Nobody wrote that SQL. EF wrote it because it kept a copy of the row as it looked when it was loaded, and compared that copy to the object in memory.",
+          ar: "الـ change tracking هو الطريقة التي يحوّل بها EF Core تعديلاتك العادية على الكائنات إلى SQL. تحمّل Order، تكتب order.Status = \"Shipped\"، تستدعي SaveChanges، فيظهر UPDATE statement. لم يكتبه أحد. EF كتبه لأنه احتفظ بنسخة من الصف كما كان وقت التحميل، ثم قارن تلك النسخة بالكائن في الذاكرة."
+        },
+        { t: "kv", rows: [
+          { k: { en: "DbContext", ar: "DbContext" },
+            v: { en: "The object you use to query and save. It also holds the tracker. Normally you create one per HTTP request and dispose it at the end.", ar: "الكائن الذي تستعلم وتحفظ من خلاله. يحمل أيضاً الـ tracker. عادةً تنشئ واحداً لكل HTTP request وتتخلص منه في النهاية." } },
+          { k: { en: "Entity", ar: "Entity" },
+            v: { en: "A plain C# object that maps to one row in a table — for example an Order object mapped to one row in the Orders table.", ar: "كائن C# عادي يقابل صفاً واحداً في جدول — مثلاً كائن Order يقابل صفاً في جدول Orders." } },
+          { k: { en: "Change tracker", ar: "Change tracker" },
+            v: { en: "A list inside the DbContext of every entity it loaded or was told about, plus what it knows about each one.", ar: "قائمة داخل الـ DbContext بكل entity حمّله أو أُخبر به، مع ما يعرفه عن كل واحد." } },
+          { k: { en: "Snapshot", ar: "Snapshot" },
+            v: { en: "The private copy of the entity's property values taken at load time. This is the \"before\" picture used for comparison.", ar: "النسخة الخاصة من قيم خصائص الـ entity المأخوذة وقت التحميل. هي صورة \"قبل\" المستخدمة في المقارنة." } },
+          { k: { en: "Entity state", ar: "Entity state" },
+            v: { en: "One label per tracked entity: Added, Modified, Deleted, Unchanged or Detached. It decides which SQL statement (if any) gets written.", ar: "تسمية واحدة لكل entity متتبَّع: Added أو Modified أو Deleted أو Unchanged أو Detached. هي التي تحدد أي SQL statement سيُكتب، إن وُجد." } },
+          { k: { en: "SaveChanges", ar: "SaveChanges" },
+            v: { en: "The method that compares every tracked entity to its snapshot, generates INSERT/UPDATE/DELETE, and sends them in one transaction.", ar: "الميثود التي تقارن كل entity متتبَّع بالـ snapshot الخاص به، تولّد INSERT/UPDATE/DELETE، وترسلها في transaction واحدة." } }
+        ]},
+        { t: "p",
+          en: "Before this existed, teams wrote the UPDATE by hand for every field that might change. That is fine for one field and painful for twenty: you either update all twenty columns every time, or you write branching code that builds the SQL string from what changed. Both are easy to get wrong, and both leak database details into business code.",
+          ar: "قبل وجود هذا، كانت الفرق تكتب UPDATE يدوياً لكل حقل قد يتغيّر. هذا مقبول مع حقل واحد ومؤلم مع عشرين: إما تحدّث الأعمدة العشرين كل مرة، أو تكتب كوداً متفرعاً يبني نص الـ SQL مما تغيّر. كلا الطريقين سهل الخطأ، وكلاهما يسرّب تفاصيل الـ database إلى كود الـ business."
+        },
+        { t: "p",
+          en: "The everyday analogy: a clerk photocopies your form before handing it to you. You fill in two boxes and hand it back. The clerk lays the photocopy next to your version, sees only those two boxes differ, and types just those two into the system. The photocopy is the snapshot. The comparison is DetectChanges. Typing them in is the UPDATE.",
+          ar: "التشبيه اليومي: موظف يصوّر استمارتك قبل أن يعطيك إياها. تملأ خانتين وتعيدها. يضع الموظف الصورة بجانب نسختك، يرى أن الخانتين فقط مختلفتان، فيُدخل هاتين الخانتين إلى النظام. الصورة هي الـ snapshot، والمقارنة هي DetectChanges، والإدخال هو الـ UPDATE."
+        },
+        { t: "callout", kind: "note",
+          en: "The tracker is per DbContext instance, not global. Two DbContext objects loading the same order row give you two separate objects, each with its own snapshot, that know nothing about each other.",
+          ar: "الـ tracker خاص بكل instance من DbContext، وليس عاماً. لو حمّل كائنا DbContext نفس صف الـ order، ستحصل على كائنين منفصلين، لكل واحد snapshot خاص، ولا يعرف أحدهما عن الآخر شيئاً."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Take one concrete endpoint that we will follow through the whole lesson: PATCH /orders/{id}/status, which changes an order's status and nothing else. The Orders table has 18 columns, including a Notes column that can hold a few kilobytes of text.",
+          ar: "خذ endpoint واحداً محدداً سنتابعه طوال الدرس: PATCH /orders/{id}/status، الذي يغيّر status الـ order ولا شيء غيره. جدول Orders فيه 18 عموداً، من بينها عمود Notes قد يحمل بضعة كيلوبايت من النص."
+        },
+        { t: "kv", rows: [
+          { k: { en: "Hand-written SQL, all columns", ar: "SQL مكتوب يدوياً، كل الأعمدة" },
+            v: { en: "One UPDATE that sets all 18 columns. It works, but it rewrites Notes too — so if another request changed Notes one second ago, this request silently overwrites it with the older value.", ar: "UPDATE واحد يضبط الأعمدة الـ 18 كلها. يعمل، لكنه يعيد كتابة Notes أيضاً — فإذا غيّر request آخر قيمة Notes قبل ثانية، فهذا الـ request يستبدلها بصمت بالقيمة الأقدم." } },
+          { k: { en: "Hand-written SQL, one column", ar: "SQL مكتوب يدوياً، عمود واحد" },
+            v: { en: "Correct and fast, but you now need a separate hand-written statement for every combination of fields any endpoint might change.", ar: "صحيح وسريع، لكنك الآن تحتاج statement منفصلاً مكتوباً يدوياً لكل تركيبة حقول قد يغيّرها أي endpoint." } },
+          { k: { en: "EF Core with tracking", ar: "EF Core مع tracking" },
+            v: { en: "You write order.Status = \"Shipped\" and SaveChanges emits UPDATE Orders SET Status = @p0 WHERE Id = @p1. One column, because only one changed.", ar: "تكتب order.Status = \"Shipped\" فيصدر SaveChanges الأمر UPDATE Orders SET Status = @p0 WHERE Id = @p1. عمود واحد، لأن واحداً فقط تغيّر." } }
+        ]},
+        { t: "p",
+          en: "The same mechanism costs you on the read path. A reporting endpoint that loads 20,000 orders with tracking on must build 20,000 snapshots — a second full copy of every property of every row. On a real service this measured 1.9 seconds and about 180 MB of memory. The same query with tracking turned off measured 0.4 seconds and about 60 MB. Same rows, same SQL: the difference is only the bookkeeping EF does for changes that this endpoint will never make.",
+          ar: "نفس الآلية تكلّفك في مسار القراءة. endpoint تقارير يحمّل 20,000 order مع تشغيل الـ tracking يجب أن يبني 20,000 snapshot — نسخة ثانية كاملة من كل خاصية في كل صف. على خدمة حقيقية قيس هذا بـ 1.9 ثانية وحوالي 180 ميغابايت من الذاكرة. نفس الاستعلام مع إيقاف الـ tracking قيس بـ 0.4 ثانية وحوالي 60 ميغابايت. نفس الصفوف ونفس الـ SQL: الفرق هو فقط الدفاتر التي يمسكها EF لتغييرات لن يجريها هذا الـ endpoint أبداً."
+        },
+        { t: "p",
+          en: "So the rule the rest of the lesson builds on is simple: tracking is a write-path feature that you pay for on every path unless you turn it off. Understanding exactly what it does tells you when that payment is worth it.",
+          ar: "إذن القاعدة التي يُبنى عليها بقية الدرس بسيطة: الـ tracking ميزة لمسار الكتابة، لكنك تدفع ثمنها في كل مسار ما لم توقفها. فهم ما تفعله بالضبط يخبرك متى يستحق هذا الثمن."
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Follow one request through the tracker, step by step. The request is PATCH /orders/42/status with body { \"status\": \"Shipped\" }.",
+          ar: "تابع request واحداً عبر الـ tracker خطوة بخطوة. الـ request هو PATCH /orders/42/status مع body فيه { \"status\": \"Shipped\" }."
+        },
+        { t: "kv", rows: [
+          { k: { en: "1. Query runs", ar: "1. تنفيذ الاستعلام" },
+            v: { en: "context.Orders.FindAsync(42) sends SELECT ... WHERE Id = 42 and gets one row back from SQL Server.", ar: "context.Orders.FindAsync(42) يرسل SELECT ... WHERE Id = 42 ويستقبل صفاً واحداً من SQL Server." } },
+          { k: { en: "2. Materialization", ar: "2. Materialization" },
+            v: { en: "EF creates the Order object and copies each column value into the matching property. \"Materialization\" just means turning a row into an object.", ar: "ينشئ EF كائن Order وينسخ قيمة كل عمود إلى الخاصية المقابلة. \"Materialization\" تعني ببساطة تحويل صف إلى كائن." } },
+          { k: { en: "3. Identity map check", ar: "3. فحص الـ identity map" },
+            v: { en: "The identity map is a dictionary inside the tracker keyed by primary key. If Order 42 is already there, EF returns the existing object instead of a second one.", ar: "الـ identity map هو dictionary داخل الـ tracker مفتاحه الـ primary key. لو كان Order 42 موجوداً فيه، يعيد EF الكائن الموجود بدل إنشاء ثانٍ." } },
+          { k: { en: "4. Snapshot taken", ar: "4. أخذ الـ snapshot" },
+            v: { en: "EF stores a second copy of all 18 property values next to the entry, and marks the state Unchanged.", ar: "يخزّن EF نسخة ثانية من قيم الخصائص الـ 18 بجانب الـ entry، ويضع الحالة Unchanged." } },
+          { k: { en: "5. You mutate", ar: "5. أنت تعدّل" },
+            v: { en: "order.Status = \"Shipped\" changes the object only. Nothing is sent to the database and the state is still Unchanged at this moment.", ar: "order.Status = \"Shipped\" يغيّر الكائن فقط. لا شيء يُرسل إلى الـ database والحالة ما زالت Unchanged في هذه اللحظة." } },
+          { k: { en: "6. DetectChanges", ar: "6. DetectChanges" },
+            v: { en: "SaveChanges first walks every tracked entity and compares each property to its snapshot. Status differs, so the entry becomes Modified with Status marked as the changed property.", ar: "يمشي SaveChanges أولاً على كل entity متتبَّع ويقارن كل خاصية بالـ snapshot. Status مختلف، فتصبح الحالة Modified مع تعليم Status كخاصية متغيّرة." } },
+          { k: { en: "7. SQL generated and sent", ar: "7. توليد الـ SQL وإرساله" },
+            v: { en: "One UPDATE touching only the changed columns, inside a transaction, then the snapshot is refreshed and the state goes back to Unchanged.", ar: "UPDATE واحد يمسّ الأعمدة المتغيّرة فقط، داخل transaction، ثم يُحدَّث الـ snapshot وتعود الحالة إلى Unchanged." } }
+        ]},
+        { t: "p",
+          en: "The important part of step 6 is that EF does not know you changed anything until it looks. There is no event, no interception of the property setter on a normal class. The tracker is passive: it holds the before-picture and compares on demand. That is why the work happens all at once inside SaveChanges rather than at the moment you typed the assignment.",
+          ar: "الجزء المهم في الخطوة 6 هو أن EF لا يعرف أنك غيّرت شيئاً حتى ينظر. لا يوجد event ولا اعتراض لـ property setter في class عادي. الـ tracker سلبي: يحتفظ بصورة \"قبل\" ويقارن عند الطلب. لذلك يحدث العمل كله دفعة واحدة داخل SaveChanges، لا في لحظة كتابتك للإسناد."
+        },
+        { t: "p",
+          en: "Back to the clerk analogy: the clerk does not watch you write. He only compares the two sheets when you hand the form back. Handing it back is SaveChanges. If you never hand it back, nothing reaches the system no matter how much you wrote.",
+          ar: "عودة إلى تشبيه الموظف: الموظف لا يراقبك وأنت تكتب. يقارن الورقتين فقط عندما تعيد الاستمارة. الإعادة هي SaveChanges. إن لم تُعِدها، لا يصل شيء إلى النظام مهما كتبت."
+        },
+        { t: "code", lang: "csharp", label: { en: "Watching the state change", ar: "مراقبة تغيّر الحالة" },
+          code: "var order = await context.Orders.FindAsync(42);\n\n// EF loaded it and took a snapshot. Nothing changed yet.\nConsole.WriteLine(context.Entry(order).State);   // Unchanged\n\norder.Status = \"Shipped\";\n\n// Still Unchanged: EF has not compared anything yet.\nConsole.WriteLine(context.Entry(order).State);   // Unchanged\n\n// DetectChanges runs here and flips the state.\ncontext.ChangeTracker.DetectChanges();\nConsole.WriteLine(context.Entry(order).State);   // Modified\n\n// Which properties EF thinks changed:\nforeach (var p in context.Entry(order).Properties.Where(p => p.IsModified))\n    Console.WriteLine(p.Metadata.Name);          // Status\n\nawait context.SaveChangesAsync();\n// UPDATE [Orders] SET [Status] = @p0 WHERE [Id] = @p1;\nConsole.WriteLine(context.Entry(order).State);   // Unchanged again"
+        },
+        { t: "p",
+          en: "DetectChanges is called for you before SaveChanges, and also before most queries and before ChangeTracker.Entries(). Its cost is proportional to tracked entities times properties each. With 20 tracked entities that is invisible. With 20,000 tracked entities, and a loop that triggers it once per iteration, you get 20,000 full scans of 20,000 entities — quadratic work that turns a one-second job into minutes.",
+          ar: "يُستدعى DetectChanges نيابةً عنك قبل SaveChanges، وأيضاً قبل معظم الاستعلامات وقبل ChangeTracker.Entries(). تكلفته تتناسب مع عدد الـ entities المتتبَّعة مضروباً في عدد خصائص كل واحد. مع 20 entity لا تُلاحَظ. مع 20,000 entity، وحلقة تطلقه مرة في كل دورة، تحصل على 20,000 مسح كامل لـ 20,000 entity — عمل تربيعي يحوّل مهمة من ثانية إلى دقائق."
+        },
+        { t: "p",
+          en: "Two details change the picture. First, entities with change-tracking proxies — classes whose properties are virtual, wrapped by EF in a generated subclass — report changes immediately, so DetectChanges has nothing to scan. Second, an entity you did not load, for example one deserialized from JSON, is Detached: the tracker has never seen it and has no snapshot for it, which is where the next section's problems start.",
+          ar: "تفصيلان يغيّران الصورة. الأول: الـ entities التي تستخدم change-tracking proxies — أي classes خصائصها virtual ويغلّفها EF بـ subclass مولَّد — تبلّغ عن التغيير فوراً، فلا يبقى لـ DetectChanges ما يمسحه. الثاني: أي entity لم تحمّله أنت، مثلاً كائن ناتج عن deserialization لـ JSON، يكون Detached: الـ tracker لم يره قط ولا يملك له snapshot، ومن هنا تبدأ مشاكل القسم التالي."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "Writes only the columns that changed, so two requests editing different fields of the same row do not overwrite each other.",
+              "Business code stays plain C#: set a property, save. No SQL string building.",
+              "The identity map guarantees one object per row per DbContext, so two parts of the same request always see the same order object.",
+              "Related objects added to a tracked entity's collection are saved automatically, in the right order, in one transaction."
+            ],
+            ar: [
+              "يكتب الأعمدة المتغيّرة فقط، فلا يدهس request بيانات request آخر يعدّل حقولاً مختلفة من نفس الصف.",
+              "كود الـ business يبقى C# عادياً: اضبط خاصية، احفظ. بلا بناء نصوص SQL.",
+              "الـ identity map يضمن كائناً واحداً لكل صف داخل كل DbContext، فيرى جزآن من نفس الـ request نفس كائن الـ order.",
+              "الكائنات المرتبطة المضافة إلى collection لـ entity متتبَّع تُحفظ تلقائياً، بالترتيب الصحيح، في transaction واحدة."
+            ]
+          },
+          cons: {
+            en: [
+              "Every loaded entity costs a second copy of its data in memory for the snapshot.",
+              "DetectChanges scans all tracked entities, so cost grows with how much you loaded, not with how much you changed.",
+              "Changes are invisible until SaveChanges, which hides mistakes until later in the request.",
+              "An accidental mutation anywhere in the request gets saved along with the intended one."
+            ],
+            ar: [
+              "كل entity محمّل يكلّف نسخة ثانية من بياناته في الذاكرة من أجل الـ snapshot.",
+              "DetectChanges يمسح كل الـ entities المتتبَّعة، فالتكلفة تنمو مع حجم ما حمّلته لا مع حجم ما غيّرته.",
+              "التغييرات غير مرئية حتى SaveChanges، ما يخفي الأخطاء إلى وقت لاحق من الـ request.",
+              "أي تعديل غير مقصود في أي مكان من الـ request يُحفظ مع التعديل المقصود."
+            ]
+          },
+          limits: {
+            en: [
+              "Tracking only works inside one DbContext instance; it does not span requests or servers.",
+              "It cannot see changes another user made to the same row after you loaded it — that needs a concurrency token, a version column EF adds to the WHERE clause so a stale update fails instead of winning.",
+              "Detached objects (from JSON, from a cache) have no snapshot, so EF cannot tell what changed in them.",
+              "It does not batch unlimited work: thousands of tracked changes in one SaveChanges still means thousands of statements."
+            ],
+            ar: [
+              "الـ tracking يعمل داخل instance واحد من DbContext فقط؛ لا يمتد عبر الـ requests أو الخوادم.",
+              "لا يرى تغييراً أجراه مستخدم آخر على نفس الصف بعد تحميلك له — هذا يحتاج concurrency token، وهو عمود إصدار يضعه EF في جملة WHERE ليفشل التحديث القديم بدل أن ينجح.",
+              "الكائنات الـ detached (من JSON أو من cache) بلا snapshot، فلا يستطيع EF معرفة ما تغيّر فيها.",
+              "لا يجمع عملاً بلا حدود: آلاف التغييرات المتتبَّعة في SaveChanges واحد تبقى آلاف الـ statements."
+            ]
+          },
+          alts: {
+            en: [
+              "AsNoTracking for read-only queries: no snapshot, no DetectChanges, same rows.",
+              "ExecuteUpdate/ExecuteDelete for bulk edits: one SQL statement, no entities loaded at all.",
+              "Dapper or raw ADO.NET where you want to own the SQL and skip the object graph entirely.",
+              "Explicit Entry(entity).Property(x).IsModified = true when you know exactly which field to write."
+            ],
+            ar: [
+              "AsNoTracking للاستعلامات للقراءة فقط: بلا snapshot وبلا DetectChanges ونفس الصفوف.",
+              "ExecuteUpdate/ExecuteDelete للتعديلات الجماعية: SQL statement واحد وبلا تحميل أي entities.",
+              "Dapper أو ADO.NET الخام حين تريد امتلاك الـ SQL وتخطّي شجرة الكائنات كلياً.",
+              "الضبط الصريح Entry(entity).Property(x).IsModified = true حين تعرف الحقل المطلوب كتابته بالضبط."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Update(entity) on an object built from the request body", ar: "استدعاء Update(entity) على كائن مبني من body الـ request" },
+          body: {
+            en: "A team mapped the incoming JSON straight to an Order and called context.Update(order). The JSON had no Notes field, so Notes was null on the object. Update marks every property Modified because there is no snapshot to compare against, so the UPDATE wrote all 18 columns and erased the Notes of every order that endpoint touched. Load the row first, then assign only the fields the request is allowed to change.",
+            ar: "فريق حوّل الـ JSON الوارد مباشرةً إلى Order واستدعى context.Update(order). الـ JSON لم يحتوِ حقل Notes، فكانت قيمته null في الكائن. Update يعلّم كل الخصائص كـ Modified لأنه لا يوجد snapshot للمقارنة، فكتب الـ UPDATE الأعمدة الـ 18 كلها ومسح Notes لكل order مسّه هذا الـ endpoint. حمّل الصف أولاً، ثم أسنِد الحقول المسموح للـ request بتغييرها فقط."
+          },
+          fix: "var order = await context.Orders.FindAsync(id);\nif (order is null) return Results.NotFound();\norder.Status = dto.Status;   // only this column ends up in the UPDATE\nawait context.SaveChangesAsync();"
+        },
+        { t: "mistake",
+          title: { en: "Tracking a report query", ar: "تتبّع استعلام تقارير" },
+          body: {
+            en: "An export endpoint ran context.Orders.Include(o => o.Lines).ToListAsync() over 20,000 orders and 90,000 lines, then only serialized them to CSV. Tracking built 110,000 snapshots that were never compared to anything. Memory per request went to roughly 180 MB and three concurrent exports pushed the pod into an out-of-memory restart. Adding AsNoTracking cut memory to about 60 MB and the request time from 1.9 s to 0.4 s.",
+            ar: "endpoint تصدير نفّذ context.Orders.Include(o => o.Lines).ToListAsync() على 20,000 order و 90,000 line، ثم حوّلها إلى CSV فقط. بنى الـ tracking 110,000 snapshot لم تُقارن بشيء أبداً. ارتفعت الذاكرة لكل request إلى حوالي 180 ميغابايت، وثلاث عمليات تصدير متزامنة دفعت الـ pod إلى إعادة تشغيل بسبب نفاد الذاكرة. إضافة AsNoTracking خفّضت الذاكرة إلى حوالي 60 ميغابايت وزمن الـ request من 1.9 ثانية إلى 0.4 ثانية."
+          },
+          fix: "var orders = await context.Orders\n    .Include(o => o.Lines)\n    .AsNoTracking()\n    .ToListAsync();"
+        },
+        { t: "mistake",
+          title: { en: "A loop that calls SaveChanges every iteration", ar: "حلقة تستدعي SaveChanges في كل دورة" },
+          body: {
+            en: "A nightly job loaded 20,000 tracked orders and called SaveChanges inside the loop after editing each one. Every call ran DetectChanges over all 20,000 tracked entities, so the job did about 400 million property comparisons plus 20,000 separate round trips to the database. It took 14 minutes. Batching into one SaveChanges after the loop brought it to 11 seconds; ExecuteUpdate brought it to under a second.",
+            ar: "مهمة ليلية حمّلت 20,000 order متتبَّع واستدعت SaveChanges داخل الحلقة بعد تعديل كل واحد. كل استدعاء شغّل DetectChanges على الـ 20,000 entity كلها، فأجرت المهمة حوالي 400 مليون مقارنة خصائص إضافةً إلى 20,000 رحلة منفصلة إلى الـ database. استغرقت 14 دقيقة. تجميعها في SaveChanges واحد بعد الحلقة أنزلها إلى 11 ثانية، و ExecuteUpdate أنزلها إلى أقل من ثانية."
+          },
+          fix: "await context.Orders\n    .Where(o => o.Status == \"Pending\" && o.CreatedAt < cutoff)\n    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, \"Expired\"));"
+        },
+        { t: "mistake",
+          title: { en: "A DbContext that lives too long", ar: "DbContext يعيش طويلاً" },
+          body: {
+            en: "A background worker registered its DbContext as a singleton — one instance for the whole process lifetime. The tracker kept every entity it ever loaded, so memory grew all day and never came down, and a stale order object from an hour earlier was returned from the identity map instead of fresh data. Register DbContext as scoped, or in a worker create one per unit of work with IDbContextFactory.",
+            ar: "worker خلفي سجّل الـ DbContext كـ singleton — instance واحد طوال عمر العملية. احتفظ الـ tracker بكل entity حمّله يوماً، فنمت الذاكرة طوال اليوم ولم تنخفض، وأُعيد كائن order قديم من قبل ساعة من الـ identity map بدل بيانات جديدة. سجّل الـ DbContext كـ scoped، أو في الـ worker أنشئ واحداً لكل وحدة عمل عبر IDbContextFactory."
+          },
+          fix: "// in Program.cs\nbuilder.Services.AddDbContextFactory<AppDb>(o => o.UseSqlServer(cs));\n\n// in the worker, one context per unit of work\nawait using var context = await factory.CreateDbContextAsync(ct);"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "You changed a property but the database still shows the old value. Why?", ar: "غيّرت خاصية لكن الـ database ما زال يعرض القيمة القديمة. لماذا؟" },
+          a: { en: "Because setting a property only changes the object in memory. EF does not write anything until SaveChanges runs — that is the point where it compares each tracked object to the copy it took at load time and generates the UPDATE. So either SaveChanges was never called, or it was called on a different DbContext than the one that loaded the object.", ar: "لأن ضبط الخاصية يغيّر الكائن في الذاكرة فقط. EF لا يكتب شيئاً حتى يعمل SaveChanges — تلك هي النقطة التي يقارن فيها كل كائن متتبَّع بالنسخة التي أخذها وقت التحميل ويولّد الـ UPDATE. إذن إما أن SaveChanges لم يُستدعَ، أو استُدعي على DbContext غير الذي حمّل الكائن." }
+        },
+        { t: "qa", level: "mid",
+          q: { en: "What does AsNoTracking actually skip?", ar: "ماذا يتخطّى AsNoTracking فعلياً؟" },
+          a: { en: "Two things: EF does not store the snapshot copy of the entity's values, and it does not put the entity in the identity map. The SQL sent is identical. What you lose is the ability to change the object and have SaveChanges notice, plus the guarantee that the same row loaded twice gives you the same object. For a read-only endpoint you need neither, and you save both the memory and the DetectChanges scan.", ar: "شيئان: EF لا يخزّن نسخة الـ snapshot لقيم الـ entity، ولا يضعه في الـ identity map. الـ SQL المرسل مطابق. ما تخسره هو قدرة SaveChanges على ملاحظة تعديلك للكائن، إضافةً إلى ضمان أن نفس الصف المحمَّل مرتين يعطيك نفس الكائن. في endpoint للقراءة فقط لا تحتاج أياً منهما، فتوفّر الذاكرة ومسح DetectChanges معاً." }
+        },
+        { t: "qa", level: "mid",
+          q: { en: "What is the difference between Attach and Update on a detached entity?", ar: "ما الفرق بين Attach و Update على entity غير متتبَّع؟" },
+          a: { en: "Both start tracking an object EF did not load. Attach marks it Unchanged, so SaveChanges writes nothing until you change something or mark a property modified yourself. Update marks every property as Modified, so SaveChanges writes all columns. Update is dangerous with objects built from a request body, because any field the client did not send is written as its default — usually null.", ar: "كلاهما يبدأ تتبّع كائن لم يحمّله EF. Attach يضعه Unchanged، فلا يكتب SaveChanges شيئاً حتى تغيّر شيئاً أو تعلّم خاصية كـ modified بنفسك. Update يعلّم كل الخصائص كـ Modified، فيكتب SaveChanges كل الأعمدة. Update خطر مع كائنات مبنية من body الـ request، لأن أي حقل لم يرسله الـ client يُكتب بقيمته الافتراضية — عادةً null." }
+        },
+        { t: "qa", level: "senior",
+          q: { en: "Why can DetectChanges become the bottleneck, and what do you do about it?", ar: "لماذا قد يصبح DetectChanges عنق الزجاجة، وماذا تفعل حياله؟" },
+          a: { en: "Its cost is the number of tracked entities times the properties on each, and it runs before every SaveChanges and before most queries. If you load 20,000 entities and call SaveChanges inside a loop, you pay that full scan 20,000 times, which is quadratic. The fixes in order of preference: do not track what you will not change, batch into one SaveChanges, or skip entities entirely with ExecuteUpdate. Turning off auto-detect is a last resort because then a missed manual DetectChanges call silently loses a write.", ar: "تكلفته هي عدد الـ entities المتتبَّعة مضروباً في خصائص كل واحد، ويعمل قبل كل SaveChanges وقبل معظم الاستعلامات. لو حمّلت 20,000 entity واستدعيت SaveChanges داخل حلقة، تدفع المسح الكامل 20,000 مرة، وهذا تربيعي. الحلول بترتيب الأفضلية: لا تتتبّع ما لن تغيّره، اجمع في SaveChanges واحد، أو تخطَّ الـ entities كلياً بـ ExecuteUpdate. إيقاف الكشف التلقائي هو الملاذ الأخير، لأن نسيان استدعاء DetectChanges يدوياً يضيّع عملية كتابة بصمت." }
+        },
+        { t: "qa", level: "senior",
+          q: { en: "Two requests load the same order and save different fields. What happens?", ar: "request-ان يحمّلان نفس الـ order ويحفظان حقلين مختلفين. ماذا يحدث؟" },
+          a: { en: "Each request has its own DbContext, its own object and its own snapshot, so each generates an UPDATE touching only its own column. Because the two UPDATEs touch different columns, both survive — this is the main practical benefit of column-level change tracking. It stops being safe when both change the same column, or when a value depends on what was read: an inventory decrement read as 10 by both requests writes 9 twice instead of 8. That case needs a concurrency token, which is a version column EF puts in the WHERE clause so the second update fails and can be retried.", ar: "كل request له DbContext خاص وكائن خاص و snapshot خاص، فيولّد كل واحد UPDATE يمسّ عموده هو فقط. ولأن الـ UPDATE-ين يمسّان عمودين مختلفين، ينجو كلاهما — وهذه الفائدة العملية الأساسية للـ tracking على مستوى العمود. تتوقف السلامة حين يغيّر الاثنان نفس العمود، أو حين تعتمد القيمة على ما قُرئ: إنقاص مخزون قرأه الاثنان كـ 10 يكتب 9 مرتين بدل 8. تلك الحالة تحتاج concurrency token، وهو عمود إصدار يضعه EF في جملة WHERE ليفشل التحديث الثاني فيُعاد تنفيذه." }
+        },
+        { t: "qa", level: "staff",
+          q: { en: "How do you stop tracking mistakes from recurring across a large team?", ar: "كيف تمنع تكرار أخطاء الـ tracking عبر فريق كبير؟" },
+          a: { en: "Make the safe path the default and the unsafe path visible. Split read and write access: query methods return projections from no-tracking queries, and only a small write layer holds a tracking DbContext. Turn on the container's scope validation and EF's warning for a DbContext resolved outside a request scope. Add an analyzer or review rule that flags context.Update on an object that was not loaded in the same method. Then add one integration test per write endpoint asserting the exact columns in the generated SQL, so the Notes-erasing bug fails in CI instead of in production.", ar: "اجعل المسار الآمن هو الافتراضي والمسار الخطر ظاهراً. افصل القراءة عن الكتابة: ميثودات الاستعلام تعيد projections من استعلامات no-tracking، وطبقة كتابة صغيرة فقط تمسك DbContext متتبِّعاً. فعّل scope validation في الـ container وتحذير EF لأي DbContext يُحلّ خارج نطاق الـ request. أضف analyzer أو قاعدة مراجعة تعلّم استدعاء context.Update على كائن لم يُحمَّل في نفس الميثود. ثم أضف اختبار تكامل لكل endpoint كتابة يتحقق من الأعمدة الفعلية في الـ SQL المولَّد، ليفشل خطأ مسح Notes في الـ CI بدل الإنتاج." }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Saving a request DTO as if it were the row", ar: "حفظ DTO الـ request كأنه الصف" },
+          bad: "[HttpPut(\"/orders/{id}\")]\npublic async Task<IResult> Update(int id, OrderDto dto)\n{\n    var order = new Order { Id = id, Status = dto.Status };\n    context.Update(order);              // every column marked Modified\n    await context.SaveChangesAsync();\n    return Results.NoContent();\n}",
+          good: "[HttpPut(\"/orders/{id}\")]\npublic async Task<IResult> Update(int id, OrderDto dto)\n{\n    var order = await context.Orders.FindAsync(id);\n    if (order is null) return Results.NotFound();\n\n    order.Status = dto.Status;          // only Status ends up Modified\n    await context.SaveChangesAsync();\n    return Results.NoContent();\n}",
+          why: { en: "OrderDto is a DTO — the plain object the JSON request body maps to. The bad version builds an Order from it, so there is no snapshot, EF marks all 18 columns Modified and writes the object's defaults over the real row — CustomerId becomes 0, Notes becomes null, CreatedAt becomes the year 0001. The good version loads the row first, which gives EF a snapshot, so the UPDATE contains one column. It costs one extra SELECT and prevents silent data loss.", ar: "OrderDto هو DTO — الكائن البسيط الذي يقابل body الـ JSON. النسخة السيئة تبني Order منه، فلا يوجد snapshot، ويعلّم EF الأعمدة الـ 18 كلها كـ Modified ويكتب قيم الكائن الافتراضية فوق الصف الحقيقي — CustomerId يصبح 0 و Notes يصبح null و CreatedAt يصبح السنة 0001. النسخة الجيدة تحمّل الصف أولاً فتعطي EF snapshot، فيحتوي الـ UPDATE عموداً واحداً. تكلفتها SELECT إضافي واحد وتمنع فقدان بيانات صامتاً." }
+        },
+        { t: "review", severity: "medium",
+          title: { en: "A read endpoint that tracks and over-fetches", ar: "endpoint قراءة يتتبّع ويجلب أكثر من اللازم" },
+          bad: "var orders = await context.Orders\n    .Include(o => o.Lines)\n    .Where(o => o.CustomerId == customerId)\n    .ToListAsync();\n\nreturn orders.Select(o => new OrderSummary(o.Id, o.Status, o.Total));",
+          good: "var orders = await context.Orders\n    .Where(o => o.CustomerId == customerId)\n    .Select(o => new OrderSummary(o.Id, o.Status, o.Total))\n    .AsNoTracking()\n    .ToListAsync();\n\nreturn orders;",
+          why: { en: "The bad version loads every column of every order plus all its lines, snapshots all of them, and then throws almost all of it away in memory. The good version asks SQL Server for three columns and no lines at all, and skips snapshots. On a customer with 400 orders this went from about 30 MB and 210 ms to under 1 MB and 12 ms.", ar: "النسخة السيئة تحمّل كل أعمدة كل order مع كل الـ lines، وتأخذ snapshot لها جميعاً، ثم ترمي معظمها في الذاكرة. النسخة الجيدة تطلب من SQL Server ثلاثة أعمدة وبلا lines إطلاقاً، وتتخطّى الـ snapshots. مع عميل لديه 400 order انتقلت من حوالي 30 ميغابايت و 210 ميلي ثانية إلى أقل من 1 ميغابايت و 12 ميلي ثانية." }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a typical ASP.NET Core service the DbContext is registered as scoped, meaning one instance is created per HTTP request and disposed when the response is sent. That lifetime is what makes tracking safe: the tracker starts empty, holds only this request's entities, and is thrown away with them. It is also why a scoped DbContext must never be captured by a singleton — the singleton would keep the tracker and its entities alive forever.",
+          ar: "في خدمة ASP.NET Core نموذجية يُسجَّل الـ DbContext كـ scoped، أي يُنشأ instance لكل HTTP request ويُتخلَّص منه عند إرسال الرد. هذا العمر هو ما يجعل الـ tracking آمناً: يبدأ الـ tracker فارغاً، يحمل entities هذا الـ request فقط، ويُرمى معها. وهو أيضاً سبب منع أي singleton من الاحتفاظ بـ DbContext من نوع scoped — لأن الـ singleton سيبقي الـ tracker و entities حيّة إلى الأبد."
+        },
+        { t: "p",
+          en: "Once a service grows, the useful split is by direction of data. Read endpoints go through no-tracking projection queries that return exactly the shape the response needs. Write endpoints load the specific rows they will change, mutate them, and call SaveChanges once. Background jobs create a fresh DbContext per batch so the tracker never accumulates.",
+          ar: "حين تكبر الخدمة، يكون التقسيم المفيد حسب اتجاه البيانات. endpoints القراءة تمرّ عبر استعلامات projection بلا tracking تعيد بالضبط الشكل الذي يحتاجه الرد. endpoints الكتابة تحمّل الصفوف التي ستغيّرها فقط، تعدّلها، وتستدعي SaveChanges مرة واحدة. المهام الخلفية تنشئ DbContext جديداً لكل دفعة حتى لا يتراكم الـ tracker."
+        },
+        { t: "ul",
+          en: [
+            "Request-scoped DbContext: one tracker per request, disposed with the request.",
+            "Read path: AsNoTracking plus Select projection, so nothing is snapshotted and nothing extra is fetched.",
+            "Write path: load, mutate, single SaveChanges, which is also a single database transaction.",
+            "Bulk maintenance path: ExecuteUpdate or ExecuteDelete, which never load entities at all.",
+            "Background jobs: IDbContextFactory and a new context per batch of a few hundred rows."
+          ],
+          ar: [
+            "DbContext بعمر الـ request: tracker واحد لكل request يُتخلَّص منه مع الـ request.",
+            "مسار القراءة: AsNoTracking مع Select projection، فلا snapshots ولا جلب زائد.",
+            "مسار الكتابة: تحميل، تعديل، SaveChanges واحد، وهو أيضاً transaction واحدة في الـ database.",
+            "مسار الصيانة الجماعية: ExecuteUpdate أو ExecuteDelete، بلا تحميل أي entities.",
+            "المهام الخلفية: IDbContextFactory و context جديد لكل دفعة من بضع مئات من الصفوف."
+          ]
+        },
+        { t: "callout", kind: "warn",
+          en: "SaveChanges wraps all pending changes in one transaction. That is usually what you want, but it also means one failed row rolls back the other 999. For large batches, save in chunks so a single bad row does not undo an hour of work.",
+          ar: "SaveChanges يغلّف كل التغييرات المعلّقة في transaction واحدة. هذا غالباً ما تريده، لكنه يعني أيضاً أن فشل صف واحد يتراجع عن الـ 999 الباقية. في الدفعات الكبيرة احفظ على قطع حتى لا يُلغي صف سيئ واحد ساعة من العمل."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "Each tracked entity costs roughly twice its data: the object plus its snapshot, plus the tracker entry. 20,000 orders measured about 180 MB tracked versus 60 MB with AsNoTracking.", ar: "كل entity متتبَّع يكلّف تقريباً ضعف بياناته: الكائن مع الـ snapshot، إضافةً إلى entry في الـ tracker. قيست 20,000 order بحوالي 180 ميغابايت مع الـ tracking مقابل 60 ميغابايت مع AsNoTracking." } },
+          { k: { en: "CPU", ar: "CPU" },
+            v: { en: "DetectChanges compares tracked entities times properties each. It is free at 20 entities and dominant at 20,000 if it runs repeatedly.", ar: "DetectChanges يقارن عدد الـ entities المتتبَّعة مضروباً في خصائص كل واحد. مجاني عند 20 entity ومهيمن عند 20,000 إذا تكرر تشغيله." } },
+          { k: { en: "Database", ar: "Database" },
+            v: { en: "Column-level updates mean smaller writes and smaller transaction log records — the log is the file SQL Server writes every change to before applying it.", ar: "التحديث على مستوى العمود يعني كتابات أصغر وسجلات أصغر في الـ transaction log — وهو الملف الذي يكتب فيه SQL Server كل تغيير قبل تطبيقه." } },
+          { k: { en: "Latency", ar: "Latency" },
+            v: { en: "One SaveChanges is one round trip for the whole batch. SaveChanges inside a loop turns N changes into N round trips, and network time then dominates.", ar: "SaveChanges واحد يعني رحلة واحدة للدفعة كلها. SaveChanges داخل حلقة يحوّل N تغييراً إلى N رحلة، فيهيمن زمن الشبكة." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "Per-request memory sets how many concurrent requests fit in a pod. Cutting tracked reads is often the cheapest way to raise concurrency without adding instances.", ar: "الذاكرة لكل request تحدد كم request متزامناً يتسع في الـ pod. تقليل القراءات المتتبَّعة غالباً أرخص طريقة لرفع التزامن بلا إضافة instances." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "context.ChangeTracker.DebugView.ShortView — prints every tracked entity and its state; look for entities you never meant to load, or a Modified entity you did not touch.",
+            "context.ChangeTracker.Entries().Count() before SaveChanges — if this is in the thousands on a normal request, something is loading a whole table.",
+            "EF logging at Information level with EnableSensitiveDataLogging in development — shows the exact UPDATE text; check that its SET list has only the columns you expected.",
+            "context.Entry(order).Property(o => o.Status).OriginalValue — shows what the snapshot holds, which tells you whether EF thinks the value changed at all.",
+            "A memory dump or dotnet-counters on working set during an export — a tracked report query shows up as a large, short-lived spike per request."
+          ],
+          ar: [
+            "context.ChangeTracker.DebugView.ShortView — يطبع كل entity متتبَّع وحالته؛ ابحث عن entities لم تقصد تحميلها، أو entity في حالة Modified لم تلمسه.",
+            "context.ChangeTracker.Entries().Count() قبل SaveChanges — لو كان بالآلاف في request عادي، فشيء ما يحمّل جدولاً كاملاً.",
+            "logging لـ EF عند مستوى Information مع EnableSensitiveDataLogging في بيئة التطوير — يعرض نص الـ UPDATE بالضبط؛ تحقق أن قائمة SET فيه تحتوي الأعمدة المتوقعة فقط.",
+            "context.Entry(order).Property(o => o.Status).OriginalValue — يعرض ما يحمله الـ snapshot، فيخبرك إن كان EF يرى تغيّراً أصلاً.",
+            "memory dump أو dotnet-counters على الـ working set أثناء التصدير — استعلام تقارير متتبَّع يظهر كقفزة كبيرة قصيرة العمر لكل request."
+          ]
+        },
+        { t: "callout", kind: "tip",
+          en: "When an unexpected UPDATE appears in the logs, print DebugView right before SaveChanges. It names the entity and the exact properties EF thinks changed, which usually points straight at the line that mutated something by accident.",
+          ar: "حين يظهر UPDATE غير متوقع في الـ logs، اطبع DebugView قبل SaveChanges مباشرةً. يسمّي الـ entity والخصائص التي يرى EF أنها تغيّرت، وهذا يشير عادةً مباشرةً إلى السطر الذي عدّل شيئاً بالخطأ."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "The pattern shows up wherever a system has a small number of write endpoints and a large number of read endpoints over the same tables. The writes benefit from tracking because they change one or two fields of a row that other requests are also touching. The reads pay for it and get nothing back, which is why the same table can be both cheap and expensive depending on the path.",
+          ar: "يظهر النمط في كل نظام فيه عدد قليل من endpoints الكتابة وعدد كبير من endpoints القراءة على نفس الجداول. الكتابات تستفيد من الـ tracking لأنها تغيّر حقلاً أو حقلين من صف تلمسه requests أخرى أيضاً. القراءات تدفع الثمن ولا تأخذ مقابلاً، ولذلك قد يكون نفس الجدول رخيصاً أو مكلفاً حسب المسار."
+        },
+        { t: "ul",
+          en: [
+            "Order management systems: status changes from many services touch different columns of the same order row, and column-level updates keep them from overwriting each other.",
+            "Admin back-offices: a form edits 3 of 40 fields, and tracking means the other 37 are never written, so audit triggers do not fire on unchanged columns.",
+            "Reporting and export endpoints: the classic place where forgetting AsNoTracking doubles memory for no benefit.",
+            "Nightly batch jobs: the classic place where a long-lived DbContext accumulates entities until the process runs out of memory."
+          ],
+          ar: [
+            "أنظمة إدارة الطلبات: تغييرات الـ status من خدمات متعددة تمسّ أعمدة مختلفة من نفس صف الـ order، والتحديث على مستوى العمود يمنعها من دهس بعضها.",
+            "لوحات الإدارة الخلفية: نموذج يعدّل 3 حقول من 40، والـ tracking يعني أن الـ 37 الباقية لا تُكتب أبداً، فلا تنطلق audit triggers على أعمدة لم تتغيّر.",
+            "endpoints التقارير والتصدير: المكان الكلاسيكي الذي يضاعف فيه نسيان AsNoTracking الذاكرة بلا فائدة.",
+            "المهام الليلية المجمّعة: المكان الكلاسيكي الذي يتراكم فيه الـ entities في DbContext طويل العمر حتى تنفد ذاكرة العملية."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Load one order, change only its Status, and log context.Entry(order).State before the change, after the change, after a manual DetectChanges, and after SaveChanges. You are right when you see Unchanged, Unchanged, Modified, Unchanged in that order.",
+          ar: "حمّل order واحداً، غيّر Status فقط، وسجّل context.Entry(order).State قبل التغيير وبعده وبعد DetectChanges يدوي وبعد SaveChanges. تكون مصيباً حين ترى Unchanged ثم Unchanged ثم Modified ثم Unchanged بهذا الترتيب."
+        },
+        { t: "ex", diff: "medium",
+          en: "Write two versions of a PUT endpoint: one that calls context.Update on an object built from the DTO, one that loads the row first. Capture the generated SQL for both. You are right when the first UPDATE lists every column and the second lists exactly one.",
+          ar: "اكتب نسختين من endpoint من نوع PUT: واحدة تستدعي context.Update على كائن مبني من الـ DTO، وأخرى تحمّل الصف أولاً. التقط الـ SQL المولَّد لكل منهما. تكون مصيباً حين يسرد الـ UPDATE الأول كل الأعمدة ويسرد الثاني عموداً واحداً بالضبط."
+        },
+        { t: "ex", diff: "hard",
+          en: "Seed 20,000 orders. Time three versions of a job that expires old ones: SaveChanges inside the loop, one SaveChanges after the loop, and ExecuteUpdate. Record wall time and peak working set for each. You are right when the three timings differ by roughly two orders of magnitude and you can explain each gap by DetectChanges cost and round trips.",
+          ar: "أنشئ 20,000 order للاختبار. قِس زمن ثلاث نسخ من مهمة تُنهي القديمة منها: SaveChanges داخل الحلقة، و SaveChanges واحد بعد الحلقة، و ExecuteUpdate. سجّل الزمن الحقيقي وذروة الـ working set لكل نسخة. تكون مصيباً حين تختلف الأزمنة الثلاثة بنحو مرتبتين عشريتين وتستطيع تفسير كل فجوة بتكلفة DetectChanges وعدد الرحلات."
+        },
+        { t: "ex", diff: "senior",
+          en: "Add an EF SaveChanges interceptor that logs the entity name and the modified property names for every write in your service, then run your integration test suite. You are right when the log reveals at least one endpoint writing a column it was never supposed to touch, and you can point at the line that caused it.",
+          ar: "أضف interceptor لـ SaveChanges في EF يسجّل اسم الـ entity وأسماء الخصائص المعدَّلة لكل عملية كتابة في خدمتك، ثم شغّل مجموعة اختبارات التكامل. تكون مصيباً حين يكشف الـ log عن endpoint واحد على الأقل يكتب عموداً لم يكن يُفترض أن يمسّه، وتستطيع الإشارة إلى السطر المسبِّب."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref", label: { en: "EF Core — Change tracking overview", ar: "EF Core — نظرة عامة على الـ change tracking" },
+          url: "https://learn.microsoft.com/en-us/ef/core/change-tracking/",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "EF Core — Change detection and notifications", ar: "EF Core — كشف التغيير والإشعارات" },
+          url: "https://learn.microsoft.com/en-us/ef/core/change-tracking/change-detection",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "EF Core — Tracking vs no-tracking queries", ar: "EF Core — الاستعلامات المتتبَّعة مقابل غير المتتبَّعة" },
+          url: "https://learn.microsoft.com/en-us/ef/core/querying/tracking",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "EF Core — Saving data and SaveChanges", ar: "EF Core — حفظ البيانات و SaveChanges" },
+          url: "https://learn.microsoft.com/en-us/ef/core/saving/basic",
+          meta: { en: "Docs", ar: "توثيق" } }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "At what moment does EF Core decide that a loaded entity is Modified?", ar: "في أي لحظة يقرر EF Core أن entity محمَّلاً أصبح Modified؟" },
+      options: [
+        { en: "The instant you assign a new value to one of its properties", ar: "لحظة إسنادك قيمة جديدة لإحدى خصائصه" },
+        { en: "When DetectChanges runs and compares the entity to its snapshot", ar: "حين يعمل DetectChanges ويقارن الـ entity بالـ snapshot الخاص به" },
+        { en: "When the entity is first materialized from the query result", ar: "حين يُبنى الـ entity أول مرة من نتيجة الاستعلام" },
+        { en: "When the database transaction commits", ar: "حين تُثبَّت transaction الـ database" }
+      ],
+      correct: 1,
+      why: { en: "For a normal (non-proxy) entity the setter is plain C# and EF sees nothing. The state flips only when DetectChanges compares the current values to the snapshot, which happens automatically just before SaveChanges.", ar: "في entity عادي (بلا proxy) يكون الـ setter كود C# عادي ولا يرى EF شيئاً. تتغيّر الحالة فقط حين يقارن DetectChanges القيم الحالية بالـ snapshot، وهو ما يحدث تلقائياً قبل SaveChanges مباشرةً." }
+    },
+    {
+      q: { en: "Why is context.Update(entity) risky on an object built from a request body?", ar: "لماذا يكون context.Update(entity) خطراً على كائن مبني من body الـ request؟" },
+      options: [
+        { en: "It throws if the entity is already tracked by another context", ar: "يرمي استثناءً إن كان الـ entity متتبَّعاً بواسطة context آخر" },
+        { en: "It runs a SELECT first, doubling the round trips", ar: "ينفّذ SELECT أولاً فيضاعف عدد الرحلات" },
+        { en: "There is no snapshot, so every property is marked Modified and all columns are written", ar: "لا يوجد snapshot، فتُعلَّم كل خاصية كـ Modified وتُكتب كل الأعمدة" },
+        { en: "It skips the transaction, so a failure leaves the row half-written", ar: "يتخطّى الـ transaction، ففشلٌ ما يترك الصف نصف مكتوب" }
+      ],
+      correct: 2,
+      why: { en: "Update attaches the object and marks everything Modified because EF has no before-picture. Any field the client did not send is written as its default value, which silently erases real data.", ar: "Update يربط الكائن ويعلّم كل شيء كـ Modified لأن EF لا يملك صورة \"قبل\". أي حقل لم يرسله الـ client يُكتب بقيمته الافتراضية، فيمسح بيانات حقيقية بصمت." }
+    },
+    {
+      q: { en: "What exactly does AsNoTracking change about a query?", ar: "ما الذي يغيّره AsNoTracking بالضبط في الاستعلام؟" },
+      options: [
+        { en: "It sends different SQL that selects fewer columns", ar: "يرسل SQL مختلفاً يختار أعمدة أقل" },
+        { en: "It sends the same SQL but skips the snapshot and the identity map", ar: "يرسل نفس الـ SQL لكنه يتخطّى الـ snapshot والـ identity map" },
+        { en: "It makes the entities read-only so mutating them throws", ar: "يجعل الـ entities للقراءة فقط فيرمي استثناءً عند تعديلها" },
+        { en: "It opens a separate read-only database connection", ar: "يفتح اتصال database منفصلاً للقراءة فقط" }
+      ],
+      correct: 1,
+      why: { en: "The SQL is identical. EF simply does not store the copy of the values and does not register the entity in the identity map, so it uses less memory and has nothing to scan in DetectChanges.", ar: "الـ SQL مطابق. ببساطة لا يخزّن EF نسخة القيم ولا يسجّل الـ entity في الـ identity map، فيستهلك ذاكرة أقل ولا يجد ما يمسحه في DetectChanges." }
+    },
+    {
+      q: { en: "A job loads 20,000 tracked orders and calls SaveChanges inside the loop. What is the main cost?", ar: "مهمة تحمّل 20,000 order متتبَّع وتستدعي SaveChanges داخل الحلقة. ما التكلفة الأساسية؟" },
+      options: [
+        { en: "SQL Server escalates row locks to a table lock on the first save", ar: "يرفّع SQL Server أقفال الصفوف إلى قفل جدول عند أول حفظ" },
+        { en: "Each SaveChanges rescans all 20,000 tracked entities, so the work is quadratic", ar: "كل SaveChanges يعيد مسح الـ 20,000 entity كلها، فيصبح العمل تربيعياً" },
+        { en: "The snapshots are rebuilt from the database on every iteration", ar: "تُعاد بناء الـ snapshots من الـ database في كل دورة" },
+        { en: "EF keeps one open transaction for the whole loop", ar: "يبقي EF transaction واحدة مفتوحة طوال الحلقة" }
+      ],
+      correct: 1,
+      why: { en: "DetectChanges runs before every SaveChanges and its cost grows with everything tracked, not with what changed. 20,000 saves times 20,000 entities is hundreds of millions of comparisons, plus 20,000 round trips.", ar: "DetectChanges يعمل قبل كل SaveChanges وتكلفته تنمو مع كل ما هو متتبَّع لا مع ما تغيّر. 20,000 حفظ مضروبة في 20,000 entity تعني مئات الملايين من المقارنات، إضافةً إلى 20,000 رحلة." }
+    },
+    {
+      q: { en: "Why must a singleton service never hold a scoped DbContext?", ar: "لماذا يجب ألا يحتفظ أي singleton service بـ DbContext من نوع scoped؟" },
+      options: [
+        { en: "DbContext is thread-safe only inside a request scope", ar: "الـ DbContext آمن للـ threads داخل نطاق الـ request فقط" },
+        { en: "The tracker keeps every loaded entity alive, so memory grows and stale objects are returned", ar: "يبقي الـ tracker كل entity محمَّل حياً، فتنمو الذاكرة وتُعاد كائنات قديمة" },
+        { en: "Singletons cannot open database connections", ar: "الـ singletons لا تستطيع فتح اتصالات database" },
+        { en: "SaveChanges is disabled outside a request scope", ar: "SaveChanges معطّل خارج نطاق الـ request" }
+      ],
+      correct: 1,
+      why: { en: "A DbContext that never gets disposed keeps its change tracker and identity map forever. Memory climbs all day, and a query for a row already in the identity map returns the old object instead of fresh data.", ar: "DbContext لا يُتخلَّص منه أبداً يحتفظ بـ change tracker و identity map إلى الأبد. ترتفع الذاكرة طوال اليوم، ويعيد الاستعلام عن صف موجود في الـ identity map الكائن القديم بدل بيانات جديدة." }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: EF no-tracking
+
+const efNoTrackingLesson = {
+  id: "ef-notracking",
+  moduleId: "efcore",
+  title: { en: "When to go no-tracking", ar: "متى تستخدم no-tracking" },
+  summary: {
+    en: "EF Core remembers every entity it loads so it can detect your edits later. On a read-only endpoint that memory is pure waste — AsNoTracking turns it off, and this lesson shows exactly what you gain and what you give up.",
+    ar: "EF Core يحتفظ بنسخة من كل entity يحمّله حتى يستطيع لاحقاً اكتشاف تعديلاتك. في endpoint للقراءة فقط هذه الذاكرة هدر كامل — AsNoTracking يوقفها، وهذا الدرس يوضح بالضبط ماذا تربح وماذا تخسر."
+  },
+  mins: 12,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "Every time EF Core loads a row into an object, it also keeps a private copy of that object's values. Later, when you call SaveChanges, it compares the object to that copy to work out what you changed. AsNoTracking tells EF Core to skip the copy. You get the objects, but EF Core forgets them the moment they leave the query.",
+        ar: "في كل مرة يحمّل EF Core صفاً إلى object، يحتفظ أيضاً بنسخة خاصة من قيم ذلك الـ object. لاحقاً عند استدعاء SaveChanges، يقارن الـ object بتلك النسخة ليعرف ما الذي غيّرته. AsNoTracking يخبر EF Core بتخطي هذه النسخة. تحصل على الـ objects، لكن EF Core ينساها فور خروجها من الـ query."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Entity", ar: "Entity" },
+          v: { en: "A C# object that maps to one row in a database table — for example an Order object for one row of the Orders table.", ar: "object في C# يقابل صفاً واحداً في جدول قاعدة البيانات — مثلاً object من نوع Order يقابل صفاً في جدول Orders." } },
+        { k: { en: "DbContext", ar: "DbContext" },
+          v: { en: "The EF Core object you run queries through. It represents one unit of work and is normally created and thrown away once per HTTP request.", ar: "الـ object في EF Core الذي تنفّذ الاستعلامات من خلاله. يمثّل وحدة عمل واحدة، وعادة يُنشأ ويُرمى مرة واحدة لكل HTTP request." } },
+        { k: { en: "Change tracker", ar: "Change tracker" },
+          v: { en: "The part of DbContext that holds every loaded entity plus a snapshot of its original values, so SaveChanges can spot edits.", ar: "الجزء من DbContext الذي يحتفظ بكل entity محمّل مع snapshot لقيمه الأصلية، حتى يستطيع SaveChanges اكتشاف التعديلات." } },
+        { k: { en: "Snapshot", ar: "Snapshot" },
+          v: { en: "The saved copy of an entity's property values as they were when it was loaded. Comparing object against snapshot is how EF Core builds the UPDATE statement.", ar: "النسخة المحفوظة من قيم خصائص الـ entity كما كانت وقت التحميل. مقارنة الـ object بالـ snapshot هي طريقة EF Core في بناء جملة UPDATE." } },
+        { k: { en: "Identity resolution", ar: "Identity resolution" },
+          v: { en: "The rule that two rows with the same primary key become the same C# object in memory, not two separate objects.", ar: "القاعدة التي تجعل صفّين بنفس الـ primary key يصبحان نفس الـ object في الذاكرة، لا objectين منفصلين." } },
+        { k: { en: "AsNoTracking", ar: "AsNoTracking" },
+          v: { en: "A LINQ call that turns tracking off for one query. The returned entities are plain objects EF Core will not watch.", ar: "استدعاء LINQ يوقف الـ tracking لاستعلام واحد. الـ entities الراجعة تكون objects عادية لا يراقبها EF Core." } }
+      ]},
+      { t: "p",
+        en: "Tracking exists because of a promise EF Core makes: load an object, change a property in ordinary C#, call SaveChanges, and the right UPDATE appears. Nothing in the language tells EF Core that order.Status = \"Shipped\" happened. The only way to know is to remember what the value was before.",
+        ar: "الـ tracking موجود بسبب وعد يقدّمه EF Core: حمّل object، غيّر خاصية بكود C# عادي، استدعِ SaveChanges، وستظهر جملة UPDATE الصحيحة. لا شيء في اللغة يخبر EF Core أن السطر order.Status = \"Shipped\" قد حدث. الطريقة الوحيدة للمعرفة هي تذكّر القيمة السابقة."
+      },
+      { t: "p",
+        en: "Think of a hotel cloakroom. You hand over a coat, the clerk writes down what it looked like, and keeps the note until you come back. That note is the snapshot. It is worth writing if you will return to claim the coat. If you are just walking past the counter to look at the coats and leave, every note the clerk writes is wasted paper. A read-only endpoint is walking past the counter.",
+        ar: "تخيّل غرفة معاطف في فندق. تسلّم معطفاً، يكتب الموظف وصفه، ويحتفظ بالورقة حتى تعود. تلك الورقة هي الـ snapshot. كتابتها مفيدة إن كنت ستعود لاستلام المعطف. أما إن كنت تمرّ أمام الطاولة لتنظر إلى المعاطف ثم تغادر، فكل ورقة يكتبها الموظف هدر. الـ endpoint الذي يقرأ فقط هو المرور أمام الطاولة."
+      },
+      { t: "callout", kind: "note",
+        en: "No-tracking changes nothing about the SQL sent to the database. The same SELECT runs either way. What changes is how much work EF Core does with the rows after they arrive, and how much memory it holds on to.",
+        ar: "الـ no-tracking لا يغيّر شيئاً في الـ SQL المرسل لقاعدة البيانات. نفس جملة SELECT تُنفّذ في الحالتين. ما يتغيّر هو حجم العمل الذي يقوم به EF Core بالصفوف بعد وصولها، ومقدار الذاكرة التي يحتفظ بها."
+      }
+    ]},
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "Here is the running example for the whole lesson. An operations dashboard calls GET /api/orders?status=Shipped. The handler loads 5,000 Order rows with their Customer and their OrderLines, shapes them into a response, and returns JSON. Nothing is ever written back. The endpoint is a pure read.",
+        ar: "هذا هو المثال الذي سنستخدمه في الدرس كله. لوحة تشغيل تستدعي GET /api/orders?status=Shipped. الـ handler يحمّل 5000 صفاً من Order مع الـ Customer والـ OrderLines، يحوّلها إلى response، ويرجع JSON. لا شيء يُكتب إلى قاعدة البيانات. الـ endpoint قراءة صافية."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "The read-only handler, tracked by default", ar: "الـ handler للقراءة فقط، مع tracking افتراضي" },
+        code: "// Every entity below is tracked, even though nothing is ever saved.\nvar orders = await db.Orders\n    .Where(o => o.Status == \"Shipped\")\n    .Include(o => o.Customer)\n    .Include(o => o.Lines)\n    .ToListAsync();\n\nreturn orders.Select(o => new OrderDto(o.Id, o.Customer.Name, o.Lines.Count));"
+      },
+      { t: "p",
+        en: "5,000 orders, each with one customer and an average of four lines, means EF Core materialises about 25,000 entities. Materialise means: read the row, create the C# object, fill its properties. With tracking on, each of those 25,000 objects also gets a snapshot and an entry in a dictionary keyed by its primary key. That is 25,000 extra objects EF Core keeps alive until the DbContext is disposed at the end of the request.",
+        ar: "5000 order، لكل واحد customer وأربعة lines في المتوسط، يعني أن EF Core ينشئ حوالي 25000 entity. الإنشاء يعني: قراءة الصف، إنشاء object في C#، وتعبئة خصائصه. مع تفعيل الـ tracking، كل واحد من هذه الـ 25000 object يحصل أيضاً على snapshot وعلى مدخل في dictionary مفتاحه الـ primary key. أي 25000 object إضافي يبقيها EF Core حيّة حتى يتم dispose للـ DbContext في نهاية الـ request."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Tracked, 5,000 orders", ar: "مع tracking، 5000 order" },
+          v: { en: "Roughly 210 ms to materialise and about 48 MB allocated per request. \"Allocated\" means memory the request asks for and the garbage collector must later reclaim.", ar: "حوالي 210 ms للإنشاء وحوالي 48 MB مخصّصة لكل request. \"مخصّصة\" تعني ذاكرة يطلبها الـ request ويجب على الـ garbage collector استرجاعها لاحقاً." } },
+        { k: { en: "No-tracking, same query", ar: "بدون tracking، نفس الاستعلام" },
+          v: { en: "Roughly 120 ms and about 29 MB — around 40% less time and 40% less memory, with identical SQL and identical JSON output.", ar: "حوالي 120 ms و29 MB تقريباً — أقل بحوالي 40% في الوقت و40% في الذاكرة، بنفس الـ SQL ونفس مخرجات JSON." } },
+        { k: { en: "What the numbers mean", ar: "ماذا تعني الأرقام" },
+          v: { en: "The database did the same work both times. The whole difference is bookkeeping EF Core performed in your process for edits that never came.", ar: "قاعدة البيانات قامت بنفس العمل في الحالتين. الفرق كله هو حسابات أجراها EF Core داخل عمليتك من أجل تعديلات لم تحدث أبداً." } },
+        { k: { en: "The knock-on effect", ar: "الأثر غير المباشر" },
+          v: { en: "48 MB per request on a busy endpoint pushes objects into gen 2, the slowest garbage-collection generation to clean, so pauses get longer under load.", ar: "48 MB لكل request على endpoint مزدحم تدفع الـ objects إلى gen 2، وهو أبطأ جيل في الـ garbage collection من حيث التنظيف، فتطول التوقّفات تحت الحمل." } }
+      ]},
+      { t: "p",
+        en: "Treat those figures as the shape of the result, not a promise. The exact numbers depend on how many properties each entity has, because the snapshot copies one value per property. Wide entities with 30 columns pay far more for tracking than narrow ones with 4.",
+        ar: "اعتبر هذه الأرقام شكل النتيجة لا وعداً بها. القيم الدقيقة تعتمد على عدد خصائص كل entity، لأن الـ snapshot ينسخ قيمة لكل خاصية. الـ entities العريضة بـ 30 عموداً تدفع ثمناً أكبر بكثير للـ tracking من الضيّقة بـ 4 أعمدة."
+      }
+    ]},
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "Follow one row of our Orders query from the database to your handler and the difference becomes obvious. The query pipeline is the same until the row arrives; then tracking adds three steps that no-tracking skips entirely.",
+        ar: "تابع صفاً واحداً من استعلام Orders من قاعدة البيانات إلى الـ handler ويصبح الفرق واضحاً. مسار الاستعلام واحد حتى يصل الصف؛ بعدها يضيف الـ tracking ثلاث خطوات يتخطاها الـ no-tracking تماماً."
+      },
+      { t: "kv", rows: [
+        { k: { en: "1. Read the row", ar: "1. قراءة الصف" },
+          v: { en: "EF Core pulls column values out of the open DbDataReader — the low-level cursor that streams rows back from SQL Server. Same in both modes.", ar: "يسحب EF Core قيم الأعمدة من الـ DbDataReader المفتوح — وهو المؤشر منخفض المستوى الذي يمرّر الصفوف من SQL Server. متطابق في الوضعين." } },
+        { k: { en: "2. Build the object", ar: "2. بناء الـ object" },
+          v: { en: "It creates an Order instance and assigns each property. Same in both modes.", ar: "ينشئ نسخة من Order ويسند كل خاصية. متطابق في الوضعين." } },
+        { k: { en: "3. Look up identity", ar: "3. البحث عن الهوية" },
+          v: { en: "Tracked only: it hashes the primary key and checks an internal dictionary for an entity with that key. Skipped when no-tracking.", ar: "مع الـ tracking فقط: يحسب hash للـ primary key ويبحث في dictionary داخلي عن entity بنفس المفتاح. يُتخطّى مع no-tracking." } },
+        { k: { en: "4. Take the snapshot", ar: "4. أخذ الـ snapshot" },
+          v: { en: "Tracked only: it copies every scalar property value into a parallel array stored beside the entity. Skipped when no-tracking.", ar: "مع الـ tracking فقط: ينسخ قيمة كل خاصية بسيطة إلى مصفوفة موازية تُحفظ بجانب الـ entity. يُتخطّى مع no-tracking." } },
+        { k: { en: "5. Fix up relationships", ar: "5. ربط العلاقات" },
+          v: { en: "Tracked only: it wires each OrderLine into its parent Order's Lines collection using the tracked graph. No-tracking does a simpler local version of this per query.", ar: "مع الـ tracking فقط: يربط كل OrderLine بمجموعة Lines في الـ Order الأب باستخدام الرسم المتتبَّع. الـ no-tracking يقوم بنسخة أبسط ومحلّية من هذا داخل كل استعلام." } }
+      ]},
+      { t: "p",
+        en: "Step 4 is the expensive one and it is worth being precise about why. The snapshot is not a deep clone of the object; it is a flat array holding one entry per mapped scalar property. For an Order with 22 columns that is a 22-slot array per row, allocated 5,000 times. Add the dictionary entry from step 3 and each tracked entity costs roughly 150-250 extra bytes plus two extra object allocations.",
+        ar: "الخطوة 4 هي الأغلى ويستحق الأمر توضيح السبب بدقة. الـ snapshot ليس نسخة عميقة من الـ object؛ إنه مصفوفة مسطّحة تحتوي مدخلاً لكل خاصية بسيطة مربوطة. لـ Order فيه 22 عموداً هذا يعني مصفوفة من 22 خانة لكل صف، تُخصَّص 5000 مرة. أضف مدخل الـ dictionary من الخطوة 3، فيكلّف كل entity متتبَّع حوالي 150-250 بايت إضافية مع تخصيصين إضافيين."
+      },
+      { t: "p",
+        en: "The everyday analogy for step 3 is a coat-check ticket number. The clerk keeps a numbered rack so that if you hand in a second coat with the same ticket, he does not create a new hook — he points you at the hook you already have. That is identity resolution. With no-tracking there is no rack, so a customer that appears on 300 different orders is built 300 separate times as 300 distinct C# objects, each holding the same name.",
+        ar: "التشبيه اليومي للخطوة 3 هو رقم تذكرة المعطف. الموظف يحتفظ برفّ مرقّم، فإذا سلّمت معطفاً ثانياً بنفس التذكرة لا ينشئ خطّافاً جديداً — بل يدلّك على الخطّاف الموجود. هذا هو الـ identity resolution. مع no-tracking لا يوجد رفّ، فالـ customer الذي يظهر في 300 order يُبنى 300 مرة منفصلة كـ 300 object مختلف، كلّها تحمل نفس الاسم."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "The three read modes, and what each returns", ar: "أوضاع القراءة الثلاثة وما يرجعه كل منها" },
+        code: "// 1. Tracked (default). Same customer row -> one shared object.\nvar a = await db.Orders.Include(o => o.Customer).ToListAsync();\nbool sharedA = ReferenceEquals(a[0].Customer, a[1].Customer); // true if same CustomerId\n\n// 2. No-tracking. Same customer row -> a separate object per order.\nvar b = await db.Orders.AsNoTracking().Include(o => o.Customer).ToListAsync();\nbool sharedB = ReferenceEquals(b[0].Customer, b[1].Customer); // false\n\n// 3. No-tracking with identity resolution: no snapshots, but duplicates are merged.\nvar c = await db.Orders.AsNoTrackingWithIdentityResolution()\n                       .Include(o => o.Customer).ToListAsync();\nbool sharedC = ReferenceEquals(c[0].Customer, c[1].Customer); // true\n\n// Projecting to a DTO never tracks: no entity type comes out of the query.\nvar d = await db.Orders.Select(o => new OrderDto(o.Id, o.Customer.Name)).ToListAsync();"
+      },
+      { t: "p",
+        en: "Mode 3 is the middle option people forget. AsNoTrackingWithIdentityResolution keeps a small dictionary of keys so duplicate rows collapse into one object, but still skips the snapshot. It costs more than plain no-tracking and less than full tracking. Reach for it when a query joins in a lookup entity that repeats a lot, such as one Customer across hundreds of orders.",
+        ar: "الوضع 3 هو الخيار الوسط الذي ينساه الناس. AsNoTrackingWithIdentityResolution يحتفظ بـ dictionary صغير للمفاتيح فتنكمش الصفوف المكرّرة إلى object واحد، لكنه يتخطى الـ snapshot. تكلفته أعلى من no-tracking العادي وأقل من الـ tracking الكامل. استخدمه حين يضمّ الاستعلام entity مرجعياً يتكرّر كثيراً، مثل customer واحد عبر مئات الـ orders."
+      },
+      { t: "p",
+        en: "One detail that surprises people: a query that ends in Select and produces a DTO is never tracked at all. A DTO, short for data transfer object, is a plain class of your own that only carries the fields a response needs — it is not part of the EF Core model. AsNoTracking on such a query is harmless but does nothing, because EF Core only tracks objects whose type it recognises as an entity.",
+        ar: "تفصيلة تفاجئ الناس: الاستعلام الذي ينتهي بـ Select وينتج DTO لا يُتتبَّع إطلاقاً. الـ DTO، أي data transfer object، هو class خاص بك يحمل فقط الحقول التي يحتاجها الـ response — وهو ليس جزءاً من model الخاص بـ EF Core. وضع AsNoTracking على مثل هذا الاستعلام غير ضارّ لكنه بلا أثر، لأن EF Core يتتبّع فقط الـ objects التي يعرف نوعها كـ entity."
+      }
+    ]},
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "Cuts memory and materialisation time on large reads, often by a third or more.",
+            "Removes the risk of an accidental edit being written by a later SaveChanges.",
+            "Keeps a long-lived DbContext from growing without limit as it loads more rows.",
+            "Costs one method call and needs no change to the SQL or the response shape."
+          ],
+          ar: [
+            "يقلّل الذاكرة وزمن الإنشاء في القراءات الكبيرة، غالباً بالثلث أو أكثر.",
+            "يزيل خطر كتابة تعديل عرضي عند استدعاء SaveChanges لاحقاً.",
+            "يمنع DbContext طويل العمر من التضخّم بلا حدّ كلما حمّل صفوفاً أكثر.",
+            "يكلّف استدعاء دالة واحدة ولا يحتاج تغيير الـ SQL أو شكل الـ response."
+          ]
+        },
+        cons: {
+          en: [
+            "Edits to the returned objects are silently ignored by SaveChanges.",
+            "Duplicate rows become duplicate objects, so a repeated Customer is built many times.",
+            "Attaching a no-tracking entity back for an update needs extra, error-prone code.",
+            "Applied as a blanket default, it breaks write endpoints in ways that pass all read tests."
+          ],
+          ar: [
+            "التعديلات على الـ objects الراجعة يتجاهلها SaveChanges بصمت.",
+            "الصفوف المكرّرة تصبح objects مكرّرة، فالـ Customer المتكرّر يُبنى مرات كثيرة.",
+            "إعادة ربط entity غير متتبَّع للتحديث تحتاج كوداً إضافياً وقابلاً للخطأ.",
+            "تطبيقه كإعداد افتراضي شامل يكسر endpoints الكتابة بطريقة تنجح معها كل اختبارات القراءة."
+          ]
+        },
+        limits: {
+          en: [
+            "Does not change the SQL sent, so it never fixes a slow or badly indexed query.",
+            "Has no effect on queries that project to a DTO — those were never tracked.",
+            "Saves nothing measurable on small result sets of a few dozen rows.",
+            "Does not prevent over-fetching; you still load every mapped column of the entity."
+          ],
+          ar: [
+            "لا يغيّر الـ SQL المرسل، فهو لا يصلح استعلاماً بطيئاً أو سيّئ الـ indexing.",
+            "بلا أثر على الاستعلامات التي تُسقط إلى DTO — تلك لم تكن متتبَّعة أصلاً.",
+            "لا يوفّر شيئاً ملموساً على نتائج صغيرة من بضع عشرات الصفوف.",
+            "لا يمنع جلب بيانات زائدة؛ ما زلت تحمّل كل عمود مربوط في الـ entity."
+          ]
+        },
+        alts: {
+          en: [
+            "Select projection to a DTO — usually better, since it also cuts the columns fetched.",
+            "AsNoTrackingWithIdentityResolution when duplicate related rows dominate the result.",
+            "QueryTrackingBehavior.NoTracking on the context, with AsTracking() on write paths.",
+            "Dapper or a raw SQL read for reporting endpoints that never touch the domain model."
+          ],
+          ar: [
+            "الإسقاط بـ Select إلى DTO — عادة أفضل، لأنه يقلّل الأعمدة المجلوبة أيضاً.",
+            "AsNoTrackingWithIdentityResolution حين تغلب الصفوف المرتبطة المكرّرة على النتيجة.",
+            "ضبط QueryTrackingBehavior.NoTracking على الـ context مع AsTracking() في مسارات الكتابة.",
+            "Dapper أو SQL خام لـ endpoints التقارير التي لا تلمس نموذج المجال."
+          ]
+        }
+      }
+    ]},
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "Editing an entity that came back from a no-tracking query", ar: "تعديل entity راجع من استعلام no-tracking" },
+        body: {
+          en: "A developer copied AsNoTracking from the dashboard query into the order-cancel handler because it looked faster. The handler loaded the order, set Status to \"Cancelled\", and called SaveChanges. SaveChanges returned 0 and threw nothing, because EF Core had no snapshot for that object and therefore saw no change. Cancellations silently stopped working for two days until a customer complained.",
+          ar: "نسخ مطوّر AsNoTracking من استعلام اللوحة إلى handler إلغاء الطلب لأنه بدا أسرع. الـ handler حمّل الـ order، ضبط Status إلى \"Cancelled\"، واستدعى SaveChanges. أرجع SaveChanges القيمة 0 ولم يرمِ أي استثناء، لأن EF Core لا يملك snapshot لذلك الـ object فلم يرَ أي تغيير. توقّف الإلغاء بصمت ليومين حتى اشتكى عميل."
+        },
+        fix: "// Read-then-write paths must stay tracked.\nvar order = await db.Orders.FirstAsync(o => o.Id == id);  // tracked\norder.Status = \"Cancelled\";\nvar rows = await db.SaveChangesAsync();\nif (rows == 0) throw new InvalidOperationException(\"Nothing was saved.\");"
+      },
+      { t: "mistake",
+        title: { en: "Turning no-tracking on globally without marking the write paths", ar: "تفعيل no-tracking عالمياً دون تحديد مسارات الكتابة" },
+        body: {
+          en: "A team set QueryTrackingBehavior.NoTracking on the DbContext to fix a memory problem. Reads got faster and every read test passed. Three weeks later an audit found that a nightly job which adjusted stock levels had been saving nothing since the change. The setting is a good idea, but only when every write path is switched back on with AsTracking() in the same commit.",
+          ar: "ضبط فريق QueryTrackingBehavior.NoTracking على الـ DbContext لحل مشكلة ذاكرة. صارت القراءات أسرع ونجحت كل اختبارات القراءة. بعد ثلاثة أسابيع كشف تدقيق أن مهمة ليلية تعدّل مستويات المخزون لم تحفظ شيئاً منذ التغيير. الإعداد فكرة جيدة، لكن فقط إذا أُعيد تفعيل الـ tracking بـ AsTracking() في كل مسار كتابة ضمن نفس الـ commit."
+        },
+        fix: "services.AddDbContext<AppDb>(o => o\n    .UseSqlServer(cs)\n    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));\n\n// then, in every handler that intends to write:\nvar order = await db.Orders.AsTracking().FirstAsync(o => o.Id == id);"
+      },
+      { t: "mistake",
+        title: { en: "Assuming no-tracking makes the query itself faster", ar: "افتراض أن no-tracking يسرّع الاستعلام نفسه" },
+        body: {
+          en: "An endpoint took 4 seconds. Someone added AsNoTracking and it still took 3.9 seconds. The time was not in EF Core at all — the query filtered on a column with no index, so SQL Server scanned 8 million rows. No-tracking only removes work that happens after the rows arrive in your process. If the database is the bottleneck, it saves you almost nothing.",
+          ar: "استغرق endpoint أربع ثوانٍ. أضاف أحدهم AsNoTracking فصار 3.9 ثانية. الوقت لم يكن في EF Core أصلاً — الاستعلام كان يرشّح على عمود بلا index، فمسح SQL Server ثمانية ملايين صف. الـ no-tracking يزيل فقط العمل الذي يحدث بعد وصول الصفوف إلى عمليتك. إذا كانت قاعدة البيانات هي عنق الزجاجة، فلن يوفّر لك شيئاً تقريباً."
+        }
+      },
+      { t: "mistake",
+        title: { en: "Comparing no-tracking objects by reference", ar: "مقارنة objects الـ no-tracking بالمرجع" },
+        body: {
+          en: "A deduplication routine built a HashSet<Customer> from the dashboard results to count distinct customers. With tracking it returned 180. After AsNoTracking was added it returned 5,000, because each order now carried its own Customer object and the default HashSet comparison is by object reference, not by Id. The count on the dashboard was wrong for a month and nobody noticed because it only got bigger.",
+          ar: "روتين إزالة تكرار بنى HashSet<Customer> من نتائج اللوحة لعدّ العملاء المميّزين. مع الـ tracking أرجع 180. بعد إضافة AsNoTracking أرجع 5000، لأن كل order صار يحمل Customer خاصاً به، والمقارنة الافتراضية في HashSet بمرجع الـ object لا بالـ Id. كان الرقم على اللوحة خاطئاً لشهر ولم ينتبه أحد لأنه كان يكبر فقط."
+        },
+        fix: "// Compare by key, not by reference.\nvar distinct = orders.Select(o => o.Customer.Id).Distinct().Count();\n\n// Or keep the merging behaviour and skip only the snapshots:\nvar orders = await db.Orders.AsNoTrackingWithIdentityResolution()\n                            .Include(o => o.Customer).ToListAsync();"
+      }
+    ]},
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What does AsNoTracking do?", ar: "ماذا يفعل AsNoTracking؟" },
+        a: {
+          en: "It tells EF Core not to remember the entities that come back from that query. Normally EF Core keeps a copy of each loaded object's original values so SaveChanges can work out what you changed. If the query is read-only, that copy is never used, so AsNoTracking skips making it. You get the same objects and the same SQL, just less memory and less work.",
+          ar: "يخبر EF Core ألا يتذكّر الـ entities الراجعة من ذلك الاستعلام. عادة يحتفظ EF Core بنسخة من القيم الأصلية لكل object محمّل حتى يعرف SaveChanges ما الذي غيّرته. إذا كان الاستعلام للقراءة فقط فهذه النسخة لا تُستخدم أبداً، فيتخطّى AsNoTracking إنشاءها. تحصل على نفس الـ objects ونفس الـ SQL، بذاكرة وعمل أقل."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "You added AsNoTracking and the endpoint got no faster. Why?", ar: "أضفت AsNoTracking ولم يتحسّن الـ endpoint. لماذا؟" },
+        a: {
+          en: "Because the time was probably spent in the database, not in EF Core. No-tracking changes nothing about the SQL — the same statement runs with the same plan. It only removes the snapshot and identity work done after rows arrive. So it helps when you materialise a lot of entities, and helps almost nothing when a single slow query is scanning a table. I would check the SQL Server execution time first and only then look at materialisation.",
+          ar: "على الأرجح لأن الوقت كان يُقضى في قاعدة البيانات لا في EF Core. الـ no-tracking لا يغيّر الـ SQL — نفس الجملة تُنفَّذ بنفس الخطة. هو يزيل فقط عمل الـ snapshot والهوية بعد وصول الصفوف. لذلك يفيد حين تنشئ عدداً كبيراً من الـ entities، ولا يفيد تقريباً حين يكون استعلام واحد بطيء يمسح جدولاً. سأفحص زمن التنفيذ في SQL Server أولاً ثم أنظر في الإنشاء."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "What is identity resolution and how does no-tracking change it?", ar: "ما هو identity resolution وكيف يغيّره الـ no-tracking؟" },
+        a: {
+          en: "With tracking on, EF Core keeps a dictionary keyed by primary key. If the same customer row comes back on 300 different orders, all 300 orders point at one shared Customer object. With no-tracking there is no dictionary, so you get 300 separate Customer objects with the same data. That matters if any of your code compares objects by reference or puts them in a HashSet. If I need both the memory saving and the merging, I use AsNoTrackingWithIdentityResolution.",
+          ar: "مع تفعيل الـ tracking يحتفظ EF Core بـ dictionary مفتاحه الـ primary key. إذا رجع نفس صف العميل في 300 order، تشير الـ 300 كلها إلى object واحد مشترك من Customer. مع no-tracking لا يوجد dictionary، فتحصل على 300 object منفصل بنفس البيانات. هذا مهم إذا كان كودك يقارن بالمرجع أو يضع الـ objects في HashSet. إن أردت التوفير في الذاكرة والدمج معاً أستخدم AsNoTrackingWithIdentityResolution."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "Would you set NoTracking as the default for the whole DbContext?", ar: "هل تجعل NoTracking الإعداد الافتراضي للـ DbContext كله؟" },
+        a: {
+          en: "Yes for a service that is mostly reads, but only with a safety net. The danger is that a write path silently stops saving: SaveChanges returns 0 and throws nothing. So I do three things in the same change. I add AsTracking() to every handler that writes. I add a test that asserts a known update actually persists. And I make write handlers check the row count from SaveChanges rather than ignore it. Without those, the setting trades a memory problem for a correctness problem.",
+          ar: "نعم لخدمة معظمها قراءات، لكن مع شبكة أمان. الخطر أن يتوقّف مسار كتابة عن الحفظ بصمت: يرجع SaveChanges القيمة 0 دون أي استثناء. لذلك أفعل ثلاثة أشياء في نفس التغيير. أضيف AsTracking() لكل handler يكتب. أضيف اختباراً يتأكد أن تحديثاً معروفاً يُحفظ فعلاً. وأجعل handlers الكتابة تفحص عدد الصفوف الراجع من SaveChanges بدل تجاهله. بدون ذلك يستبدل الإعداد مشكلة ذاكرة بمشكلة صحّة بيانات."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "No-tracking or a Select projection — which do you reach for first?", ar: "no-tracking أم إسقاط بـ Select — أيّهما تختار أولاً؟" },
+        a: {
+          en: "The projection, because it fixes more. AsNoTracking still fetches every mapped column and still builds a full entity per row. A Select that returns only the four fields the dashboard shows narrows the SQL, cuts network bytes, builds a smaller object, and is never tracked anyway. I use AsNoTracking when I genuinely need the whole entity graph — for example when a mapper or a domain method needs the real type — and a projection everywhere else.",
+          ar: "الإسقاط، لأنه يعالج أكثر. AsNoTracking ما زال يجلب كل عمود مربوط وينشئ entity كاملاً لكل صف. أما Select يرجع الحقول الأربعة التي تعرضها اللوحة فيضيّق الـ SQL، ويقلّل البايتات على الشبكة، وينشئ object أصغر، وهو غير متتبَّع أصلاً. أستخدم AsNoTracking حين أحتاج فعلاً رسم الـ entity كاملاً — مثلاً حين يحتاج mapper أو دالة مجال النوع الحقيقي — وأستخدم الإسقاط في كل ما عداه."
+        }
+      },
+      { t: "qa", level: "staff",
+        q: { en: "How do you stop this class of bug from recurring across a large team?", ar: "كيف تمنع تكرار هذا النوع من الأخطاء في فريق كبير؟" },
+        a: {
+          en: "I stop relying on people remembering. I split the data access into two entry points: a read context configured with NoTracking and exposing only IQueryable reads, and a write context that stays tracked. A handler physically cannot save through the read context, so the mistake becomes a compile-time problem instead of a silent runtime one. Alongside that I add one integration test per write endpoint that saves and re-reads, and a lint rule flagging AsNoTracking in the same method as SaveChanges. The rule catches the copy-paste, the split catches everything else.",
+          ar: "أتوقّف عن الاعتماد على ذاكرة الناس. أفصل الوصول للبيانات إلى مدخلين: context للقراءة مضبوط على NoTracking ويعرض قراءات IQueryable فقط، وcontext للكتابة يبقى متتبَّعاً. لا يستطيع الـ handler فعلياً الحفظ عبر context القراءة، فيتحوّل الخطأ إلى مشكلة وقت ترجمة بدل خطأ صامت وقت التشغيل. إلى جانب ذلك أضيف اختبار تكامل واحداً لكل endpoint كتابة يحفظ ثم يعيد القراءة، وقاعدة lint تنبّه عند وجود AsNoTracking في نفس الدالة مع SaveChanges. القاعدة تلتقط النسخ واللصق، والفصل يلتقط ما تبقّى."
+        }
+      }
+    ]},
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "A write path reading through a no-tracking query", ar: "مسار كتابة يقرأ عبر استعلام no-tracking" },
+        bad: "public async Task Cancel(int id)\n{\n    var order = await db.Orders\n        .AsNoTracking()\n        .FirstAsync(o => o.Id == id);\n\n    order.Status = \"Cancelled\";\n    await db.SaveChangesAsync();   // saves nothing, throws nothing\n}",
+        good: "public async Task Cancel(int id)\n{\n    var order = await db.Orders.FirstAsync(o => o.Id == id);  // tracked\n\n    order.Status = \"Cancelled\";\n    var rows = await db.SaveChangesAsync();\n    if (rows != 1)\n        throw new InvalidOperationException($\"Cancel({id}) saved {rows} rows.\");\n}",
+        why: {
+          en: "Because the entity has no snapshot, SaveChanges sees nothing to compare and issues no UPDATE. It returns 0 and succeeds. Nothing in logs, metrics or tests looks wrong. Any method that loads an entity and later calls SaveChanges must read tracked, and should assert the row count so a future regression fails loudly.",
+          ar: "لأن الـ entity بلا snapshot، لا يجد SaveChanges ما يقارنه فلا يصدر أي UPDATE. يرجع 0 وينجح. لا شيء في الـ logs أو المقاييس أو الاختبارات يبدو خاطئاً. أي دالة تحمّل entity ثم تستدعي SaveChanges يجب أن تقرأ مع tracking، ويُفضّل أن تتحقق من عدد الصفوف حتى يفشل أي انحدار مستقبلي بصوت عالٍ."
+        }
+      },
+      { t: "review", severity: "medium",
+        title: { en: "AsNoTracking on a query that already projects to a DTO", ar: "AsNoTracking على استعلام يُسقط أصلاً إلى DTO" },
+        bad: "var rows = await db.Orders\n    .AsNoTracking()                     // no effect here\n    .Where(o => o.Status == \"Shipped\")\n    .Select(o => new OrderDto(o.Id, o.Customer.Name))\n    .ToListAsync();",
+        good: "// Projection already avoids tracking. Drop the call, and let the projection\n// also narrow the columns EF Core asks the database for.\nvar rows = await db.Orders\n    .Where(o => o.Status == \"Shipped\")\n    .Select(o => new OrderDto(o.Id, o.Customer.Name))\n    .ToListAsync();",
+        why: {
+          en: "OrderDto is not an entity, so EF Core never tracked it. The extra call is dead code, and worse, it teaches readers that AsNoTracking is what makes projections cheap. The real saving comes from selecting two columns instead of every mapped column of Order and Customer.",
+          ar: "الـ OrderDto ليس entity، فلم يتتبّعه EF Core أصلاً. الاستدعاء الزائد كود ميّت، والأسوأ أنه يعلّم القارئ أن AsNoTracking هو سبب رخص الإسقاط. التوفير الحقيقي يأتي من اختيار عمودين بدل كل عمود مربوط في Order وCustomer."
+        }
+      }
+    ]},
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a service that both serves dashboards and processes orders, the tracking decision usually settles into a split: one path that reads and never writes, and one that reads in order to write. Making that split explicit in the code is worth more than sprinkling AsNoTracking calls, because it turns a thing people must remember into a thing the type system enforces.",
+        ar: "في خدمة تخدم لوحات العرض وتعالج الطلبات معاً، يستقرّ قرار الـ tracking عادة على انقسام: مسار يقرأ ولا يكتب، ومسار يقرأ لكي يكتب. جعل هذا الفصل صريحاً في الكود أفضل من نثر استدعاءات AsNoTracking، لأنه يحوّل أمراً يجب أن يتذكّره الناس إلى أمر يفرضه نظام الأنواع."
+      },
+      { t: "ul",
+        en: [
+          "Read-side context: registered with QueryTrackingBehavior.NoTracking and exposed as a read-only interface with no SaveChanges method on it.",
+          "Write-side context: default tracking, used only inside command handlers that end in SaveChanges.",
+          "Reporting and export endpoints: project straight to DTOs, or drop to raw SQL when the shape has nothing to do with the domain model.",
+          "Background jobs that page through millions of rows: no-tracking is not optional there, because a tracked context grows with every page and never shrinks until it is disposed."
+        ],
+        ar: [
+          "context جانب القراءة: مسجّل بـ QueryTrackingBehavior.NoTracking ومعروض كواجهة للقراءة فقط بلا دالة SaveChanges.",
+          "context جانب الكتابة: tracking افتراضي، يُستخدم فقط داخل command handlers تنتهي بـ SaveChanges.",
+          "endpoints التقارير والتصدير: تُسقط مباشرة إلى DTOs، أو تنزل إلى SQL خام حين لا علاقة للشكل بنموذج المجال.",
+          "المهام الخلفية التي تمرّ على ملايين الصفوف: الـ no-tracking ليس اختيارياً هناك، لأن context متتبَّع ينمو مع كل صفحة ولا يتقلّص حتى يتم dispose له."
+        ]
+      },
+      { t: "callout", kind: "warn",
+        en: "The split only helps if the read context physically cannot save. If both sides are the same class and the difference is a convention in a wiki page, the bug comes back within a quarter.",
+        ar: "الفصل يفيد فقط إذا كان context القراءة غير قادر فعلياً على الحفظ. إذا كان الطرفان نفس الـ class والفرق مجرد عُرف مكتوب في صفحة wiki، فسيعود الخطأ خلال ربع سنة."
+      }
+    ]},
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Memory", ar: "Memory" },
+          v: { en: "The largest win. Each tracked entity costs a snapshot array plus a dictionary entry — roughly 150-250 extra bytes and two allocations per row. On our 25,000-entity query that is about 19 MB per request that no-tracking never allocates.", ar: "المكسب الأكبر. كل entity متتبَّع يكلّف مصفوفة snapshot ومدخل dictionary — حوالي 150-250 بايت إضافية وتخصيصين لكل صف. في استعلامنا ذي الـ 25000 entity هذا حوالي 19 MB لكل request لا يخصّصها الـ no-tracking إطلاقاً." } },
+        { k: { en: "CPU", ar: "CPU" },
+          v: { en: "Copying property values into the snapshot and hashing primary keys is per-row work. It scales linearly with rows loaded, which is why the saving is invisible at 50 rows and obvious at 50,000.", ar: "نسخ قيم الخصائص إلى الـ snapshot وحساب hash للمفاتيح عمل يتكرر لكل صف. يتناسب خطياً مع عدد الصفوف المحمّلة، ولذلك التوفير غير مرئي عند 50 صفاً وواضح عند 50000." } },
+        { k: { en: "Latency", ar: "Latency" },
+          v: { en: "On the dashboard query the p99 dropped from 380 ms to 240 ms — meaning the slowest 1 request in 100 got 140 ms faster. Most of that came from shorter garbage-collection pauses, not from the query.", ar: "في استعلام اللوحة انخفض الـ p99 من 380 ms إلى 240 ms — أي أن أبطأ request من كل 100 صار أسرع بـ 140 ms. معظم ذلك جاء من قصر توقّفات الـ garbage collection لا من الاستعلام." } },
+        { k: { en: "Database", ar: "Database" },
+          v: { en: "No change at all. Identical SQL, identical plan, identical rows returned. If the plan is bad, no-tracking will not save you.", ar: "لا تغيير إطلاقاً. نفس الـ SQL، نفس الخطة، نفس الصفوف الراجعة. إذا كانت الخطة سيّئة فلن ينقذك الـ no-tracking." } },
+        { k: { en: "Scalability", ar: "Scalability" },
+          v: { en: "Lower allocation per request means more concurrent requests fit in the same heap before gen 2 collections start dominating. On read-heavy services this is often the difference between 2 and 3 instances.", ar: "تخصيص أقل لكل request يعني استيعاب requests متزامنة أكثر في نفس الـ heap قبل أن تسيطر عمليات جمع gen 2. في الخدمات كثيفة القراءة هذا غالباً الفرق بين نسختين وثلاث نسخ من الخدمة." } }
+      ]}
+    ]},
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "db.ChangeTracker.Entries().Count() right after a query — the number of entities EF Core is holding. If a read-only handler reports 25,000, tracking is on where it should not be.",
+          "db.ChangeTracker.DebugView.ShortView in the debugger — a text dump listing each tracked entity and its state (Unchanged, Modified, Added, Deleted). Use it to see whether your edit was noticed at all.",
+          "The return value of SaveChangesAsync — the number of rows actually written. A 0 where you expected 1 is the classic no-tracking write bug.",
+          "dotnet-counters monitor --counters System.Runtime — watch alloc-rate and gen-2-gc-count while hitting the endpoint. A fall in both after adding AsNoTracking confirms the saving is real.",
+          "EF Core's logged SQL at LogLevel.Information — compare the statements before and after your change. They must be byte-identical; if they are not, something other than tracking changed."
+        ],
+        ar: [
+          "db.ChangeTracker.Entries().Count() مباشرة بعد الاستعلام — عدد الـ entities التي يحتفظ بها EF Core. إذا أرجع handler للقراءة فقط الرقم 25000، فالـ tracking مفعّل حيث لا ينبغي.",
+          "db.ChangeTracker.DebugView.ShortView في الـ debugger — نص يسرد كل entity متتبَّع وحالته (Unchanged أو Modified أو Added أو Deleted). استخدمه لترى هل لُوحظ تعديلك أصلاً.",
+          "القيمة الراجعة من SaveChangesAsync — عدد الصفوف المكتوبة فعلاً. الرقم 0 مكان 1 المتوقّع هو الخطأ الكلاسيكي للكتابة مع no-tracking.",
+          "dotnet-counters monitor --counters System.Runtime — راقب alloc-rate وgen-2-gc-count أثناء ضرب الـ endpoint. انخفاضهما بعد إضافة AsNoTracking يؤكد أن التوفير حقيقي.",
+          "الـ SQL المسجّل من EF Core عند LogLevel.Information — قارن الجمل قبل التغيير وبعده. يجب أن تكون متطابقة تماماً؛ إن لم تكن، فقد تغيّر شيء آخر غير الـ tracking."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "Add a debug-build check in your request pipeline: after the response is written, if ChangeTracker.Entries().Any() is true on a GET request, log a warning with the endpoint name. It finds every read path that is still tracking, without anyone having to audit the code by hand.",
+        ar: "أضف فحصاً في نسخة الـ debug داخل مسار الـ request: بعد كتابة الـ response، إذا كانت ChangeTracker.Entries().Any() صحيحة على request من نوع GET، سجّل تحذيراً باسم الـ endpoint. هذا يكشف كل مسار قراءة ما زال يتتبّع، دون أن يراجع أحد الكود يدوياً."
+      }
+    ]},
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "The pattern shows up wherever a system reads far more than it writes, and where a single request can pull thousands of rows into memory. In those places the change tracker is not a small overhead — it is a second copy of the whole result set that nobody asked for.",
+        ar: "يظهر هذا النمط في كل نظام يقرأ أكثر بكثير مما يكتب، وحيث يستطيع request واحد سحب آلاف الصفوف إلى الذاكرة. في تلك الحالات لا يكون الـ change tracker عبئاً صغيراً — بل نسخة ثانية من كامل نتيجة الاستعلام لم يطلبها أحد."
+      },
+      { t: "ul",
+        en: [
+          "Analytics and admin dashboards: one screen aggregates orders, users and payments for a date range, and never writes a single row.",
+          "Data export and reporting jobs: paging through millions of rows to build a CSV, where a tracked context would grow until the process runs out of memory.",
+          "Search and listing endpoints in e-commerce: product grids and filters that are read thousands of times per minute and written once a day by a catalogue import.",
+          "Read replicas in a CQRS-style split — CQRS meaning reads and writes go through separate models: the query side is a different connection to a read-only database, so tracking has nothing it could ever save to."
+        ],
+        ar: [
+          "لوحات التحليلات والإدارة: شاشة واحدة تجمّع orders وusers وpayments لفترة زمنية، ولا تكتب صفاً واحداً.",
+          "مهام التصدير والتقارير: المرور على ملايين الصفوف لبناء ملف CSV، حيث ينمو context متتبَّع حتى تنفد ذاكرة العملية.",
+          "endpoints البحث والعرض في التجارة الإلكترونية: شبكات المنتجات والفلاتر تُقرأ آلاف المرات في الدقيقة وتُكتب مرة يومياً عبر استيراد الكتالوج.",
+          "الـ read replicas في فصل بأسلوب CQRS — أي أن القراءات والكتابات تمرّ عبر models منفصلة: جانب الاستعلام اتصال مختلف بقاعدة بيانات للقراءة فقط، فلا يوجد ما يمكن للـ tracking أن يحفظ إليه."
+        ]
+      }
+    ]},
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Write an endpoint that loads 5,000 orders with Include for Customer and Lines, and log db.ChangeTracker.Entries().Count() straight after the query. Then add AsNoTracking and log it again. You are right when the first run prints a five-digit number and the second prints 0.",
+        ar: "اكتب endpoint يحمّل 5000 order مع Include للـ Customer والـ Lines، وسجّل db.ChangeTracker.Entries().Count() مباشرة بعد الاستعلام. ثم أضف AsNoTracking وسجّل مرة أخرى. تكون قد نجحت حين تطبع المحاولة الأولى رقماً من خمس خانات وتطبع الثانية 0."
+      },
+      { t: "ex", diff: "medium",
+        en: "Measure the same two runs with BenchmarkDotNet using [MemoryDiagnoser], which reports bytes allocated per call. Report time and allocated bytes for tracked, no-tracking, and a Select projection. You are right when the projection wins on both numbers and you can explain in one sentence why.",
+        ar: "قِس نفس المحاولتين بـ BenchmarkDotNet مع [MemoryDiagnoser] الذي يبلّغ عن البايتات المخصّصة لكل استدعاء. أورد الزمن والبايتات للـ tracked وللـ no-tracking وللإسقاط بـ Select. تكون قد نجحت حين يتفوّق الإسقاط في الرقمين وتستطيع شرح السبب في جملة واحدة."
+      },
+      { t: "ex", diff: "hard",
+        en: "Reproduce the silent-write bug on purpose: load an order with AsNoTracking, change a property, call SaveChangesAsync, and assert that it returns 0 and the database row is unchanged. Then make it fail loudly instead — either by re-reading tracked, or by attaching the entity and marking the property modified. Explain in a comment which approach you would ship and why.",
+        ar: "أعد إنتاج خطأ الكتابة الصامتة عمداً: حمّل order بـ AsNoTracking، غيّر خاصية، استدعِ SaveChangesAsync، وتأكّد أنه يرجع 0 وأن الصف في قاعدة البيانات لم يتغيّر. ثم اجعله يفشل بصوت عالٍ — إما بإعادة القراءة مع tracking أو بربط الـ entity وتحديد الخاصية كمعدَّلة. اشرح في تعليق أي الطريقتين ستطلقها ولماذا."
+      },
+      { t: "ex", diff: "senior",
+        en: "Split your data access into a read context registered with QueryTrackingBehavior.NoTracking behind an interface with no SaveChanges, and a tracked write context. Migrate three endpoints onto the split. You are right when an attempt to save through the read interface fails to compile, and every existing integration test still passes unchanged.",
+        ar: "افصل الوصول للبيانات إلى context للقراءة مسجّل بـ QueryTrackingBehavior.NoTracking خلف واجهة بلا SaveChanges، وcontext للكتابة متتبَّع. انقل ثلاثة endpoints إلى هذا الفصل. تكون قد نجحت حين تفشل محاولة الحفظ عبر واجهة القراءة في وقت الترجمة، وتظل كل اختبارات التكامل الحالية ناجحة دون تعديل."
+      }
+    ]},
+    { key: "refs", blocks: [
+      { t: "ref",
+        label: { en: "EF Core — Tracking vs. no-tracking queries", ar: "EF Core — الاستعلامات المتتبَّعة مقابل غير المتتبَّعة" },
+        url: "https://learn.microsoft.com/en-us/ef/core/querying/tracking",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "EF Core — Identity resolution in the change tracker", ar: "EF Core — Identity resolution في الـ change tracker" },
+        url: "https://learn.microsoft.com/en-us/ef/core/change-tracking/identity-resolution",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "EF Core — Change tracking overview", ar: "EF Core — نظرة عامة على تتبّع التغييرات" },
+        url: "https://learn.microsoft.com/en-us/ef/core/change-tracking/",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "EF Core — Efficient querying guidance", ar: "EF Core — إرشادات الاستعلام الفعّال" },
+        url: "https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying",
+        meta: { en: "Docs", ar: "توثيق" }
+      }
+    ]}
+  ],
+  quiz: [
+    {
+      q: { en: "What does the change tracker actually store for each loaded entity?", ar: "ماذا يخزّن الـ change tracker فعلياً لكل entity محمّل؟" },
+      options: [
+        { en: "A copy of the SQL that loaded it", ar: "نسخة من الـ SQL الذي حمّله" },
+        { en: "A snapshot of its original property values plus an entry keyed by its primary key", ar: "snapshot لقيم خصائصه الأصلية ومدخلاً مفتاحه الـ primary key" },
+        { en: "A database lock held until SaveChanges runs", ar: "قفلاً في قاعدة البيانات يبقى حتى ينفَّذ SaveChanges" },
+        { en: "A serialized JSON copy of the whole object graph", ar: "نسخة JSON مسلسلة من رسم الـ objects كاملاً" }
+      ],
+      correct: 1,
+      why: { en: "The snapshot is a flat array of the scalar values as loaded; the dictionary entry is what makes identity resolution work. Comparing object to snapshot at SaveChanges is how the UPDATE is built. No locks are held and nothing is serialized.", ar: "الـ snapshot مصفوفة مسطّحة للقيم البسيطة كما حُمّلت؛ ومدخل الـ dictionary هو ما يجعل الـ identity resolution يعمل. مقارنة الـ object بالـ snapshot عند SaveChanges هي طريقة بناء جملة UPDATE. لا تُحجز أي أقفال ولا يُسلسل شيء." }
+    },
+    {
+      q: { en: "You add AsNoTracking to a query. What happens to the SQL sent to the database?", ar: "أضفت AsNoTracking إلى استعلام. ماذا يحدث للـ SQL المرسل إلى قاعدة البيانات؟" },
+      options: [
+        { en: "It becomes a simpler SELECT with fewer columns", ar: "يصبح SELECT أبسط بأعمدة أقل" },
+        { en: "It gains a READ UNCOMMITTED hint", ar: "يكتسب تلميح READ UNCOMMITTED" },
+        { en: "It is unchanged — only in-process work after the rows arrive is skipped", ar: "لا يتغيّر — يُتخطّى فقط العمل داخل العملية بعد وصول الصفوف" },
+        { en: "It is split into one query per Include", ar: "ينقسم إلى استعلام لكل Include" }
+      ],
+      correct: 2,
+      why: { en: "No-tracking is purely a client-side setting. The same statement runs with the same plan and returns the same rows; EF Core just skips snapshotting and identity lookup while building the objects.", ar: "الـ no-tracking إعداد على جانب العميل فقط. نفس الجملة تُنفَّذ بنفس الخطة وترجع نفس الصفوف؛ EF Core يتخطّى فقط الـ snapshot والبحث عن الهوية أثناء بناء الـ objects." }
+    },
+    {
+      q: { en: "A handler loads an order with AsNoTracking, sets Status, and calls SaveChangesAsync. What happens?", ar: "handler يحمّل order بـ AsNoTracking، يضبط Status، ويستدعي SaveChangesAsync. ماذا يحدث؟" },
+      options: [
+        { en: "SaveChanges returns 0 and no exception is thrown", ar: "يرجع SaveChanges القيمة 0 ولا يُرمى أي استثناء" },
+        { en: "An InvalidOperationException is thrown", ar: "يُرمى استثناء InvalidOperationException" },
+        { en: "The update runs normally", ar: "ينفَّذ التحديث بشكل طبيعي" },
+        { en: "A DbUpdateConcurrencyException is thrown", ar: "يُرمى استثناء DbUpdateConcurrencyException" }
+      ],
+      correct: 0,
+      why: { en: "With no snapshot, EF Core has nothing to compare the object against, so it detects no change and issues no statement. The call succeeds and reports 0 rows written — which is why this bug is silent and can survive for weeks.", ar: "بلا snapshot لا يملك EF Core ما يقارن به الـ object، فلا يكتشف أي تغيير ولا يصدر أي جملة. ينجح الاستدعاء ويبلّغ عن 0 صف مكتوب — ولهذا يكون هذا الخطأ صامتاً وقد يعيش أسابيع." }
+    },
+    {
+      q: { en: "Ten orders share the same CustomerId. With plain AsNoTracking and Include(o => o.Customer), how many Customer objects exist in memory?", ar: "عشرة orders تشترك في نفس الـ CustomerId. مع AsNoTracking العادي و Include(o => o.Customer)، كم object من Customer يوجد في الذاكرة؟" },
+      options: [
+        { en: "One shared object", ar: "object واحد مشترك" },
+        { en: "Ten separate objects", ar: "عشرة objects منفصلة" },
+        { en: "Zero — the customer is not loaded", ar: "صفر — الـ customer لا يُحمّل" },
+        { en: "One object plus nine proxies pointing at it", ar: "object واحد وتسعة proxies تشير إليه" }
+      ],
+      correct: 1,
+      why: { en: "Identity resolution needs the tracker's key dictionary, which plain no-tracking skips. Each order therefore builds its own Customer. Use AsNoTrackingWithIdentityResolution to get one shared object while still skipping snapshots.", ar: "الـ identity resolution يحتاج dictionary المفاتيح في الـ tracker، وهو ما يتخطاه الـ no-tracking العادي. لذلك يبني كل order Customer خاصاً به. استخدم AsNoTrackingWithIdentityResolution للحصول على object واحد مشترك مع تخطّي الـ snapshots." }
+    },
+    {
+      q: { en: "Which query benefits least from adding AsNoTracking?", ar: "أي استعلام يستفيد أقل من إضافة AsNoTracking؟" },
+      options: [
+        { en: "One loading 50,000 entities with two Includes", ar: "استعلام يحمّل 50000 entity مع Include اثنين" },
+        { en: "One paging through millions of rows in a background export", ar: "استعلام يمرّ على ملايين الصفوف في مهمة تصدير خلفية" },
+        { en: "One ending in Select(o => new OrderDto(...))", ar: "استعلام ينتهي بـ Select(o => new OrderDto(...))" },
+        { en: "One loading 20,000 wide entities with 30 columns each", ar: "استعلام يحمّل 20000 entity عريضاً بـ 30 عموداً لكل منها" }
+      ],
+      correct: 2,
+      why: { en: "A projection produces OrderDto, which is not an entity in the model, so EF Core never tracked it in the first place. AsNoTracking there is harmless dead code. The other three materialise many entities and save real memory.", ar: "الإسقاط ينتج OrderDto وهو ليس entity في الـ model، فلم يتتبّعه EF Core أصلاً. وضع AsNoTracking هناك كود ميّت غير ضارّ. أما الثلاثة الأخرى فتنشئ entities كثيرة وتوفّر ذاكرة حقيقية." }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: EF N+1
+
+const efN1Lesson = {
+  id: "ef-n1",
+  moduleId: "efcore",
+  title: { en: "N+1 and eager loading", ar: "N+1 والتحميل المبكر" },
+  summary: {
+    en: "Why one innocent loop turns a single query into hundreds, and how Include, projections and logging let you find and kill it.",
+    ar: "لماذا يحوّل loop واحد بريء استعلاماً واحداً إلى مئات الاستعلامات، وكيف تجد المشكلة وتقضي عليها باستخدام Include و projections و logging."
+  },
+  mins: 17,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "N+1 is a bug where your code runs one database query to get a list, then one more query for every single row in that list. Fifty orders means fifty-one round trips to the database instead of one. Eager loading is the fix: you tell EF Core to fetch the related data in the same trip, before the loop starts.",
+          ar: "الـ N+1 هو خطأ يشغّل استعلاماً واحداً لجلب قائمة، ثم استعلاماً إضافياً لكل صف في تلك القائمة. خمسون order تعني 51 رحلة إلى قاعدة البيانات بدل رحلة واحدة. الحل هو eager loading: تطلب من EF Core جلب البيانات المرتبطة في نفس الرحلة، قبل بدء الـ loop."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Navigation property", ar: "Navigation property" },
+              v: {
+                en: "A property on an entity that points at related rows, like order.Customer or order.Lines. It is not a column; EF fills it by running a query.",
+                ar: "خاصية على الـ entity تشير إلى صفوف مرتبطة، مثل order.Customer أو order.Lines. ليست عموداً في الجدول؛ EF يملؤها عبر تشغيل استعلام."
+              }
+            },
+            {
+              k: { en: "Round trip", ar: "Round trip" },
+              v: {
+                en: "One full network journey: your app sends SQL to the database and waits for the answer. Each one costs about 0.5-2 ms even for a trivial query.",
+                ar: "رحلة شبكة كاملة: التطبيق يرسل SQL إلى قاعدة البيانات وينتظر الرد. كل رحلة تكلّف حوالي 0.5-2 ms حتى لو كان الاستعلام تافهاً."
+              }
+            },
+            {
+              k: { en: "Eager loading", ar: "Eager loading" },
+              v: {
+                en: "Asking for the related data up front, in the same query, using Include(...) or a Select projection.",
+                ar: "طلب البيانات المرتبطة مسبقاً وفي نفس الاستعلام، عبر Include(...) أو Select projection."
+              }
+            },
+            {
+              k: { en: "Lazy loading", ar: "Lazy loading" },
+              v: {
+                en: "EF silently runs a query the moment you touch a navigation property. Convenient to write, and the usual cause of N+1.",
+                ar: "EF يشغّل استعلاماً بصمت لحظة لمسك navigation property. مريح في الكتابة، وهو السبب المعتاد للـ N+1."
+              }
+            },
+            {
+              k: { en: "Explicit loading", ar: "Explicit loading" },
+              v: {
+                en: "You call Entry(x).Collection(...).LoadAsync() yourself. Same query as lazy loading, but you can see it in the code.",
+                ar: "تستدعي Entry(x).Collection(...).LoadAsync() بنفسك. نفس استعلام lazy loading، لكنه ظاهر في الكود."
+              }
+            },
+            {
+              k: { en: "Projection", ar: "Projection" },
+              v: {
+                en: "A Select that builds a small result shape (a DTO) instead of loading full entities. EF turns it into one SQL statement with joins.",
+                ar: "Select يبني شكل نتيجة صغيراً (DTO) بدل تحميل entities كاملة. EF يحوّله إلى جملة SQL واحدة مع joins."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "The problem exists because C# object graphs and SQL result sets are shaped differently. In C#, order.Customer.Name looks like reading a field in memory. In SQL, that same access may need a join or another SELECT. EF Core hides the gap, and the hidden work is invisible in the code you read during review.",
+          ar: "المشكلة موجودة لأن شكل object graph في C# يختلف عن شكل نتيجة SQL. في C#، تبدو order.Customer.Name كقراءة حقل من الذاكرة. في SQL، نفس الوصول قد يحتاج join أو SELECT آخر. EF Core يخفي هذه الفجوة، والعمل المخفي غير مرئي في الكود أثناء المراجعة."
+        },
+        {
+          t: "p",
+          en: "Think of a warehouse. You send a runner with a list of fifty item numbers and he brings back one crate with all fifty. That is eager loading. N+1 is sending the runner once to get the list of numbers, then sending him back for item one, again for item two, and so on. Each trip is short. Fifty-one trips are not. The database is the warehouse and the network is the walk.",
+          ar: "تخيّل مستودعاً. ترسل عاملاً بقائمة فيها خمسون رقم صنف فيعود بصندوق واحد يحوي الخمسين. هذا هو eager loading. الـ N+1 هو أن ترسله مرة لجلب قائمة الأرقام، ثم ترسله للصنف الأول، ثم للثاني، وهكذا. كل رحلة قصيرة. لكن 51 رحلة ليست قصيرة. قاعدة البيانات هي المستودع، والشبكة هي المشي."
+        },
+        {
+          t: "callout",
+          kind: "note",
+          en: "N+1 rarely fails in development. With ten test rows and a database on localhost the page loads in 30 ms. In production with 50 rows per page and a 1 ms network hop, the same code takes 10x longer — and it gets worse as data grows.",
+          ar: "الـ N+1 نادراً ما يظهر أثناء التطوير. مع عشرة صفوف اختبار وقاعدة بيانات على localhost تُحمّل الصفحة في 30 ms. في production مع 50 صفاً لكل صفحة و 1 ms تأخير شبكة، نفس الكود يستغرق عشرة أضعاف — ويزداد سوءاً كلما كبرت البيانات."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "Here is the running example used for the rest of this lesson. An endpoint GET /api/orders returns the 50 newest orders. Each result line shows the order number, the customer's name, and how many line items the order has. The Order entity has a Customer navigation property and a Lines collection.",
+          ar: "هذا هو المثال الجاري الذي سنستخدمه في بقية الدرس. endpoint اسمه GET /api/orders يعيد أحدث 50 order. كل سطر في النتيجة يعرض رقم الـ order واسم الـ customer وعدد الـ line items. الـ entity المسمى Order لديه navigation property اسمه Customer و collection اسمه Lines."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "The version that looks fine and is not", ar: "النسخة التي تبدو سليمة وهي ليست كذلك" },
+          code: "var orders = await db.Orders\n    .OrderByDescending(o => o.CreatedAt)\n    .Take(50)\n    .ToListAsync();                       // query 1\n\nvar result = new List<OrderRow>();\nforeach (var o in orders)\n{\n    result.Add(new OrderRow(\n        o.Number,\n        o.Customer.Name,                  // query 2..51  (one per order)\n        o.Lines.Count));                  // query 52..101 (one per order)\n}"
+        },
+        {
+          t: "p",
+          en: "Two navigation properties are touched inside the loop, so with lazy loading enabled this runs 101 queries: one for the orders, 50 for the customers, 50 for the line collections. Nothing in the C# says \"query\". The dots do it.",
+          ar: "يتم لمس اثنين من navigation properties داخل الـ loop، لذا مع تفعيل lazy loading يشغّل هذا الكود 101 استعلام: واحد للـ orders، و50 للـ customers، و50 لمجموعات الـ lines. لا شيء في كود C# يقول «استعلام». النقاط هي التي تفعل ذلك."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Before — lazy loading in the loop", ar: "قبل — lazy loading داخل الـ loop" },
+              v: {
+                en: "101 queries, 640 ms average response time, and roughly 101 connection checkouts from the pool per request. Under 100 concurrent users the pool of 100 connections is exhausted and requests start queueing.",
+                ar: "101 استعلام، متوسط زمن الاستجابة 640 ms، وحوالي 101 سحب connection من الـ pool لكل request. مع 100 مستخدم متزامن ينفد pool المكوّن من 100 connection وتبدأ الـ requests بالانتظار في طابور."
+              }
+            },
+            {
+              k: { en: "After — one projected query", ar: "بعد — استعلام واحد بـ projection" },
+              v: {
+                en: "1 query, 12 ms average response time. Same rows returned, same JSON on the wire. The database does one join and one grouped count instead of 100 tiny lookups.",
+                ar: "استعلام واحد، متوسط زمن الاستجابة 12 ms. نفس الصفوف تُعاد، ونفس الـ JSON يُرسل. قاعدة البيانات تنفّذ join واحداً و count مجمّعاً واحداً بدل 100 عملية بحث صغيرة."
+              }
+            },
+            {
+              k: { en: "Why the gap is so wide", ar: "لماذا الفارق كبير إلى هذا الحد" },
+              v: {
+                en: "Each extra query costs about 6 ms end to end: 1 ms network each way, plus parsing, plan lookup, and result materialisation. 100 x 6 ms is 600 ms of pure overhead — the actual row reading is a rounding error.",
+                ar: "كل استعلام إضافي يكلّف حوالي 6 ms من البداية للنهاية: 1 ms شبكة في كل اتجاه، بالإضافة إلى parsing و plan lookup و materialisation للنتيجة. 100 × 6 ms تساوي 600 ms عبئاً صافياً — أما قراءة الصفوف نفسها فهي خطأ تقريب."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "The cost scales with the number of rows, not with the size of the data. Doubling the page size to 100 orders doubles the query count. That is the signature of N+1: latency grows in a straight line with row count, while the amount of returned data barely changes.",
+          ar: "التكلفة تتناسب مع عدد الصفوف لا مع حجم البيانات. مضاعفة حجم الصفحة إلى 100 order تضاعف عدد الاستعلامات. هذه هي بصمة الـ N+1: زمن الاستجابة يزيد بخط مستقيم مع عدد الصفوف، بينما حجم البيانات المعادة لا يكاد يتغيّر."
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "To understand N+1 you need to know exactly when EF Core decides to talk to the database. A LINQ query is not executed when you write it. It is executed when something forces it to produce values — calling ToListAsync, FirstOrDefaultAsync, CountAsync, or starting a foreach over it. Until then EF is only building a tree of expressions describing what you asked for.",
+          ar: "لفهم الـ N+1 تحتاج أن تعرف بالضبط متى يقرّر EF Core التحدّث إلى قاعدة البيانات. استعلام LINQ لا يُنفَّذ عند كتابته. يُنفَّذ عندما يجبره شيء على إنتاج قيم — استدعاء ToListAsync أو FirstOrDefaultAsync أو CountAsync أو بدء foreach عليه. قبل ذلك يبني EF شجرة expressions تصف ما طلبته فقط."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Expression tree", ar: "Expression tree" },
+              v: {
+                en: "A data structure describing your LINQ code as objects instead of compiled instructions, so EF can read it and write SQL from it.",
+                ar: "بنية بيانات تصف كود LINQ الخاص بك ككائنات بدل تعليمات مترجمة، ليتمكّن EF من قراءتها وكتابة SQL منها."
+              }
+            },
+            {
+              k: { en: "Query pipeline", ar: "Query pipeline" },
+              v: {
+                en: "The EF stage that translates the expression tree into SQL, decides which parts run on the server, and caches the result by query shape.",
+                ar: "المرحلة في EF التي تترجم الـ expression tree إلى SQL، وتقرّر أي أجزاء تُنفَّذ على الـ server، وتحفظ النتيجة في cache حسب شكل الاستعلام."
+              }
+            },
+            {
+              k: { en: "Materialiser", ar: "Materialiser" },
+              v: {
+                en: "The generated code that reads each row from the data reader and turns it into a C# object, wiring navigation properties as it goes.",
+                ar: "الكود المولَّد الذي يقرأ كل صف من الـ data reader ويحوّله إلى كائن C#، ويربط navigation properties أثناء ذلك."
+              }
+            },
+            {
+              k: { en: "Proxy", ar: "Proxy" },
+              v: {
+                en: "With lazy loading, EF returns a generated subclass of your entity that overrides each virtual navigation property and runs a query on first access.",
+                ar: "مع lazy loading يعيد EF فئة فرعية مولَّدة من الـ entity، تعيد تعريف كل virtual navigation property وتشغّل استعلاماً عند أول وصول."
+              }
+            },
+            {
+              k: { en: "Identity map", ar: "Identity map" },
+              v: {
+                en: "The change tracker's dictionary of already-loaded entities keyed by primary key, so the same row loaded twice becomes one object.",
+                ar: "قاموس في change tracker يحتوي الـ entities المحمّلة مسبقاً مفهرسة بالـ primary key، بحيث يصبح الصف المحمّل مرتين كائناً واحداً."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "Step by step for the 50-order request with lazy loading on. First, ToListAsync executes the orders query and the materialiser builds 50 Order proxies — generated subclasses, not plain Order objects. Second, the loop reads o.Customer. That property is virtual, so the proxy's override runs instead of a plain field read. It asks the change tracker whether customer 917 is already loaded. It is not, so EF issues SELECT * FROM Customers WHERE Id = 917 and waits. Third, o.Lines.Count does the same for the collection: SELECT * FROM OrderLines WHERE OrderId = 5501, loads every line into memory, and then counts them in C#.",
+          ar: "خطوة بخطوة لطلب الـ 50 order مع تفعيل lazy loading. أولاً، ToListAsync ينفّذ استعلام الـ orders ويبني الـ materialiser خمسين proxy من نوع Order — فئات فرعية مولَّدة لا كائنات Order عادية. ثانياً، الـ loop يقرأ o.Customer. هذه الخاصية virtual، لذا يعمل الـ override في الـ proxy بدل قراءة حقل عادي. يسأل change tracker إن كان customer رقم 917 محمّلاً مسبقاً. ليس محمّلاً، فيُصدر EF جملة SELECT * FROM Customers WHERE Id = 917 وينتظر. ثالثاً، o.Lines.Count يفعل الشيء نفسه للـ collection: SELECT * FROM OrderLines WHERE OrderId = 5501، يحمّل كل الأسطر إلى الذاكرة ثم يعدّها في C#."
+        },
+        {
+          t: "p",
+          en: "Each of those queries is synchronous from the caller's point of view. The property getter cannot be awaited, so the thread blocks on network I/O 100 times. That is why a lazy-loading N+1 also burns thread pool threads, not just database time.",
+          ar: "كل واحد من هذه الاستعلامات متزامن من وجهة نظر المستدعي. لا يمكن عمل await على property getter، لذا يتوقّف الـ thread على network I/O مئة مرة. لهذا السبب فإن N+1 الناتج عن lazy loading يستهلك threads من الـ thread pool أيضاً، لا وقت قاعدة البيانات فقط."
+        },
+        {
+          t: "code",
+          lang: "sql",
+          label: { en: "What the database actually receives (abridged)", ar: "ما تستقبله قاعدة البيانات فعلياً (مختصراً)" },
+          code: "-- query 1\nSELECT TOP(50) o.Id, o.Number, o.CustomerId, o.CreatedAt\nFROM Orders AS o ORDER BY o.CreatedAt DESC;\n\n-- queries 2..51, one per order, values change only\nSELECT c.Id, c.Name, c.Email FROM Customers AS c WHERE c.Id = 917;\nSELECT c.Id, c.Name, c.Email FROM Customers AS c WHERE c.Id = 918;\n\n-- queries 52..101, one per order\nSELECT l.Id, l.OrderId, l.Sku, l.Qty, l.Price\nFROM OrderLines AS l WHERE l.OrderId = 5501;"
+        },
+        {
+          t: "p",
+          en: "Now the fix. Include(o => o.Customer) tells the query pipeline to add a LEFT JOIN to Customers so the customer columns arrive with the order row. The materialiser attaches the customer object while reading the same result set, so no second query is possible. A projection goes further: Select(o => new OrderRow(o.Number, o.Customer.Name, o.Lines.Count())) never builds entities at all. EF translates Lines.Count() into a correlated subquery or a grouped join, so the count happens inside SQL Server and only three small columns cross the network per row.",
+          ar: "الآن الحل. الاستدعاء Include(o => o.Customer) يخبر الـ query pipeline بإضافة LEFT JOIN إلى جدول Customers ليصل عمود الاسم مع صف الـ order. الـ materialiser يربط كائن الـ customer أثناء قراءة نفس مجموعة النتائج، فلا يمكن أن يحدث استعلام ثانٍ. الـ projection يذهب أبعد: الاستدعاء Select(o => new OrderRow(o.Number, o.Customer.Name, o.Lines.Count())) لا يبني entities إطلاقاً. يترجم EF جملة Lines.Count() إلى correlated subquery أو grouped join، فيتم العدّ داخل SQL Server ولا يعبر الشبكة سوى ثلاثة أعمدة صغيرة لكل صف."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "One query, one round trip", ar: "استعلام واحد، رحلة واحدة" },
+          code: "var result = await db.Orders\n    .AsNoTracking()\n    .OrderByDescending(o => o.CreatedAt)\n    .Take(50)\n    .Select(o => new OrderRow(\n        o.Number,\n        o.Customer.Name,      // becomes a JOIN\n        o.Lines.Count()))     // becomes a subquery, counted in SQL\n    .ToListAsync();"
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Include only works on a query. Once ToListAsync has run, the objects are plain C# objects and Include on them is impossible. If you find yourself wanting related data after materialising, the Include belonged earlier in the chain.",
+          ar: "الـ Include يعمل على الاستعلام فقط. بعد تنفيذ ToListAsync تصبح الكائنات كائنات C# عادية ولا يمكن تطبيق Include عليها. إذا وجدت نفسك تحتاج بيانات مرتبطة بعد الـ materialisation، فمكان الـ Include كان أبكر في السلسلة."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "One round trip instead of N+1, so latency stops growing with row count.",
+              "The database does the joining and counting, which is what it is optimised for.",
+              "A projection returns only the columns you need, cutting network bytes and memory.",
+              "The generated SQL is visible in logs, so the cost is reviewable."
+            ],
+            ar: [
+              "رحلة واحدة بدل N+1، فيتوقّف زمن الاستجابة عن النمو مع عدد الصفوف.",
+              "قاعدة البيانات تنفّذ الـ join والعدّ، وهو ما صُمّمت له.",
+              "الـ projection يعيد الأعمدة التي تحتاجها فقط، فيقلّ حجم الشبكة والذاكرة.",
+              "الـ SQL المولَّد ظاهر في الـ logs، فتصبح التكلفة قابلة للمراجعة."
+            ]
+          },
+          cons: {
+            en: [
+              "Including several collections in one query multiplies rows — 50 orders x 10 lines x 3 tags is 1500 duplicated rows.",
+              "Projections need a DTO type per shape, which is more code to maintain.",
+              "Include pulls whole entities including columns you never read.",
+              "A single big query can pick a worse execution plan than several small ones."
+            ],
+            ar: [
+              "تضمين عدة collections في استعلام واحد يضاعف الصفوف — 50 order × 10 lines × 3 tags يساوي 1500 صف مكرّر.",
+              "الـ projections تحتاج نوع DTO لكل شكل، أي كود إضافي للصيانة.",
+              "الـ Include يجلب entities كاملة بما فيها أعمدة لا تقرأها أبداً.",
+              "استعلام واحد كبير قد يختار execution plan أسوأ من عدة استعلامات صغيرة."
+            ]
+          },
+          limits: {
+            en: [
+              "Include is ignored if the query ends in a Select projection — the projection decides what loads.",
+              "Filtering inside Include is limited to Where, OrderBy, Skip and Take on the collection.",
+              "Client-side operations after ToList cannot be translated, so they cannot be batched.",
+              "Two collection Includes at the same level need AsSplitQuery to stay sane."
+            ],
+            ar: [
+              "يُتجاهل الـ Include إذا انتهى الاستعلام بـ Select projection — الـ projection هو من يقرّر ما يُحمَّل.",
+              "الفلترة داخل Include محدودة بـ Where و OrderBy و Skip و Take على الـ collection.",
+              "العمليات على جانب العميل بعد ToList لا يمكن ترجمتها، لذا لا يمكن تجميعها.",
+              "وجود Include لمجموعتين في نفس المستوى يحتاج AsSplitQuery حتى يبقى الأمر معقولاً."
+            ]
+          },
+          alts: {
+            en: [
+              "AsSplitQuery: one query per collection — a fixed small number, not one per row.",
+              "Two manual queries plus an in-memory join by key, when the shapes are awkward.",
+              "A database view or stored procedure when the query is genuinely complex.",
+              "A denormalised read model updated on write, for very hot list endpoints."
+            ],
+            ar: [
+              "AsSplitQuery: استعلام لكل collection — عدد صغير ثابت، لا استعلام لكل صف.",
+              "استعلامان يدويان مع join في الذاكرة بالمفتاح، عندما تكون الأشكال معقدة.",
+              "view أو stored procedure في قاعدة البيانات عندما يكون الاستعلام معقّداً فعلاً.",
+              "read model غير مطبَّع يُحدَّث عند الكتابة، للـ endpoints شديدة الاستخدام."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Mapping to a DTO after ToListAsync", ar: "التحويل إلى DTO بعد ToListAsync" },
+          body: {
+            en: "A developer wrote the orders query, called ToListAsync, then mapped to OrderRow in a foreach because that felt cleaner than a long Select. The mapping touched o.Customer.Name. Because ToListAsync had already run, EF could no longer add a join — it had to lazy-load each customer separately. The endpoint went from 12 ms to 640 ms and nobody noticed for three weeks, because the change looked like pure refactoring in the pull request.",
+            ar: "كتب مطوّر استعلام الـ orders، ثم استدعى ToListAsync، ثم حوّل النتائج إلى OrderRow داخل foreach لأن ذلك بدا أنظف من Select طويل. عملية التحويل لمست o.Customer.Name. وبما أن ToListAsync كان قد نُفِّذ، لم يعد بإمكان EF إضافة join — فاضطر إلى تحميل كل customer بشكل منفصل عبر lazy loading. ارتفع زمن الـ endpoint من 12 ms إلى 640 ms ولم يلاحظ أحد لثلاثة أسابيع، لأن التغيير بدا مجرّد refactoring في الـ pull request."
+          },
+          fix: "// map inside the query, before it executes\nvar rows = await db.Orders\n    .Select(o => new OrderRow(o.Number, o.Customer.Name, o.Lines.Count()))\n    .ToListAsync();"
+        },
+        {
+          t: "mistake",
+          title: { en: "Counting a collection in C# instead of SQL", ar: "عدّ الـ collection في C# بدل SQL" },
+          body: {
+            en: "The code used o.Lines.Count — the property on the loaded collection — instead of o.Lines.Count() inside a projection. The property forces EF to load every OrderLine row into memory just to count them. One order with 4000 lines pulled 4000 rows across the network to produce the number 4000. Memory per request went from 200 KB to 40 MB and the service started hitting garbage collection pauses.",
+            ar: "استخدم الكود o.Lines.Count — الخاصية على الـ collection المحمّلة — بدل o.Lines.Count() داخل projection. الخاصية تجبر EF على تحميل كل صفوف OrderLine إلى الذاكرة لمجرّد عدّها. order واحد فيه 4000 سطر سحب 4000 صف عبر الشبكة لإنتاج الرقم 4000. ارتفعت الذاكرة لكل request من 200 KB إلى 40 MB وبدأت الخدمة تعاني من توقّفات garbage collection."
+          },
+          fix: ".Select(o => new { o.Number, LineCount = o.Lines.Count() })\n// translates to: (SELECT COUNT(*) FROM OrderLines WHERE OrderId = o.Id)"
+        },
+        {
+          t: "mistake",
+          title: { en: "Calling a repository inside the loop", ar: "استدعاء repository داخل الـ loop" },
+          body: {
+            en: "There was no lazy loading enabled, so the team assumed they were safe. But the loop called _customerRepo.GetByIdAsync(o.CustomerId) for each order. That is the same N+1 written by hand — 50 separate SELECT statements — and it is worse, because Include cannot help. Disabling lazy loading removes one source of N+1, not the pattern itself.",
+            ar: "لم يكن lazy loading مفعّلاً، لذا افترض الفريق أنهم بأمان. لكن الـ loop كان يستدعي ‎_customerRepo.GetByIdAsync(o.CustomerId)‎ لكل order. هذا هو نفس الـ N+1 مكتوباً يدوياً — 50 جملة SELECT منفصلة — وهو أسوأ، لأن Include لا يمكنه المساعدة. تعطيل lazy loading يزيل مصدراً واحداً للـ N+1، لا النمط نفسه."
+          },
+          fix: "var ids = orders.Select(o => o.CustomerId).Distinct().ToList();\nvar customers = await db.Customers\n    .Where(c => ids.Contains(c.Id))\n    .ToDictionaryAsync(c => c.Id);   // one query, then look up in memory"
+        },
+        {
+          t: "mistake",
+          title: { en: "Fixing N+1 with several collection Includes", ar: "معالجة N+1 بعدة Include لمجموعات" },
+          body: {
+            en: "Someone replaced the loop with Include(o => o.Lines).Include(o => o.Tags).Include(o => o.Payments). The query count dropped to one, and the response got slower. A single SQL statement joining three collections returns the cross product: an order with 10 lines, 3 tags and 2 payments produces 60 rows, and every order column is repeated 60 times. 50 orders became 3000 rows and 40 MB of duplicated data on the wire.",
+            ar: "استبدل أحدهم الـ loop بـ Include(o => o.Lines).Include(o => o.Tags).Include(o => o.Payments). انخفض عدد الاستعلامات إلى واحد، وصارت الاستجابة أبطأ. جملة SQL واحدة تربط ثلاث collections تعيد الجداء الديكارتي: order فيه 10 lines و3 tags و2 payments ينتج 60 صفاً، وكل أعمدة الـ order تتكرّر 60 مرة. فصارت الخمسون order ثلاثة آلاف صف و40 MB من البيانات المكرّرة على الشبكة."
+          },
+          fix: "db.Orders.Include(o => o.Lines).Include(o => o.Tags)\n         .AsSplitQuery()   // 3 queries total, not 1 huge one"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "What is an N+1 query problem?", ar: "ما هي مشكلة N+1 query؟" },
+          a: {
+            en: "You run one query to get a list of N things, then one more query for each of those N things. So N+1 queries in total. Classic case: load 50 orders, then loop over them and read order.Customer.Name. Each read fires its own SELECT. The fix is to ask for the related data in the first query, using Include or a Select projection.",
+            ar: "تشغّل استعلاماً واحداً لجلب قائمة فيها N عنصر، ثم استعلاماً إضافياً لكل عنصر من الـ N. أي N+1 استعلاماً في المجموع. الحالة الكلاسيكية: تحميل 50 order ثم عمل loop عليها وقراءة order.Customer.Name. كل قراءة تطلق SELECT خاصاً بها. الحل هو طلب البيانات المرتبطة في الاستعلام الأول باستخدام Include أو Select projection."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Include or Select — which do you reach for and why?", ar: "Include أم Select — أيهما تختار ولماذا؟" },
+          a: {
+            en: "Select for anything read-only that goes out as JSON, because it fetches only the columns I actually return and produces a smaller result set. Include when I need real tracked entities because I am about to modify them and call SaveChanges. If a query ends in a Select, any Include earlier in the chain is ignored anyway — the projection decides what gets loaded.",
+            ar: "أستخدم Select لأي شيء للقراءة فقط يخرج كـ JSON، لأنه يجلب الأعمدة التي أعيدها فعلاً وينتج نتيجة أصغر. وأستخدم Include عندما أحتاج entities حقيقية متتبَّعة لأنني سأعدّلها ثم أستدعي SaveChanges. وإذا انتهى الاستعلام بـ Select فإن أي Include سابق في السلسلة يُتجاهل على أي حال — الـ projection هو من يحدّد ما يُحمَّل."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "You added Include and the endpoint got slower. What happened?", ar: "أضفت Include فصار الـ endpoint أبطأ. ماذا حدث؟" },
+          a: {
+            en: "Almost certainly a cartesian explosion — the row count multiplying. One SQL statement joining two or more collections returns every combination. Ten lines and three tags per order is thirty rows per order, with the order's own columns repeated thirty times. Query count went down, bytes on the wire went way up. AsSplitQuery fixes it: EF runs one query per collection and stitches the results together in memory.",
+            ar: "شبه مؤكد أنه cartesian explosion — تضاعف عدد الصفوف. جملة SQL واحدة تربط collection أو أكثر تعيد كل التوليفات. عشرة lines وثلاثة tags لكل order تعني ثلاثين صفاً لكل order، وأعمدة الـ order نفسها مكرّرة ثلاثين مرة. انخفض عدد الاستعلامات لكن حجم البيانات على الشبكة ارتفع كثيراً. الحل AsSplitQuery: يشغّل EF استعلاماً لكل collection ثم يجمع النتائج في الذاكرة."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "How do you detect N+1 before it reaches production?", ar: "كيف تكتشف N+1 قبل وصوله إلى production؟" },
+          a: {
+            en: "Three layers. In development I turn on EF command logging so every SQL statement prints; a burst of near-identical SELECTs differing only in the id is the tell. In tests I add a DbCommandInterceptor that counts commands per scope and fails the test if a list endpoint exceeds a threshold like five. In production I read distributed traces — an N+1 shows as a wall of short database spans inside one request span. The test-level counter is the one that actually stops regressions, because it fails the build.",
+            ar: "ثلاث طبقات. في بيئة التطوير أفعّل EF command logging ليُطبع كل SQL statement؛ والعلامة هي دفعة من SELECT شبه متطابقة لا تختلف إلا في الـ id. في الاختبارات أضيف DbCommandInterceptor يعدّ الأوامر لكل scope ويُفشل الاختبار إذا تجاوز endpoint القائمة حدّاً مثل خمسة. في production أقرأ الـ distributed traces — يظهر الـ N+1 كجدار من database spans القصيرة داخل span واحد للطلب. العدّاد في الاختبارات هو ما يمنع الانحدارات فعلاً، لأنه يُفشل الـ build."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Would you ever leave an N+1 in place on purpose?", ar: "هل تترك N+1 قائماً عن قصد في أي حالة؟" },
+          a: {
+            en: "Yes, when N is bounded and small and the alternative is genuinely worse. A detail page loading one order and its three related lookups is four queries; joining them all could pick a bad plan for no real gain. What I will not accept is an unbounded N — anything driven by a page size or a user-supplied list, because that grows with traffic and data. The question I ask is not 'is there a loop' but 'what is the largest value N can take next year'.",
+            ar: "نعم، عندما يكون N محدوداً وصغيراً والبديل أسوأ فعلاً. صفحة تفاصيل تحمّل order واحداً وثلاث lookups مرتبطة تعني أربعة استعلامات؛ وربطها كلها قد يختار plan سيئاً بلا مكسب حقيقي. ما لا أقبله هو N غير محدود — أي شيء يحدّده حجم الصفحة أو قائمة يرسلها المستخدم، لأنه ينمو مع الترافيك والبيانات. السؤال الذي أطرحه ليس «هل يوجد loop» بل «ما أكبر قيمة يمكن أن يبلغها N السنة القادمة»."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "Your teams keep shipping N+1s. What do you change structurally?", ar: "فرقك تستمر في إطلاق N+1. ما الذي تغيّره هيكلياً؟" },
+          a: {
+            en: "I stop treating it as a knowledge problem and make the default safe. First, turn lazy loading off across every context — the proxies package is simply not referenced, so the accidental version cannot be written. Second, add a shared test helper that asserts a maximum command count per request, and wire it into the template every new service is generated from. Third, put a p95 latency and a database-calls-per-request panel on each service dashboard, so the regression is visible the day it ships rather than at the next incident. Training one team teaches one team; changing the template changes everyone hired after today.",
+            ar: "أتوقّف عن التعامل معها كمشكلة معرفة وأجعل الوضع الافتراضي آمناً. أولاً، أطفئ lazy loading في كل contexts — لا يُضاف package الخاص بالـ proxies أصلاً، فتصبح النسخة العرَضية غير قابلة للكتابة. ثانياً، أضيف test helper مشترك يتحقّق من حدّ أقصى لعدد الأوامر لكل request، وأضعه في الـ template الذي تُولَّد منه كل خدمة جديدة. ثالثاً، أضع لوحة لـ p95 latency وعدد استدعاءات قاعدة البيانات لكل request في dashboard كل خدمة، ليظهر الانحدار يوم إطلاقه لا عند الحادث التالي. تدريب فريق واحد يعلّم فريقاً واحداً؛ أما تغيير الـ template فيغيّر كل من يُوظَّف بعد اليوم."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "Navigation property touched after the query ran", ar: "لمس navigation property بعد تنفيذ الاستعلام" },
+          bad: "var orders = await db.Orders.Take(50).ToListAsync();\nreturn orders.Select(o => new OrderRow(\n    o.Number,\n    o.Customer.Name,       // lazy load, once per order\n    o.Lines.Count));       // loads every line, once per order",
+          good: "return await db.Orders\n    .AsNoTracking()\n    .Take(50)\n    .Select(o => new OrderRow(\n        o.Number,\n        o.Customer.Name,\n        o.Lines.Count()))\n    .ToListAsync();",
+          why: {
+            en: "ToListAsync ends the query. After it, EF has no chance to add a join, so each dot on a navigation property becomes its own SELECT. Moving the Select before ToListAsync means EF sees the whole shape and emits one statement. In the bad version this is 101 queries; in the good version it is 1.",
+            ar: "الاستدعاء ToListAsync ينهي الاستعلام. بعده لا تبقى فرصة أمام EF لإضافة join، فتتحوّل كل نقطة على navigation property إلى SELECT مستقل. نقل الـ Select قبل ToListAsync يجعل EF يرى الشكل كاملاً ويُصدر جملة واحدة. النسخة السيئة تعني 101 استعلام؛ والنسخة الجيدة استعلاماً واحداً."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "Include used where a projection was enough", ar: "استخدام Include حيث كان projection كافياً" },
+          bad: "var orders = await db.Orders\n    .Include(o => o.Customer)   // pulls all 22 customer columns\n    .Include(o => o.Lines)      // pulls every line row\n    .Take(50)\n    .ToListAsync();\nreturn orders.Select(o => new OrderRow(o.Number, o.Customer.Name, o.Lines.Count));",
+          good: "return await db.Orders\n    .AsNoTracking()\n    .Take(50)\n    .Select(o => new OrderRow(o.Number, o.Customer.Name, o.Lines.Count()))\n    .ToListAsync();",
+          why: {
+            en: "The bad version is correct — no N+1 — but wasteful. It loads full Customer rows and every OrderLine row just to read one name and one number, then tracks all of it in the change tracker. The projection reads three values per order and tracks nothing. Measured on a real table this was 40 MB versus 90 KB returned, and 180 ms versus 12 ms.",
+            ar: "النسخة السيئة صحيحة — لا يوجد N+1 — لكنها مهدِرة. تحمّل صفوف Customer كاملة وكل صفوف OrderLine لمجرّد قراءة اسم واحد ورقم واحد، ثم تتتبّع كل ذلك في change tracker. أما الـ projection فيقرأ ثلاث قيم لكل order ولا يتتبّع شيئاً. القياس على جدول حقيقي أعطى 40 MB مقابل 90 KB من البيانات المعادة، و180 ms مقابل 12 ms."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "N+1 is a system design problem, not only a code problem, because it turns one user request into many database requests. A service that holds a pool of 100 database connections and does 101 queries per request can serve roughly one request at a time per connection burst. The database becomes the bottleneck long before CPU does, and adding application servers makes it worse — more servers means more concurrent tiny queries hitting the same database.",
+          ar: "الـ N+1 مشكلة تصميم نظام لا مشكلة كود فقط، لأنه يحوّل طلب مستخدم واحد إلى طلبات كثيرة لقاعدة البيانات. خدمة لديها pool من 100 connection وتنفّذ 101 استعلاماً لكل request تستطيع خدمة طلب واحد تقريباً في كل دفعة. تصبح قاعدة البيانات هي عنق الزجاجة قبل الـ CPU بكثير، وإضافة application servers تزيد الأمر سوءاً — خوادم أكثر تعني استعلامات صغيرة متزامنة أكثر على نفس قاعدة البيانات."
+        },
+        {
+          t: "ul",
+          en: [
+            "List and search endpoints: any paginated screen is N+1's natural home, because the page size directly sets N.",
+            "GraphQL and similar flexible query APIs: each nested field a client asks for can become its own resolver query, so a single client request can produce thousands. This is why DataLoader-style batching exists.",
+            "Report and export jobs: a nightly export over 200,000 rows with one lookup per row is 200,000 queries — the job runs for hours and holds locks the whole time.",
+            "Background message consumers: processing a batch of 500 messages and loading a related aggregate per message will saturate the connection pool and starve the live web traffic sharing that database."
+          ],
+          ar: [
+            "endpoints القوائم والبحث: أي شاشة مقسّمة إلى صفحات هي البيئة الطبيعية للـ N+1، لأن حجم الصفحة يحدّد N مباشرة.",
+            "GraphQL وواجهات الاستعلام المرنة المشابهة: كل حقل متداخل يطلبه العميل قد يصبح استعلام resolver خاصاً به، فينتج عن طلب واحد آلاف الاستعلامات. لهذا وُجدت آلية التجميع بأسلوب DataLoader.",
+            "مهام التقارير والتصدير: تصدير ليلي على 200,000 صف مع lookup لكل صف يعني 200,000 استعلام — تعمل المهمة ساعات وتحتجز locks طوال الوقت.",
+            "مستهلكو الرسائل في الخلفية: معالجة دفعة من 500 رسالة مع تحميل aggregate مرتبط لكل رسالة تُشبع connection pool وتُجوّع ترافيك الويب الحي الذي يشارك نفس قاعدة البيانات."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "warn",
+          en: "When a service is behind a read replica, N+1 can also break correctness expectations. Each of the 101 queries may land on a different replica with slightly different lag, so the customer name you read can be newer or older than the order row it belongs to.",
+          ar: "عندما تكون الخدمة خلف read replica، قد يكسر الـ N+1 توقّعات الصحة أيضاً. كل استعلام من الـ 101 قد يصل إلى replica مختلفة بتأخير مختلف قليلاً، فيكون اسم الـ customer الذي تقرأه أحدث أو أقدم من صف الـ order الذي ينتمي إليه."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Latency", ar: "Latency" },
+              v: {
+                en: "Each extra round trip adds roughly 6 ms in a normal cloud setup. 100 extra queries is 600 ms added to every request, and it is serial — the loop waits for each one.",
+                ar: "كل رحلة إضافية تضيف حوالي 6 ms في بيئة سحابية عادية. مئة استعلام إضافي تعني 600 ms تُضاف لكل request، وهي متسلسلة — الـ loop ينتظر كل واحد منها."
+              }
+            },
+            {
+              k: { en: "Database", ar: "Database" },
+              v: {
+                en: "101 plan-cache lookups, 101 connection checkouts and 101 log entries instead of one. The queries are individually cheap, which is why they hide in slow-query logs that filter on duration.",
+                ar: "101 بحث في plan cache و101 سحب connection و101 سطر log بدل واحد. كل استعلام رخيص بمفرده، ولهذا يختبئ في slow-query logs التي تفلتر حسب المدة."
+              }
+            },
+            {
+              k: { en: "Memory", ar: "Memory" },
+              v: {
+                en: "Loading full entities to read two fields is the main waste. 50 orders with all lines tracked can be 40 MB per request; the equivalent projection is about 90 KB.",
+                ar: "تحميل entities كاملة لقراءة حقلين هو الهدر الأساسي. خمسون order مع كل الـ lines متتبَّعة قد تبلغ 40 MB لكل request؛ بينما الـ projection المكافئ حوالي 90 KB."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "Scalability" },
+              v: {
+                en: "The connection pool is the hard ceiling. At 101 queries per request, 100 concurrent users need far more pool slots than exist, so requests queue and p99 latency climbs steeply while CPU stays low.",
+                ar: "الـ connection pool هو السقف الصلب. عند 101 استعلام لكل request، يحتاج 100 مستخدم متزامن عدد slots أكبر بكثير من المتاح، فتصطف الطلبات ويرتفع p99 latency بحدّة بينما يبقى الـ CPU منخفضاً."
+              }
+            },
+            {
+              k: { en: "CPU", ar: "CPU" },
+              v: {
+                en: "Secondary but real: EF materialises and change-tracks every loaded entity. Tracking 50 orders plus 4000 lines means 4050 snapshot copies; AsNoTracking removes that work entirely for read paths.",
+                ar: "ثانوي لكنه حقيقي: يقوم EF بعمل materialisation و change tracking لكل entity محمّل. تتبّع 50 order مع 4000 line يعني 4050 نسخة snapshot؛ واستخدام AsNoTracking يزيل هذا العمل تماماً في مسارات القراءة."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "EF command logging: add .LogTo(Console.WriteLine, new[] { DbLoggerCategory.Database.Command.Name }, LogLevel.Information) to your DbContext options. Look for a run of near-identical SELECT statements where only the parameter value changes — that repeated shape is N+1.",
+            "A DbCommandInterceptor counting commands: override ReaderExecutedAsync, increment a counter held in a scoped service, and log the total at the end of each request. Look for any request whose count is larger than about five.",
+            "SQL Server Extended Events or Profiler, filtered on your application name: look for hundreds of executions of the same statement text within one second — high execution count with tiny duration each is the fingerprint.",
+            "OpenTelemetry traces with the EF Core instrumentation enabled: open one slow request and look for a long ladder of short database spans stacked inside a single HTTP span, instead of one or two wide ones.",
+            "MiniProfiler in a development build: it prints the query count and the duplicate-query warning directly on the page, so you see the number without reading any log."
+          ],
+          ar: [
+            "EF command logging: أضف ‎.LogTo(Console.WriteLine, new[] { DbLoggerCategory.Database.Command.Name }, LogLevel.Information)‎ إلى خيارات الـ DbContext. ابحث عن سلسلة جمل SELECT شبه متطابقة لا تتغيّر فيها إلا قيمة الـ parameter — هذا الشكل المتكرّر هو N+1.",
+            "DbCommandInterceptor يعدّ الأوامر: أعد تعريف ReaderExecutedAsync، وزد عدّاداً في خدمة scoped، وسجّل المجموع في نهاية كل request. ابحث عن أي request عدده أكبر من خمسة تقريباً.",
+            "SQL Server Extended Events أو Profiler مع فلترة على اسم تطبيقك: ابحث عن مئات التنفيذات لنفس نص الجملة خلال ثانية واحدة — عدد تنفيذ عالٍ مع مدة ضئيلة لكل واحدة هي البصمة.",
+            "OpenTelemetry traces مع تفعيل instrumentation الخاص بـ EF Core: افتح request بطيئاً وابحث عن سلّم طويل من database spans القصيرة داخل HTTP span واحد، بدل span أو اثنين عريضين.",
+            "MiniProfiler في نسخة التطوير: يطبع عدد الاستعلامات وتحذير الاستعلامات المكرّرة على الصفحة مباشرة، فترى الرقم دون قراءة أي log."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "The fastest confirmation takes one minute: call the endpoint with page size 10, then with page size 100, and compare response times. If the time grows roughly ten times while the response body stays a similar size, it is N+1 and not slow SQL.",
+          ar: "أسرع تأكيد يستغرق دقيقة واحدة: نادِ الـ endpoint بحجم صفحة 10، ثم بحجم صفحة 100، وقارن أزمنة الاستجابة. إذا تضاعف الزمن نحو عشر مرات بينما بقي حجم الرد متقارباً، فالمشكلة N+1 وليست SQL بطيئاً."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "N+1 is one of the most common causes of an application that is fast in staging and slow on launch day. It usually surfaces as a support ticket about one specific page, not as a database alert, because each individual query looks healthy. Teams find it when traffic or data grows past the point where the extra round trips fit inside the latency budget.",
+          ar: "الـ N+1 من أكثر أسباب تطبيق سريع في staging وبطيء يوم الإطلاق. يظهر عادة كتذكرة دعم عن صفحة واحدة بعينها، لا كتنبيه من قاعدة البيانات، لأن كل استعلام منفرد يبدو سليماً. تكتشفه الفرق عندما ينمو الترافيك أو البيانات إلى حدّ لم تعد فيه الرحلات الإضافية تتّسع داخل ميزانية زمن الاستجابة."
+        },
+        {
+          t: "ul",
+          en: [
+            "E-commerce catalogues: a product list page showing each item's category name and review count — two navigation properties per row, so a 60-item grid becomes 121 queries and the page takes over a second.",
+            "Admin and back-office tools: grids showing 200 rows with a status label resolved per row. Nobody load-tests internal tools, so these run for years at 4 seconds a page until someone finally measures.",
+            "Reporting and data export jobs: a CSV export that enriches each row with a lookup runs one query per row. At 200,000 rows the job takes six hours instead of four minutes.",
+            "Multi-tenant SaaS dashboards: a summary widget that loads each tenant's counts separately. It is fine for the first hundred tenants and falls over silently once onboarding passes a few thousand."
+          ],
+          ar: [
+            "كتالوجات التجارة الإلكترونية: صفحة قائمة منتجات تعرض اسم الفئة وعدد المراجعات لكل عنصر — اثنان من navigation properties لكل صف، فتصبح شبكة من 60 عنصراً 121 استعلاماً وتستغرق الصفحة أكثر من ثانية.",
+            "أدوات الإدارة والـ back-office: جداول تعرض 200 صف مع تسمية حالة تُحلّ لكل صف. لا أحد يختبر حمل الأدوات الداخلية، فتظل تعمل سنوات بأربع ثوانٍ للصفحة حتى يقيسها أحد أخيراً.",
+            "مهام التقارير وتصدير البيانات: تصدير CSV يُثري كل صف بـ lookup فيشغّل استعلاماً لكل صف. عند 200,000 صف تستغرق المهمة ست ساعات بدل أربع دقائق.",
+            "لوحات SaaS متعدّدة المستأجرين: widget ملخّص يحمّل أعداد كل tenant بشكل منفصل. يعمل جيداً لأول مئة tenant وينهار بصمت بعد تجاوز بضعة آلاف."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Build the Orders/Customers/OrderLines tables with 50 orders and 10 lines each. Write the loop version from this lesson with EF command logging turned on. Count the SELECT statements in the console. You are done when you can point at exactly 101 statements and say which line of C# caused each group.",
+          ar: "أنشئ جداول Orders و Customers و OrderLines مع 50 order وعشرة lines لكل واحد. اكتب نسخة الـ loop من هذا الدرس مع تفعيل EF command logging. عُدّ جمل SELECT في الـ console. تكون قد أنجزت عندما تستطيع الإشارة إلى 101 جملة بالضبط وتحديد أي سطر C# سبّب كل مجموعة."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Rewrite the same endpoint three ways: with Include, with a Select projection, and with two manual queries joined in memory by customer id. Measure response time and returned bytes for each. You are done when you have a three-row table of numbers and can explain why the projection wins on both.",
+          ar: "أعد كتابة نفس الـ endpoint بثلاث طرق: باستخدام Include، وباستخدام Select projection، وباستعلامين يدويين يُدمجان في الذاكرة عبر customer id. قِس زمن الاستجابة وحجم البيانات المعادة لكل طريقة. تكون قد أنجزت عندما يكون لديك جدول من ثلاثة صفوف من الأرقام وتستطيع شرح سبب تفوّق الـ projection في الاثنين."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Add Include for two collections (Lines and Tags) on the same query and log the row count the database returns. Then add AsSplitQuery and log it again. You are done when you can state the exact row count for both, show the multiplication that produces the first number, and say at which collection size split queries become the better choice.",
+          ar: "أضف Include لمجموعتين (Lines و Tags) على نفس الاستعلام وسجّل عدد الصفوف التي تعيدها قاعدة البيانات. ثم أضف AsSplitQuery وسجّل العدد مرة أخرى. تكون قد أنجزت عندما تستطيع ذكر عدد الصفوف بالضبط في الحالتين، وإظهار عملية الضرب التي تنتج الرقم الأول، وتحديد حجم الـ collection الذي تصبح عنده الاستعلامات المنفصلة الخيار الأفضل."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Write a DbCommandInterceptor that counts executed commands per request scope, and an integration test helper that fails any test whose request exceeds a configured limit. Apply it to three existing endpoints. You are done when the helper catches at least one real N+1 you did not know about, and when re-introducing the loop version breaks the build.",
+          ar: "اكتب DbCommandInterceptor يعدّ الأوامر المنفَّذة لكل request scope، و helper لاختبارات التكامل يُفشل أي اختبار يتجاوز طلبه حداً مضبوطاً. طبّقه على ثلاثة endpoints موجودة. تكون قد أنجزت عندما يلتقط الـ helper حالة N+1 حقيقية واحدة على الأقل لم تكن تعرف بها، وعندما تؤدي إعادة إدخال نسخة الـ loop إلى كسر الـ build."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "EF Core — Eager loading of related data (Include, ThenInclude, filtered include)", ar: "EF Core — التحميل المبكر للبيانات المرتبطة (Include و ThenInclude و filtered include)" },
+          url: "https://learn.microsoft.com/en-us/ef/core/querying/related-data/eager",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "EF Core — Single vs split queries and cartesian explosion", ar: "EF Core — الاستعلام الواحد مقابل المنفصل والـ cartesian explosion" },
+          url: "https://learn.microsoft.com/en-us/ef/core/querying/single-split-queries",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "EF Core — Efficient querying (projections, tracking, round trips)", ar: "EF Core — الاستعلام الفعّال (projections والتتبّع والرحلات)" },
+          url: "https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "EF Core — Lazy loading of related data, and why proxies fire queries", ar: "EF Core — التحميل الكسول للبيانات المرتبطة، ولماذا تطلق الـ proxies استعلامات" },
+          url: "https://learn.microsoft.com/en-us/ef/core/querying/related-data/lazy",
+          meta: { en: "Docs", ar: "توثيق" }
+        }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: {
+        en: "You load 50 orders with ToListAsync, then loop and read o.Customer.Name with lazy loading enabled. How many queries run in total?",
+        ar: "تحمّل 50 order عبر ToListAsync ثم تعمل loop وتقرأ o.Customer.Name مع تفعيل lazy loading. كم استعلاماً يُنفَّذ في المجموع؟"
+      },
+      options: [
+        { en: "1 — EF batches the customer reads automatically", ar: "1 — يجمّع EF قراءات الـ customer تلقائياً" },
+        { en: "2 — one for orders, one for all customers", ar: "2 — واحد للـ orders وواحد لكل الـ customers" },
+        { en: "51 — one for orders, one per order for the customer", ar: "51 — واحد للـ orders وواحد لكل order لجلب الـ customer" },
+        { en: "50 — one per order only", ar: "50 — واحد لكل order فقط" }
+      ],
+      correct: 2,
+      why: {
+        en: "The list query is one. Each o.Customer access on a proxy runs its own SELECT because the customer is not yet in the change tracker, so 50 more. That is the N+1 shape: 50 + 1 = 51.",
+        ar: "استعلام القائمة واحد. وكل وصول إلى o.Customer على الـ proxy يشغّل SELECT خاصاً به لأن الـ customer ليس في change tracker بعد، أي 50 استعلاماً إضافياً. هذا هو شكل N+1: ‎50 + 1 = 51‎."
+      }
+    },
+    {
+      q: {
+        en: "Why does o.Lines.Count() inside a Select behave differently from o.Lines.Count after loading?",
+        ar: "لماذا يختلف سلوك o.Lines.Count() داخل Select عن o.Lines.Count بعد التحميل؟"
+      },
+      options: [
+        { en: "They are identical; the parentheses are only style", ar: "متطابقان؛ الأقواس مسألة أسلوب فقط" },
+        { en: "Count() in a projection is translated to SQL, while Count on a loaded collection needs every row in memory first", ar: "الـ Count() داخل projection يُترجَم إلى SQL، بينما Count على collection محمّلة يحتاج كل الصفوف في الذاكرة أولاً" },
+        { en: "Count() is slower because it opens a second connection", ar: "الـ Count() أبطأ لأنه يفتح connection ثانياً" },
+        { en: "Count on a collection is translated to SQL, Count() is not", ar: "الـ Count على collection يُترجَم إلى SQL، و Count() لا يُترجَم" }
+      ],
+      correct: 1,
+      why: {
+        en: "Inside a projection EF turns Count() into a COUNT(*) subquery, so only a number crosses the network. The property version requires the collection to be materialised, so every line row is fetched just to be counted.",
+        ar: "داخل الـ projection يحوّل EF جملة Count() إلى subquery فيها COUNT(*)، فلا يعبر الشبكة سوى رقم. أما نسخة الخاصية فتتطلّب materialisation للـ collection، فتُجلب كل صفوف الـ lines لمجرّد عدّها."
+      }
+    },
+    {
+      q: {
+        en: "A query has Include(o => o.Lines) and Include(o => o.Tags) in one statement. Each order has 10 lines and 3 tags. How many rows come back per order?",
+        ar: "استعلام فيه Include(o => o.Lines) و Include(o => o.Tags) في جملة واحدة. كل order فيه 10 lines و3 tags. كم صفاً يعود لكل order؟"
+      },
+      options: [
+        { en: "13 — the two collections are appended", ar: "13 — تُضاف المجموعتان إلى بعضهما" },
+        { en: "10 — the larger collection wins", ar: "10 — المجموعة الأكبر هي الحاسمة" },
+        { en: "1 — EF flattens it into a single row", ar: "1 — يسطّح EF النتيجة إلى صف واحد" },
+        { en: "30 — every line is paired with every tag", ar: "30 — كل line يُقرن بكل tag" }
+      ],
+      correct: 3,
+      why: {
+        en: "Joining two collections in one SQL statement produces the cross product, 10 x 3 = 30 rows, with the order's own columns repeated 30 times. AsSplitQuery avoids this by running one query per collection.",
+        ar: "ربط مجموعتين في جملة SQL واحدة ينتج الجداء الديكارتي، ‎10 × 3 = 30‎ صفاً، مع تكرار أعمدة الـ order نفسها 30 مرة. ويتجنّب AsSplitQuery ذلك بتشغيل استعلام لكل collection."
+      }
+    },
+    {
+      q: {
+        en: "Which observation most reliably identifies N+1 rather than a slow query?",
+        ar: "أي ملاحظة تحدّد N+1 بشكل موثوق أكثر بدل استعلام بطيء؟"
+      },
+      options: [
+        { en: "Database CPU is pinned at 100%", ar: "الـ CPU في قاعدة البيانات ثابت عند 100%" },
+        { en: "Response time scales with row count while returned data stays about the same size", ar: "زمن الاستجابة يتناسب مع عدد الصفوف بينما يبقى حجم البيانات المعادة متقارباً" },
+        { en: "One statement appears in the slow-query log", ar: "تظهر جملة واحدة في slow-query log" },
+        { en: "The endpoint is slower on the first call after a deploy", ar: "الـ endpoint أبطأ في أول استدعاء بعد النشر" }
+      ],
+      correct: 1,
+      why: {
+        en: "N+1 costs scale with the number of rows, not the amount of data. Individual queries stay fast, so they never appear in duration-filtered slow-query logs — the ten-versus-hundred page-size comparison is the reliable test.",
+        ar: "تكلفة N+1 تتناسب مع عدد الصفوف لا مع حجم البيانات. تبقى الاستعلامات المنفردة سريعة، فلا تظهر في slow-query logs المفلترة حسب المدة — والمقارنة بين حجم صفحة 10 و100 هي الاختبار الموثوق."
+      }
+    },
+    {
+      q: {
+        en: "A query is written as db.Orders.Include(o => o.Customer).Select(o => new { o.Number }). What does EF load?",
+        ar: "استعلام مكتوب هكذا: db.Orders.Include(o => o.Customer).Select(o => new { o.Number }). ماذا يحمّل EF؟"
+      },
+      options: [
+        { en: "Only the Number column — the Include is ignored because the projection decides the shape", ar: "عمود Number فقط — يُتجاهل الـ Include لأن الـ projection يحدّد الشكل" },
+        { en: "Number plus all Customer columns", ar: "Number مع كل أعمدة الـ Customer" },
+        { en: "Nothing — this combination throws at runtime", ar: "لا شيء — هذه التركيبة ترمي استثناءً وقت التشغيل" },
+        { en: "Full Order entities with Customer attached", ar: "entities كاملة من Order مع Customer مرفق" }
+      ],
+      correct: 0,
+      why: {
+        en: "When a query ends in a projection, the projection alone determines what is fetched, and any earlier Include is dropped. This surprises people who add Include to fix N+1 without noticing a Select further down the chain.",
+        ar: "عندما ينتهي الاستعلام بـ projection، فإن الـ projection وحده يحدّد ما يُجلَب، ويُسقَط أي Include سابق. وهذا يفاجئ من يضيف Include لمعالجة N+1 دون أن ينتبه لوجود Select لاحق في السلسلة."
+      }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: EF split queries
+
+const efSplitLesson = {
+  id: "ef-split",
+  moduleId: "efcore",
+  title: { en: "Split queries and projections", ar: "الاستعلامات المنفصلة والـ projections" },
+  summary: {
+    en: "Loading two child collections in one SQL query multiplies rows; split queries and Select projections are the two ways out.",
+    ar: "تحميل مجموعتين من الأبناء في استعلام SQL واحد يضاعف عدد الصفوف؛ الـ split queries و الـ Select projections هما المخرجان."
+  },
+  mins: 14,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "When you ask EF Core to load one row plus two of its child lists in a single SQL query, the database has to put all of it in one flat result. It does that by pairing every child of the first list with every child of the second. The row count multiplies, and the same parent data is repeated in every row. Split queries and projections are the two fixes: send more than one query, or ask for fewer columns.",
+        ar: "عندما تطلب من EF Core تحميل صف واحد مع قائمتين من أبنائه في استعلام SQL واحد، على الـ database أن تضع كل ذلك في نتيجة مسطّحة واحدة. تفعل ذلك بمزاوجة كل ابن من القائمة الأولى مع كل ابن من القائمة الثانية. عدد الصفوف يتضاعف، وبيانات الأب نفسها تتكرر في كل صف. الحل طريقان: إرسال أكثر من استعلام، أو طلب أعمدة أقل."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Collection navigation", ar: "Collection navigation" },
+          v: { en: "A property on an entity that holds a list of related entities, like Order.Lines. A reference navigation holds a single one, like Order.Customer.", ar: "خاصية على الـ entity تحمل قائمة من entities مرتبطة، مثل Order.Lines. أما reference navigation فتحمل واحداً فقط، مثل Order.Customer." } },
+        { k: { en: "Include / eager loading", ar: "Include / eager loading" },
+          v: { en: "Telling EF to fetch a navigation together with the parent, in the same trip, instead of later.", ar: "إخبار EF بجلب الـ navigation مع الأب في نفس الرحلة بدلاً من جلبها لاحقاً." } },
+        { k: { en: "Cartesian explosion", ar: "Cartesian explosion" },
+          v: { en: "The row blow-up you get when one query joins two independent child lists: rows = children in list A × children in list B.", ar: "انفجار الصفوف الذي يحدث عندما يضم استعلام واحد قائمتَي أبناء مستقلتين: الصفوف = أبناء القائمة A × أبناء القائمة B." } },
+        { k: { en: "Split query", ar: "Split query" },
+          v: { en: "EF sends one SQL query per collection instead of one big joined query, then stitches the results together in memory.", ar: "يرسل EF استعلام SQL لكل مجموعة بدل استعلام واحد كبير بـ joins، ثم يجمّع النتائج في الذاكرة." } },
+        { k: { en: "Projection", ar: "Projection" },
+          v: { en: "A Select that builds a new shape (usually a DTO) instead of returning full entities, so only the columns you named are read.", ar: "استعلام Select يبني شكلاً جديداً (عادة DTO) بدل إرجاع entities كاملة، فتُقرأ الأعمدة التي سمّيتها فقط." } },
+        { k: { en: "DTO", ar: "DTO" },
+          v: { en: "Data Transfer Object — a small plain class that carries exactly the fields one screen or endpoint needs.", ar: "Data Transfer Object — كلاس بسيط صغير يحمل بالضبط الحقول التي تحتاجها شاشة أو endpoint واحد." } }
+      ]},
+      { t: "p",
+        en: "Here is the running example for this whole lesson: an endpoint GET /api/orders/{id} that returns one order with its lines and its payments. A real order in this system has 50 lines and 20 payments. The natural EF code Includes both lists. That should return 71 things: 1 order, 50 lines, 20 payments. Instead the database returns 1,000 rows — 50 × 20 — and the order's own columns are copied into every one of them.",
+        ar: "هذا هو المثال الذي سنستخدمه طوال الدرس: endpoint اسمه GET /api/orders/{id} يعيد order واحداً مع lines و payments الخاصة به. الـ order الحقيقي في هذا النظام فيه 50 line و 20 payment. الكود الطبيعي في EF يعمل Include للقائمتين. المفروض أن يعيد 71 عنصراً: order واحد و50 line و20 payment. لكن الـ database تعيد 1,000 صف — 50 × 20 — وأعمدة الـ order نفسه منسوخة في كل صف منها."
+      },
+      { t: "p",
+        en: "The everyday analogy: you ask a shop for a list of your purchases and a list of your payments, and you insist on one sheet of paper. The clerk cannot put two separate lists side by side on one sheet without inventing pairs, so they write every purchase next to every payment. You get 1,000 lines describing 70 facts. Asking for two sheets — one query per list — is the split query. Asking only for the item names and amounts instead of the full records is the projection.",
+        ar: "التشبيه اليومي: تطلب من متجر قائمة مشترياتك وقائمة مدفوعاتك، وتصرّ على ورقة واحدة. الموظف لا يستطيع وضع قائمتين منفصلتين جنباً إلى جنب في ورقة واحدة دون اختراع أزواج، فيكتب كل عملية شراء بجانب كل عملية دفع. تحصل على 1,000 سطر تصف 70 معلومة. طلب ورقتين — استعلام لكل قائمة — هو الـ split query. وطلب أسماء الأصناف والمبالغ فقط بدل السجلات الكاملة هو الـ projection."
+      },
+      { t: "callout", kind: "note",
+        en: "This is a different problem from N+1. N+1 is one query per parent row and grows with the number of parents. Cartesian explosion is a single query whose row count grows with the product of the child lists.",
+        ar: "هذه مشكلة مختلفة عن N+1. الـ N+1 هو استعلام لكل صف أب ويكبر بعدد الآباء. أما الـ cartesian explosion فهو استعلام واحد يكبر عدد صفوفه بحاصل ضرب قوائم الأبناء."
+      }
+    ]},
+
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "The code that causes it looks completely reasonable. Two Include calls, one query, no loop. Nothing in the C# hints that the result set is about to multiply.",
+        ar: "الكود الذي يسبب المشكلة يبدو معقولاً تماماً. استدعاءان لـ Include، استعلام واحد، بلا loop. لا شيء في الـ C# يلمّح إلى أن مجموعة النتائج على وشك أن تتضاعف."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "The innocent-looking query", ar: "الاستعلام الذي يبدو بريئاً" },
+        code: "var order = await db.Orders\n    .Include(o => o.Lines)      // 50 rows\n    .Include(o => o.Payments)   // 20 rows\n    .FirstOrDefaultAsync(o => o.Id == id);\n\n// Expected from the database: 71 rows.\n// Actually returned:          1,000 rows (50 x 20)."
+      },
+      { t: "p",
+        en: "SQL Server does exactly what it was asked. It joins Orders to OrderLines, then joins that to Payments. Because a line and a payment have no relationship to each other, every line is matched with every payment. Each of the 1,000 rows also carries all the Order columns and all the OrderLine columns again.",
+        ar: "SQL Server ينفّذ ما طُلب منه بالضبط. يعمل join بين Orders و OrderLines، ثم join لتلك النتيجة مع Payments. ولأن الـ line والـ payment لا علاقة بينهما، يُقابَل كل line بكل payment. وكل صف من الـ 1,000 صف يحمل أيضاً كل أعمدة الـ Order وكل أعمدة الـ OrderLine مرة أخرى."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Rows on the wire", ar: "الصفوف على الشبكة" },
+          v: { en: "1,000 instead of 71 — 14 times more rows for the same information.", ar: "1,000 بدل 71 — أربعة عشر ضعف الصفوف لنفس المعلومة." } },
+        { k: { en: "Bytes read from SQL", ar: "البايتات المقروءة من SQL" },
+          v: { en: "About 1.2 MB instead of about 40 KB, because wide parent columns repeat in every row.", ar: "حوالي 1.2 ميغابايت بدل حوالي 40 كيلوبايت، لأن أعمدة الأب العريضة تتكرر في كل صف." } },
+        { k: { en: "Endpoint p99", ar: "p99 للـ endpoint" },
+          v: { en: "Went from 40 ms to 310 ms — meaning the slowest 1 request in 100 took 310 ms.", ar: "ارتفع من 40 ms إلى 310 ms — أي أن أبطأ طلب من كل 100 طلب استغرق 310 ms." } },
+        { k: { en: "Where the time goes", ar: "أين يذهب الوقت" },
+          v: { en: "Not the query plan. It is reading 1,000 rows over the network and materialising them into objects.", ar: "ليس في خطة الاستعلام. الوقت يذهب في قراءة 1,000 صف عبر الشبكة وتحويلها إلى كائنات." } }
+      ]},
+      { t: "p",
+        en: "Two things make this worse in production than in a demo. First, it scales with data: an order with 200 lines and 100 payments returns 20,000 rows, and the growth is multiplication, not addition. Second, the returned object graph is correct — EF removes the duplicates when it builds the objects — so tests pass and nobody notices until the table is big.",
+        ar: "أمران يجعلان هذا أسوأ في الإنتاج منه في التجربة. الأول: أنه يتوسّع مع البيانات؛ order فيه 200 line و100 payment يعيد 20,000 صف، والنمو ضرب لا جمع. الثاني: أن شجرة الكائنات الناتجة صحيحة — إذ يحذف EF التكرار عند بناء الكائنات — فتنجح الاختبارات ولا ينتبه أحد حتى يكبر الجدول."
+      }
+    ]},
+
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "Trace one request through EF Core to see where the rows come from. EF turns your LINQ into a query tree, decides how many SQL statements to send, sends them, then builds objects from the rows that come back. The number of SQL statements is the whole subject of this lesson.",
+        ar: "تتبّع طلباً واحداً داخل EF Core لترى من أين تأتي الصفوف. يحوّل EF كود الـ LINQ إلى شجرة استعلام، ثم يقرر كم جملة SQL سيرسل، ثم يرسلها، ثم يبني الكائنات من الصفوف العائدة. عدد جمل الـ SQL هو موضوع هذا الدرس كله."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Query pipeline", ar: "Query pipeline" },
+          v: { en: "The stage that turns your LINQ expression into SQL text. It decides single vs split here.", ar: "المرحلة التي تحوّل تعبير الـ LINQ إلى نص SQL. القرار بين single و split يُتخذ هنا." } },
+        { k: { en: "Materialiser", ar: "Materialiser" },
+          v: { en: "The generated code that reads the DbDataReader row by row and creates entity instances.", ar: "الكود المولَّد الذي يقرأ الـ DbDataReader صفاً صفاً وينشئ نسخ الـ entities." } },
+        { k: { en: "Identity map", ar: "Identity map" },
+          v: { en: "A dictionary of primary key to already-created instance, so the same key never becomes two objects.", ar: "قاموس من المفتاح الأساسي إلى النسخة المُنشأة مسبقاً، حتى لا يصير المفتاح الواحد كائنين." } },
+        { k: { en: "Round trip", ar: "Round trip" },
+          v: { en: "One network journey to the database and back. Its cost is fixed latency, paid per query.", ar: "رحلة شبكة واحدة إلى الـ database والعودة. تكلفتها زمن ثابت يُدفع لكل استعلام." } }
+      ]},
+      { t: "p",
+        en: "In single-query mode, EF emits one SELECT with a LEFT JOIN per collection. All 1,000 rows arrive on one reader. The materialiser reads row 1, sees order 7, creates it, and puts it in the identity map. It then reads the line columns, sees line 1, creates it and attaches it. It reads the payment columns, sees payment 1, attaches it. On row 2 it sees order 7 again in the identity map and reuses the existing object, sees line 1 again and skips it, and only payment 2 is new. So 930 of the 1,000 rows are discarded after being parsed. The object graph is right; the work was wasted.",
+        ar: "في وضع single query يُصدر EF جملة SELECT واحدة فيها LEFT JOIN لكل مجموعة. تصل الصفوف الألف كلها على reader واحد. يقرأ الـ materialiser الصف الأول، يرى order رقم 7، ينشئه ويضعه في الـ identity map. ثم يقرأ أعمدة الـ line، يرى line رقم 1، ينشئه ويربطه. ثم يقرأ أعمدة الـ payment، يرى payment رقم 1، يربطه. في الصف الثاني يجد order 7 موجوداً في الـ identity map فيعيد استخدام الكائن نفسه، ويجد line 1 مكرراً فيتجاهله، والجديد فقط هو payment 2. أي أن 930 صفاً من الألف تُهمَل بعد تحليلها. النتيجة صحيحة لكن العمل ضاع."
+      },
+      { t: "p",
+        en: "Calling AsSplitQuery changes the plan. EF sends one SELECT for the order, one for its lines, one for its payments — three round trips instead of one. Each child query repeats the same WHERE filter as the parent and adds ORDER BY on the parent key columns. The ordering is not decoration: EF walks the child readers in the same key order as the parents so it can attach each child to the right parent without holding everything in a dictionary.",
+        ar: "استدعاء AsSplitQuery يغيّر الخطة. يرسل EF جملة SELECT للـ order، وأخرى لـ lines، وأخرى لـ payments — ثلاث round trips بدل واحدة. كل استعلام أبناء يكرر نفس شرط الـ WHERE الخاص بالأب ويضيف ORDER BY على أعمدة مفتاح الأب. هذا الترتيب ليس زينة: يمرّ EF على readers الأبناء بنفس ترتيب مفاتيح الآباء ليربط كل ابن بأبيه الصحيح دون الاحتفاظ بكل شيء في قاموس."
+      },
+      { t: "code", lang: "sql",
+        label: { en: "One query vs three (shortened)", ar: "استعلام واحد مقابل ثلاثة (مختصر)" },
+        code: "-- SINGLE QUERY: 1,000 rows, Order columns repeated 1,000 times\nSELECT o.*, l.*, p.*\nFROM Orders o\nLEFT JOIN OrderLines l ON l.OrderId = o.Id\nLEFT JOIN Payments   p ON p.OrderId = o.Id\nWHERE o.Id = @id;\n\n-- SPLIT QUERY: three statements, 1 + 50 + 20 = 71 rows total\nSELECT TOP(1) o.* FROM Orders o WHERE o.Id = @id;\n\nSELECT l.* FROM OrderLines l\nINNER JOIN (SELECT TOP(1) o.Id FROM Orders o WHERE o.Id = @id) t ON l.OrderId = t.Id\nORDER BY t.Id;\n\nSELECT p.* FROM Payments p\nINNER JOIN (SELECT TOP(1) o.Id FROM Orders o WHERE o.Id = @id) t ON p.OrderId = t.Id\nORDER BY t.Id;"
+      },
+      { t: "p",
+        en: "The projection route removes the problem from a different direction. A Select that names specific fields makes EF read only those columns and skip the change tracker entirely, because the result is a plain object EF has no reason to track. You still get one SQL statement, but the repeated columns are narrow ones — an integer and a decimal per row instead of every column of Orders. Projecting a child list inside the Select is also allowed, and EF applies the same single-vs-split rule to it.",
+        ar: "طريق الـ projection يزيل المشكلة من اتجاه آخر. جملة Select تسمّي حقولاً محددة تجعل EF يقرأ تلك الأعمدة فقط ويتجاوز الـ change tracker تماماً، لأن الناتج كائن عادي لا سبب لتتبّعه. تبقى جملة SQL واحدة، لكن الأعمدة المكررة تصبح ضيّقة — عدد صحيح ورقم عشري لكل صف بدل كل أعمدة Orders. ويُسمح أيضاً بعمل projection لقائمة أبناء داخل الـ Select، ويطبّق EF عليها نفس قاعدة single مقابل split."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "The two fixes", ar: "الحلّان" },
+        code: "// Fix 1 — split query: same entities, three cheap queries.\nvar order = await db.Orders\n    .Include(o => o.Lines)\n    .Include(o => o.Payments)\n    .AsSplitQuery()\n    .FirstOrDefaultAsync(o => o.Id == id);\n\n// Fix 2 — projection: one query, only the columns the screen shows.\nvar dto = await db.Orders\n    .Where(o => o.Id == id)\n    .Select(o => new OrderDto(\n        o.Id,\n        o.PlacedAtUtc,\n        o.Lines.Select(l => new LineDto(l.Sku, l.Qty, l.UnitPrice)).ToList(),\n        o.Payments.Select(p => new PaymentDto(p.Method, p.Amount)).ToList()))\n    .AsSplitQuery()\n    .FirstOrDefaultAsync();\n\n// Make split the default for the whole app, opt out per query with AsSingleQuery().\nservices.AddDbContext<AppDb>(o => o.UseSqlServer(cs,\n    sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));"
+      },
+      { t: "p",
+        en: "One mechanism you must know before you turn split queries on everywhere: the three statements are separate. By default they are not wrapped in a transaction, so another user can insert a payment in the gap between statement two and statement three. You then return an order whose lines are from 10:00:00.100 and whose payments are from 10:00:00.140. A single query cannot show that skew; a split query can.",
+        ar: "آلية واحدة يجب أن تعرفها قبل تفعيل الـ split queries في كل مكان: الجُمل الثلاث منفصلة. افتراضياً لا تُلف في transaction، فيستطيع مستخدم آخر إدراج payment في الفجوة بين الجملة الثانية والثالثة. عندها تعيد order أسطره من اللحظة 10:00:00.100 ومدفوعاته من اللحظة 10:00:00.140. الاستعلام الواحد لا يمكن أن يُظهر هذا التفاوت، أما الـ split query فيمكن."
+      }
+    ]},
+
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "Row count becomes a sum (1 + 50 + 20) instead of a product (50 x 20).",
+            "Parent columns are sent once per parent, not once per combination.",
+            "Memory use during materialisation drops with the row count.",
+            "One line of code, no change to the returned object graph."
+          ],
+          ar: [
+            "عدد الصفوف يصبح جمعاً (1 + 50 + 20) بدل ضرب (50 × 20).",
+            "أعمدة الأب تُرسل مرة لكل أب، لا مرة لكل تركيبة.",
+            "استهلاك الذاكرة أثناء بناء الكائنات ينخفض مع انخفاض عدد الصفوف.",
+            "سطر واحد من الكود، ولا تغيير في شجرة الكائنات العائدة."
+          ]
+        },
+        cons: {
+          en: [
+            "One network round trip per collection instead of one in total.",
+            "No transaction by default, so the collections can be from different moments.",
+            "Each child query re-runs the parent's filter, so an expensive WHERE is paid again.",
+            "Harder to read in a SQL trace: one logical read is now several statements."
+          ],
+          ar: [
+            "round trip شبكية لكل مجموعة بدل واحدة إجمالاً.",
+            "لا transaction افتراضياً، فقد تأتي المجموعات من لحظات مختلفة.",
+            "كل استعلام أبناء يعيد تنفيذ شرط الأب، فالـ WHERE المكلف يُدفع ثمنه مجدداً.",
+            "أصعب في القراءة داخل SQL trace: قراءة منطقية واحدة صارت عدة جُمل."
+          ]
+        },
+        limits: {
+          en: [
+            "Only helps when two or more collections load at the same level.",
+            "Useless for a single collection — one Include never explodes.",
+            "Does not reduce the number of columns; a wide entity is still wide.",
+            "EF Core 5.0 and later only."
+          ],
+          ar: [
+            "ينفع فقط عند تحميل مجموعتين أو أكثر على نفس المستوى.",
+            "بلا فائدة مع مجموعة واحدة — Include واحد لا ينفجر أبداً.",
+            "لا يقلّل عدد الأعمدة؛ الـ entity العريض يبقى عريضاً.",
+            "متاح في EF Core 5.0 فما فوق فقط."
+          ]
+        },
+        alts: {
+          en: [
+            "Select projection to a DTO: fewer columns and no tracking, best for read endpoints.",
+            "Two separate LINQ queries you write and combine yourself.",
+            "Paginate the big child list instead of loading all of it.",
+            "A raw SQL or Dapper query for one hot read path."
+          ],
+          ar: [
+            "Select projection إلى DTO: أعمدة أقل وبلا tracking، الأنسب لـ endpoints القراءة.",
+            "استعلاما LINQ منفصلان تكتبهما وتدمج نتيجتهما بنفسك.",
+            "ترقيم صفحات للقائمة الكبيرة بدل تحميلها كاملة.",
+            "استعلام SQL خام أو Dapper لمسار قراءة واحد ساخن."
+          ]
+        }
+      }
+    ]},
+
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "Adding a second Include and never rechecking the SQL", ar: "إضافة Include ثانٍ دون مراجعة الـ SQL" },
+        body: {
+          en: "A developer added .Include(o => o.Payments) to an existing query that already had .Include(o => o.Lines). The endpoint had been stable for a year. After deploy, p95 latency on GET /api/orders/{id} went from 55 ms to 480 ms — the slowest 5 requests in 100 now took nearly half a second. Nothing else changed. The second Include turned 51 rows into 1,000 because every line was now paired with every payment.",
+          ar: "أضاف مطوّر ‎.Include(o => o.Payments)‎ إلى استعلام كان فيه ‎.Include(o => o.Lines)‎ أصلاً. كان الـ endpoint مستقراً لسنة. بعد النشر ارتفع زمن p95 لـ GET /api/orders/{id} من 55 ms إلى 480 ms — أي أن أبطأ 5 طلبات من كل 100 صارت تقارب نصف ثانية. لم يتغيّر شيء آخر. الـ Include الثاني حوّل 51 صفاً إلى 1,000 لأن كل line صار مقترناً بكل payment."
+        },
+        fix: ".Include(o => o.Lines)\n.Include(o => o.Payments)\n.AsSplitQuery()"
+      },
+      { t: "mistake",
+        title: { en: "Turning split query on globally for a chatty database", ar: "تفعيل split query عالمياً مع database بعيدة" },
+        body: {
+          en: "A team set UseQuerySplittingBehavior(SplitQuery) for the whole application. Local tests were fine because the database was on the same machine. In production the database was in another availability zone with 4 ms round trip time. A page that loaded a customer with four collections now paid five round trips instead of one — 20 ms of pure network latency added to every call, on queries that returned 30 rows and never needed splitting.",
+          ar: "فعّل فريق ‎UseQuerySplittingBehavior(SplitQuery)‎ للتطبيق كله. نجحت الاختبارات محلياً لأن الـ database على نفس الجهاز. في الإنتاج كانت الـ database في availability zone أخرى بزمن round trip يبلغ 4 ms. صفحة تحمّل customer مع أربع مجموعات صارت تدفع خمس round trips بدل واحدة — 20 ms زمن شبكة صافٍ يُضاف إلى كل نداء، على استعلامات تعيد 30 صفاً ولم تحتج تقسيماً أصلاً."
+        },
+        fix: "// keep single as the default, split the few queries that need it\n.AsSplitQuery()   // per query\n// or, if global split is on:\n.AsSingleQuery()  // opt this query back out"
+      },
+      { t: "mistake",
+        title: { en: "Split query on a financial read that must be consistent", ar: "split query على قراءة مالية يجب أن تكون متسقة" },
+        body: {
+          en: "A balance screen loaded an account with its charges and its credits using AsSplitQuery. Under load, a payment landed between the charges query and the credits query. The screen showed a charge that the just-recorded credit had already covered, and the displayed balance was wrong by that amount. It reproduced roughly once in 5,000 page loads, which is often enough to matter and rare enough to look like a ghost. The fix wraps the read in a snapshot-isolation transaction — a mode where every statement inside it sees the database exactly as it was when the transaction started.",
+          ar: "شاشة رصيد كانت تحمّل account مع charges و credits باستخدام AsSplitQuery. تحت الحمل وصل payment بين استعلام الـ charges واستعلام الـ credits. أظهرت الشاشة charge كان الـ credit المسجَّل للتو قد غطّاه، فظهر الرصيد خاطئاً بذلك المبلغ. تكرّر الأمر مرة تقريباً كل 5,000 تحميل للصفحة، وهو معدّل يكفي ليضر ويندر بما يكفي ليبدو كشبح. الحل هو لفّ القراءة في transaction بعزل snapshot — وهو وضع ترى فيه كل جملة داخله الـ database كما كانت لحظة بدء الـ transaction بالضبط."
+        },
+        fix: "using var tx = await db.Database.BeginTransactionAsync(\n    System.Data.IsolationLevel.Snapshot);\nvar acct = await db.Accounts\n    .Include(a => a.Charges).Include(a => a.Credits)\n    .AsSplitQuery().FirstAsync(a => a.Id == id);\nawait tx.CommitAsync();"
+      },
+      { t: "mistake",
+        title: { en: "Splitting instead of projecting on a read-only endpoint", ar: "التقسيم بدل الـ projection في endpoint للقراءة فقط" },
+        body: {
+          en: "A report endpoint returned 200 orders with lines and payments, each entity having about 40 columns. AsSplitQuery fixed the row explosion, so the team stopped there. The endpoint still moved 18 MB per call and spent 300 ms in the change tracker building and snapshotting entities that were serialised to JSON and thrown away. A Select projection to a DTO with 6 fields cut the payload to 900 KB and the time to 45 ms.",
+          ar: "endpoint تقارير كان يعيد 200 order مع lines و payments، وكل entity فيه نحو 40 عموداً. أصلح AsSplitQuery انفجار الصفوف، فتوقف الفريق عند ذلك. ظل الـ endpoint ينقل 18 ميغابايت لكل نداء ويقضي 300 ms في الـ change tracker وهو يبني ويصوّر entities تُحوَّل إلى JSON ثم تُرمى. أدّى Select projection إلى DTO بستة حقول إلى خفض الحمولة إلى 900 كيلوبايت والزمن إلى 45 ms."
+        },
+        fix: ".AsNoTracking()\n.Select(o => new OrderRowDto(o.Id, o.PlacedAtUtc, o.Total))"
+      }
+    ]},
+
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What does AsSplitQuery do?", ar: "ماذا يفعل AsSplitQuery؟" },
+        a: {
+          en: "It tells EF Core to load each included collection with its own SQL query instead of joining them all into one. So an order with lines and payments becomes three queries instead of one. You get the same objects back; only the number of database trips changes.",
+          ar: "يخبر EF Core أن يحمّل كل مجموعة مضمّنة باستعلام SQL خاص بها بدل ضمّها كلها في استعلام واحد. فـ order مع lines و payments يصبح ثلاثة استعلامات بدل واحد. تحصل على نفس الكائنات؛ ما يتغيّر هو عدد الرحلات إلى الـ database فقط."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "Why do two Includes multiply rows instead of adding them?", ar: "لماذا يضاعف Include-ان عدد الصفوف بدل أن يجمعاها؟" },
+        a: {
+          en: "Because SQL returns one flat table. The lines and the payments are two independent lists hanging off the same order, and there is no way to place them side by side in one result without pairing them. The join pairs every line with every payment, so you get lines times payments rows, each repeating the order's columns.",
+          ar: "لأن SQL يعيد جدولاً مسطّحاً واحداً. الـ lines والـ payments قائمتان مستقلتان معلّقتان بنفس الـ order، ولا سبيل لوضعهما جنباً إلى جنب في نتيجة واحدة دون مزاوجتهما. الـ join يزاوج كل line مع كل payment، فتحصل على عدد صفوف يساوي lines × payments، كل منها يكرر أعمدة الـ order."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "When would you choose a projection over a split query?", ar: "متى تختار projection بدل split query؟" },
+        a: {
+          en: "Whenever the path is read-only and I know exactly which fields the caller needs. A projection wins twice: it reads fewer columns and it skips change tracking, because a DTO is not an entity. I keep split queries for cases where I actually need tracked entities — usually a write path that loads an aggregate before modifying it.",
+          ar: "كلما كان المسار للقراءة فقط وأعرف بالضبط الحقول التي يحتاجها المستدعي. الـ projection يربح مرتين: يقرأ أعمدة أقل ويتجاوز الـ change tracking، لأن الـ DTO ليس entity. وأبقي الـ split queries للحالات التي أحتاج فيها entities متتبَّعة فعلاً — عادة مسار كتابة يحمّل aggregate قبل تعديله."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "What is the correctness cost of split queries?", ar: "ما تكلفة الصحّة في الـ split queries؟" },
+        a: {
+          en: "The queries run at different moments and, by default, outside a transaction. Another writer can commit between them, so the parent and the two collections can each reflect a different point in time. For most screens nobody notices. For anything where the collections must add up — balances, stock counts, audit views — I wrap the read in a snapshot transaction so all three statements see one consistent version of the data.",
+          ar: "الاستعلامات تُنفَّذ في لحظات مختلفة، وافتراضياً خارج transaction. يستطيع كاتب آخر أن يعمل commit بينها، فيعكس الأب وكل مجموعة نقطة زمنية مختلفة. في معظم الشاشات لا ينتبه أحد. أما فيما يجب أن تتوازن فيه المجموعات — أرصدة، جرد مخزون، شاشات تدقيق — فألفّ القراءة في transaction بمستوى snapshot حتى ترى الجُمل الثلاث نسخة واحدة متسقة من البيانات."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "Would you enable split queries globally? Defend the answer.", ar: "هل تفعّل الـ split queries عالمياً؟ دافع عن إجابتك." },
+        a: {
+          en: "Usually no. Global split trades a row problem you have on a few queries for a latency cost on every query, and that cost is proportional to how far the database is. If most of my Includes are single collections, splitting them buys nothing and costs a round trip each. I would rather enable the EF warning for multiple collection includes, treat it as an error in CI, and add AsSplitQuery deliberately where the log shows it is needed.",
+          ar: "عادةً لا. التفعيل العالمي يقايض مشكلة صفوف في بضعة استعلامات بتكلفة زمن على كل استعلام، وهذه التكلفة تتناسب مع بُعد الـ database. إذا كانت معظم Includes عندي لمجموعة واحدة، فالتقسيم لا يفيد ويكلّف round trip لكل منها. أفضّل تفعيل تحذير EF الخاص بتعدد الـ collection includes، واعتباره خطأً في الـ CI، ثم إضافة AsSplitQuery عن قصد حيث يُظهر الـ log الحاجة."
+        }
+      },
+      { t: "qa", level: "staff",
+        q: { en: "How do you stop this class of bug from reappearing across many teams?", ar: "كيف تمنع هذا النوع من الأخطاء من التكرار عبر فرق كثيرة؟" },
+        a: {
+          en: "I make it visible rather than relying on people to remember. Three moves. First, configure the multiple-collection-include warning to throw in development and test builds, so the query fails loudly at the moment someone writes it. Second, put a per-request query log with row counts in the local dev experience, so a 1,000-row read is obvious before review. Third, set a team convention that read endpoints return DTOs, which removes the whole category by default and makes any raw-entity read a deliberate, reviewable choice.",
+          ar: "أجعل المشكلة مرئية بدل الاعتماد على ذاكرة الناس. ثلاث خطوات. الأولى: ضبط تحذير تعدد الـ collection includes ليُلقي استثناءً في بيئتَي التطوير والاختبار، فيفشل الاستعلام بصوت عالٍ لحظة كتابته. الثانية: إظهار سجل استعلامات لكل طلب مع عدد الصفوف في بيئة المطوّر، فتصبح قراءة بألف صف واضحة قبل المراجعة. الثالثة: وضع عرف للفريق بأن endpoints القراءة تعيد DTOs، وهذا يلغي الصنف كله افتراضياً ويجعل أي قراءة بـ entities خاماً قراراً مقصوداً وقابلاً للمراجعة."
+        }
+      }
+    ]},
+
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "Two collection Includes in one query", ar: "Include لمجموعتين في استعلام واحد" },
+        bad: "var order = await db.Orders\n    .Include(o => o.Lines)\n    .Include(o => o.Payments)\n    .FirstOrDefaultAsync(o => o.Id == id);",
+        good: "var order = await db.Orders\n    .Include(o => o.Lines)\n    .Include(o => o.Payments)\n    .AsSplitQuery()\n    .FirstOrDefaultAsync(o => o.Id == id);",
+        why: {
+          en: "Two collections at the same level make the database pair every child of one list with every child of the other. With 50 lines and 20 payments that is 1,000 rows carrying 71 facts. AsSplitQuery sends three small queries instead and returns exactly the same object. Flag this every time you see a second collection Include with no AsSplitQuery next to it.",
+          ar: "مجموعتان على نفس المستوى تجعلان الـ database تزاوج كل ابن من قائمة مع كل ابن من الأخرى. مع 50 line و20 payment تصير 1,000 صف تحمل 71 معلومة. AsSplitQuery يرسل ثلاثة استعلامات صغيرة بدلاً منها ويعيد نفس الكائن تماماً. نبّه على هذا كلما رأيت Include ثانياً لمجموعة بلا AsSplitQuery بجانبه."
+        }
+      },
+      { t: "review", severity: "medium",
+        title: { en: "Loading full entities to build a response DTO", ar: "تحميل entities كاملة لبناء DTO للاستجابة" },
+        bad: "var orders = await db.Orders\n    .Include(o => o.Lines)\n    .Where(o => o.CustomerId == customerId)\n    .ToListAsync();\n\nreturn orders.Select(o => new OrderSummary(\n    o.Id, o.PlacedAtUtc, o.Lines.Sum(l => l.Qty)));",
+        good: "return await db.Orders\n    .Where(o => o.CustomerId == customerId)\n    .Select(o => new OrderSummary(\n        o.Id, o.PlacedAtUtc, o.Lines.Sum(l => l.Qty)))\n    .ToListAsync();",
+        why: {
+          en: "The bad version reads every column of every order and every line, tracks all of them, and then throws almost all of it away in memory. The good version pushes the Sum into SQL, reads three values per order, and returns objects the change tracker ignores. Same result, a fraction of the columns and none of the tracking work.",
+          ar: "النسخة السيئة تقرأ كل أعمدة كل order وكل line، وتتتبّعها جميعاً، ثم ترمي أغلبها في الذاكرة. النسخة الجيدة تدفع الـ Sum إلى SQL، وتقرأ ثلاث قيم لكل order، وتعيد كائنات يتجاهلها الـ change tracker. نفس النتيجة، بجزء بسيط من الأعمدة وبلا أي عمل تتبّع."
+        }
+      }
+    ]},
+
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a typical order service this decision is made per endpoint, not per application. The write path — POST /api/orders/{id}/cancel — loads the order aggregate (the order plus everything that must change with it) with tracked entities so SaveChanges can detect what changed; that path benefits from AsSplitQuery when it needs more than one collection. The read path — GET /api/orders?customerId= — feeds a screen and should project straight to DTOs, which sidesteps the whole problem and keeps payloads small.",
+        ar: "في خدمة orders نموذجية يُتخذ هذا القرار لكل endpoint، لا لكل تطبيق. مسار الكتابة — POST /api/orders/{id}/cancel — يحمّل الـ aggregate (الـ order وكل ما يجب أن يتغيّر معه) بـ entities متتبَّعة ليكتشف SaveChanges ما تغيّر؛ وهذا المسار يستفيد من AsSplitQuery عند حاجته لأكثر من مجموعة. أما مسار القراءة — GET /api/orders?customerId= — فيغذّي شاشة ويجب أن يعمل projection مباشرة إلى DTOs، وهذا يتفادى المشكلة كلها ويبقي الحمولات صغيرة."
+      },
+      { t: "ul",
+        en: [
+          "Read endpoints return DTOs by default; returning entities is the exception that needs a reason.",
+          "Write paths load tracked aggregates, and add AsSplitQuery only when two or more collections are included.",
+          "Keep the global splitting behaviour at SingleQuery and opt in per query, unless your database is on the same host.",
+          "Anywhere the collections must be mutually consistent, wrap the read in a snapshot-isolation transaction.",
+          "Never load an unbounded child collection for a screen; page it or aggregate it in SQL."
+        ],
+        ar: [
+          "endpoints القراءة تعيد DTOs افتراضياً؛ وإعادة entities هي الاستثناء الذي يحتاج مبرراً.",
+          "مسارات الكتابة تحمّل aggregates متتبَّعة، وتضيف AsSplitQuery فقط عند تضمين مجموعتين أو أكثر.",
+          "أبقِ سلوك التقسيم العام على SingleQuery واختر التقسيم لكل استعلام على حدة، إلا إذا كانت الـ database على نفس الخادم.",
+          "حيثما وجب أن تكون المجموعات متسقة فيما بينها، لُفّ القراءة في transaction بعزل snapshot.",
+          "لا تحمّل أبداً مجموعة أبناء غير محدودة لأجل شاشة؛ قسّمها إلى صفحات أو اجمعها في SQL."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "A useful rule for design reviews: count the collection navigations in the query. Zero or one means single query is fine. Two or more means either split it or project it — never leave it as is.",
+        ar: "قاعدة مفيدة في مراجعات التصميم: عُدّ الـ collection navigations في الاستعلام. صفر أو واحدة تعني أن الاستعلام الواحد مناسب. اثنتان أو أكثر تعني إما التقسيم أو الـ projection — ولا تتركه كما هو أبداً."
+      }
+    ]},
+
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Network", ar: "الشبكة" },
+          v: { en: "Single query moves rows = product of collections; split moves the sum. In the example, 1.2 MB versus 40 KB per call. Split adds one round trip per collection, so its cost is round-trip time times the number of collections.", ar: "الاستعلام الواحد ينقل صفوفاً = حاصل ضرب المجموعات؛ والمقسّم ينقل المجموع. في مثالنا 1.2 ميغابايت مقابل 40 كيلوبايت لكل نداء. والتقسيم يضيف round trip لكل مجموعة، فتكلفته = زمن الـ round trip × عدد المجموعات." } },
+        { k: { en: "Memory", ar: "الذاكرة" },
+          v: { en: "Every returned row is parsed into strings and values before duplicates are dropped, so a 1,000-row read allocates for 1,000 rows even though 70 survive. Fewer rows means less garbage and shorter GC pauses.", ar: "كل صف عائد يُحلَّل إلى نصوص وقيم قبل حذف التكرار، فقراءة بألف صف تحجز ذاكرة لألف صف رغم بقاء 70 فقط. صفوف أقل تعني قمامة أقل وتوقفات GC أقصر." } },
+        { k: { en: "Database", ar: "الـ database" },
+          v: { en: "Split runs the parent's WHERE once per statement. If that filter is a cheap primary-key lookup this is free; if it is an expensive scan you pay for it three times.", ar: "التقسيم ينفّذ شرط WHERE الخاص بالأب مرة لكل جملة. إن كان الشرط بحثاً رخيصاً بالمفتاح الأساسي فهو مجاني؛ وإن كان مسحاً مكلفاً فستدفع ثمنه ثلاث مرات." } },
+        { k: { en: "CPU", ar: "المعالج" },
+          v: { en: "Materialising and change-tracking dominate here, not SQL execution. A projection removes both: no tracking snapshot and far fewer columns to convert.", ar: "بناء الكائنات والـ change tracking هما ما يستهلك المعالج هنا، لا تنفيذ الـ SQL. الـ projection يزيل الاثنين: لا لقطة تتبّع، وأعمدة أقل بكثير لتحويلها." } },
+        { k: { en: "Scalability", ar: "قابلية التوسّع" },
+          v: { en: "Cartesian growth is multiplicative, so a good customer with more data is the one who breaks the endpoint. That makes the failure grow with success.", ar: "النمو الديكارتي ضربي، فالعميل الجيد صاحب البيانات الأكثر هو من يكسر الـ endpoint. أي أن العطل يكبر مع النجاح." } }
+      ]}
+    ]},
+
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "Turn on EF's SQL logging with LogTo(Console.WriteLine) — look at how many SELECT statements one call emits, and whether one of them joins two child tables.",
+          "Enable EnableSensitiveDataLogging in development only — it shows parameter values so you can replay the exact statement in SSMS.",
+          "Run the generated SQL in SQL Server Management Studio and read the row count in the results tab — if it is far above the number of entities you expect, that is the explosion.",
+          "Configure the MultipleCollectionIncludeWarning to throw: ConfigureWarnings(w => w.Throw(CoreEventId.MultipleCollectionIncludeWarning)) — the query then fails at development time instead of degrading in production.",
+          "Watch the Microsoft.EntityFrameworkCore counters, or the timing spans your monitoring tool records per request, for rows read per call — a jump in rows while query time stays flat points at materialisation, not at the plan."
+        ],
+        ar: [
+          "فعّل تسجيل SQL في EF عبر LogTo(Console.WriteLine) — وانظر كم جملة SELECT يصدرها نداء واحد، وهل فيها جملة تضم جدولَي أبناء.",
+          "فعّل EnableSensitiveDataLogging في بيئة التطوير فقط — يُظهر قيم الـ parameters فتستطيع إعادة تشغيل الجملة نفسها في SSMS.",
+          "شغّل الـ SQL المولَّد في SQL Server Management Studio واقرأ عدد الصفوف في تبويب النتائج — إن كان أكبر بكثير من عدد الـ entities المتوقع فهذا هو الانفجار.",
+          "اضبط MultipleCollectionIncludeWarning ليُلقي استثناءً: ConfigureWarnings(w => w.Throw(CoreEventId.MultipleCollectionIncludeWarning)) — فيفشل الاستعلام وقت التطوير بدل أن يتدهور في الإنتاج.",
+          "راقب عدّادات Microsoft.EntityFrameworkCore، أو الفترات الزمنية التي تسجّلها أداة المراقبة لكل طلب، لعدد الصفوف المقروءة في كل نداء — قفزة في الصفوف مع ثبات زمن الاستعلام تشير إلى بناء الكائنات لا إلى الخطة."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "The fastest check needs no tools: multiply the sizes of the child collections in your head. Two collections of 50 and 20 means 1,000 rows. If that number is much larger than the number of objects you expect back, you have found the bug.",
+        ar: "أسرع فحص لا يحتاج أدوات: اضرب أحجام مجموعات الأبناء ذهنياً. مجموعتان بحجم 50 و20 تعني 1,000 صف. إذا كان هذا الرقم أكبر بكثير من عدد الكائنات التي تتوقع عودتها، فقد وجدت الخطأ."
+      }
+    ]},
+
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "This bug shows up wherever one record owns several independent lists, which is most business software. It stays invisible during development because test data is small, and it appears in production on the biggest and most valuable records — the customer with the longest history, the order with the most amendments.",
+        ar: "يظهر هذا الخطأ حيثما يملك سجل واحد عدة قوائم مستقلة، وهذا حال معظم برمجيات الأعمال. يبقى غير مرئي أثناء التطوير لأن بيانات الاختبار صغيرة، ويظهر في الإنتاج على أكبر السجلات وأثمنها — العميل صاحب أطول تاريخ، والـ order صاحب أكثر التعديلات."
+      },
+      { t: "ul",
+        en: [
+          "E-commerce order pages: an order owns lines, payments, shipments and status history — four lists that multiply together into hundreds of thousands of rows.",
+          "Insurance and claims systems: a policy owns coverages, documents and endorsements, and the oldest policies are the ones that time out.",
+          "Ticketing and support tools: a ticket owns comments, attachments and audit events, so the busiest ticket is the slowest to open.",
+          "Reporting and export endpoints: they read many parents with many children, so they are the first place a projection pays for itself."
+        ],
+        ar: [
+          "صفحات الـ orders في التجارة الإلكترونية: الـ order يملك lines و payments و shipments وسجل الحالات — أربع قوائم تتضاعف معاً إلى مئات آلاف الصفوف.",
+          "أنظمة التأمين والمطالبات: الـ policy يملك coverages و documents و endorsements، وأقدم الوثائق هي التي تنتهي مهلتها.",
+          "أدوات التذاكر والدعم: التذكرة تملك comments و attachments و audit events، فأكثر التذاكر نشاطاً هي أبطؤها فتحاً.",
+          "endpoints التقارير والتصدير: تقرأ آباءً كثيرين بأبناء كثيرين، فهي أول مكان يردّ فيه الـ projection تكلفته."
+        ]
+      }
+    ]},
+
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Seed one order with 50 lines and 20 payments. Write the query with both Includes, enable LogTo, and count the rows the database returns. You are right when the log shows one SELECT and the result has 1,000 rows for 71 entities.",
+        ar: "أنشئ order واحداً بـ 50 line و20 payment. اكتب الاستعلام بالـ Include-ين، فعّل LogTo، وعُدّ الصفوف التي تعيدها الـ database. تكون على صواب حين يُظهر الـ log جملة SELECT واحدة ونتيجة فيها 1,000 صف مقابل 71 entity."
+      },
+      { t: "ex", diff: "medium",
+        en: "Add AsSplitQuery to the same query and rerun it. You are right when the log shows three SELECT statements totalling 71 rows, and an equality check confirms the returned object graph is identical to the single-query version.",
+        ar: "أضف AsSplitQuery إلى نفس الاستعلام وأعد تشغيله. تكون على صواب حين يُظهر الـ log ثلاث جمل SELECT مجموعها 71 صفاً، ويؤكد فحص تطابق أن شجرة الكائنات العائدة مطابقة لنسخة الاستعلام الواحد."
+      },
+      { t: "ex", diff: "hard",
+        en: "Rewrite the endpoint as a Select projection into an OrderDto with only Id, PlacedAtUtc, line SKU/qty and payment method/amount. Measure both versions with a stopwatch over 200 calls. You are right when the projection reads fewer columns in the SQL log and no entity appears in db.ChangeTracker.Entries().",
+        ar: "أعد كتابة الـ endpoint كـ Select projection إلى OrderDto يحوي فقط Id و PlacedAtUtc و SKU/qty للـ lines و method/amount للـ payments. قِس النسختين بـ stopwatch على 200 نداء. تكون على صواب حين يقرأ الـ projection أعمدة أقل في سجل الـ SQL ولا يظهر أي entity في db.ChangeTracker.Entries()."
+      },
+      { t: "ex", diff: "senior",
+        en: "Prove the consistency gap. Run the split query in a loop while a second process inserts payments continuously, and assert that the sum of payments matches the order total. You are right when you can make the assertion fail without a transaction, and make it pass by wrapping the read in a snapshot-isolation transaction.",
+        ar: "أثبت فجوة الاتساق. شغّل الـ split query في حلقة بينما تُدرِج عملية ثانية payments باستمرار، وتحقّق أن مجموع المدفوعات يطابق إجمالي الـ order. تكون على صواب حين تستطيع إفشال التحقق بلا transaction، وإنجاحه بلفّ القراءة في transaction بعزل snapshot."
+      }
+    ]},
+
+    { key: "refs", blocks: [
+      { t: "ref",
+        label: { en: "EF Core: single vs split queries", ar: "EF Core: single مقابل split queries" },
+        url: "https://learn.microsoft.com/en-us/ef/core/querying/single-split-queries",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "EF Core: efficient querying", ar: "EF Core: الاستعلام الفعّال" },
+        url: "https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "EF Core: loading related data", ar: "EF Core: تحميل البيانات المرتبطة" },
+        url: "https://learn.microsoft.com/en-us/ef/core/querying/related-data/",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "Entity Framework Core in Action (Jon P Smith)", ar: "Entity Framework Core in Action (Jon P Smith)" },
+        url: "https://www.manning.com/books/entity-framework-core-in-action-second-edition",
+        meta: { en: "Book", ar: "كتاب" }
+      }
+    ]}
+  ],
+  quiz: [
+    {
+      q: {
+        en: "An order has 40 lines and 15 payments. How many rows does a single query with both Includes return?",
+        ar: "order فيه 40 line و15 payment. كم صفاً يعيد استعلام واحد فيه الـ Include-ان؟"
+      },
+      options: [
+        { en: "55", ar: "55" },
+        { en: "56", ar: "56" },
+        { en: "600", ar: "600" },
+        { en: "601", ar: "601" }
+      ],
+      correct: 2,
+      why: {
+        en: "The join pairs every line with every payment, so the row count is 40 x 15 = 600, not 40 + 15. That is the cartesian explosion.",
+        ar: "الـ join يزاوج كل line مع كل payment، فعدد الصفوف 40 × 15 = 600، لا 40 + 15. هذا هو الـ cartesian explosion."
+      }
+    },
+    {
+      q: {
+        en: "What is the main risk of AsSplitQuery that a single query does not have?",
+        ar: "ما الخطر الأساسي في AsSplitQuery والذي لا يوجد في الاستعلام الواحد؟"
+      },
+      options: [
+        { en: "It returns a different object graph than the single query", ar: "يعيد شجرة كائنات مختلفة عن الاستعلام الواحد" },
+        { en: "The collections can come from different points in time unless you use a transaction", ar: "قد تأتي المجموعات من نقاط زمنية مختلفة ما لم تستخدم transaction" },
+        { en: "It disables change tracking on the loaded entities", ar: "يعطّل الـ change tracking على الـ entities المحمّلة" },
+        { en: "It stops EF from translating the WHERE clause to SQL", ar: "يمنع EF من ترجمة شرط WHERE إلى SQL" }
+      ],
+      correct: 1,
+      why: {
+        en: "The statements run separately and, by default, outside a transaction, so a writer can commit between them. The object graph and tracking behaviour are unchanged.",
+        ar: "الجُمل تُنفَّذ منفصلة وافتراضياً خارج transaction، فيمكن لكاتب أن يعمل commit بينها. أما شجرة الكائنات وسلوك التتبّع فلا يتغيران."
+      }
+    },
+    {
+      q: {
+        en: "Which query benefits least from AsSplitQuery?",
+        ar: "أي استعلام يستفيد أقل ما يمكن من AsSplitQuery؟"
+      },
+      options: [
+        { en: "One Include of a single collection", ar: "Include واحد لمجموعة واحدة" },
+        { en: "Two collection Includes at the same level", ar: "Include-ان لمجموعتين على نفس المستوى" },
+        { en: "Three collection Includes on a large parent", ar: "ثلاثة Includes لمجموعات على أب كبير" },
+        { en: "Two collections plus a nested ThenInclude collection", ar: "مجموعتان مع ThenInclude لمجموعة متداخلة" }
+      ],
+      correct: 0,
+      why: {
+        en: "With one collection there is nothing to multiply against, so the single query already returns the minimum rows. Splitting only adds a round trip.",
+        ar: "مع مجموعة واحدة لا يوجد ما تُضرب فيه، فالاستعلام الواحد يعيد أصلاً الحد الأدنى من الصفوف. والتقسيم يضيف round trip فقط."
+      }
+    },
+    {
+      q: {
+        en: "Why does a Select projection to a DTO usually beat AsSplitQuery on a read-only endpoint?",
+        ar: "لماذا يتفوّق Select projection إلى DTO عادةً على AsSplitQuery في endpoint للقراءة فقط؟"
+      },
+      options: [
+        { en: "It always sends fewer SQL statements", ar: "يرسل دائماً جمل SQL أقل" },
+        { en: "It reads only the named columns and skips change tracking", ar: "يقرأ الأعمدة المسمّاة فقط ويتجاوز الـ change tracking" },
+        { en: "It runs inside a transaction automatically", ar: "يعمل داخل transaction تلقائياً" },
+        { en: "It removes the need for indexes on the child tables", ar: "يلغي الحاجة إلى فهارس على جداول الأبناء" }
+      ],
+      correct: 1,
+      why: {
+        en: "A projection returns plain objects, so EF reads fewer columns and does not snapshot anything for the change tracker. The number of statements can still be one or several.",
+        ar: "الـ projection يعيد كائنات عادية، فيقرأ EF أعمدة أقل ولا يأخذ لقطة لأي شيء للـ change tracker. أما عدد الجُمل فقد يبقى واحداً أو أكثر."
+      }
+    },
+    {
+      q: {
+        en: "Why does EF add an ORDER BY on the parent key columns in a split query?",
+        ar: "لماذا يضيف EF جملة ORDER BY على أعمدة مفتاح الأب في الـ split query؟"
+      },
+      options: [
+        { en: "To make the API response sorted for the client", ar: "ليجعل استجابة الـ API مرتّبة للعميل" },
+        { en: "To let the database reuse the cached plan", ar: "ليتيح للـ database إعادة استخدام الخطة المخزّنة" },
+        { en: "So it can walk parents and children in the same key order and attach each child correctly", ar: "ليتمكن من المرور على الآباء والأبناء بنفس ترتيب المفاتيح وربط كل ابن بشكل صحيح" },
+        { en: "Because SQL Server requires ORDER BY on every JOIN", ar: "لأن SQL Server يشترط ORDER BY في كل JOIN" }
+      ],
+      correct: 2,
+      why: {
+        en: "The child rows arrive in a separate result set, so EF needs a shared order to line them up with their parents while reading. It is a correlation mechanism, not presentation.",
+        ar: "صفوف الأبناء تصل في مجموعة نتائج منفصلة، فيحتاج EF ترتيباً مشتركاً ليصفّها مع آبائها أثناء القراءة. إنها آلية ربط، لا عرض."
+      }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: clustered vs non-clustered
+
+const clusteredLesson = {
+  id: "clustered",
+  moduleId: "sql",
+  title: { en: "Clustered vs non-clustered", ar: "Clustered مقابل Non-clustered" },
+  summary: {
+    en: "A clustered index decides the order the table's rows are physically stored in; a non-clustered index is a small separate copy of a few columns that points back to those rows.",
+    ar: "الـ clustered index يحدد الترتيب الفعلي لتخزين صفوف الجدول على القرص، والـ non-clustered index نسخة صغيرة منفصلة من بعض الأعمدة تشير إلى تلك الصفوف."
+  },
+  mins: 16,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "An index is an extra sorted structure the database keeps beside your data so it can jump straight to the rows you asked for instead of reading the whole table. SQL Server has two kinds. A clustered index sorts and stores the actual table rows in the order of its key columns — the table becomes the index. A non-clustered index is a separate, smaller structure holding only a few columns in sorted order, plus a pointer to where the full row lives.",
+          ar: "الـ index هو بنية إضافية مرتبة تحتفظ بها قاعدة البيانات بجانب بياناتك، لتصل مباشرة إلى الصفوف المطلوبة بدل قراءة الجدول كله. في SQL Server يوجد نوعان. الـ clustered index يرتّب ويخزّن صفوف الجدول الفعلية بترتيب أعمدة مفتاحه، أي أن الجدول نفسه يصبح هو الـ index. أما الـ non-clustered index فهو بنية منفصلة أصغر تحتوي على بعض الأعمدة فقط بترتيب مرتّب، مع مؤشر إلى مكان الصف الكامل." },
+        { t: "kv", rows: [
+          { k: { en: "Page", ar: "Page" },
+            v: { en: "The 8 KB block SQL Server reads and writes as one unit. Every row lives inside some page; you never read half a page.", ar: "الوحدة بحجم 8 KB التي يقرأها SQL Server ويكتبها دفعة واحدة. كل صف يقع داخل page ما، ولا يمكن قراءة نصف page." } },
+          { k: { en: "B-tree", ar: "B-tree" },
+            v: { en: "The tree shape both index types use: a root page at the top, a few levels of pointer pages, and the sorted data at the bottom. Each level narrows the search.", ar: "شكل الشجرة الذي يستخدمه النوعان: root page في الأعلى، ثم مستويات قليلة من صفحات المؤشرات، والبيانات المرتبة في الأسفل. كل مستوى يضيّق نطاق البحث." } },
+          { k: { en: "Leaf level", ar: "Leaf level" },
+            v: { en: "The bottom row of pages in the tree. For a clustered index the leaf holds the full rows. For a non-clustered index it holds only the indexed columns.", ar: "المستوى الأسفل من الصفحات في الشجرة. في الـ clustered index يحتوي الـ leaf على الصفوف الكاملة، وفي الـ non-clustered يحتوي على الأعمدة المفهرسة فقط." } },
+          { k: { en: "Seek vs scan", ar: "Seek مقابل Scan" },
+            v: { en: "A seek walks down the tree to the exact rows it needs. A scan reads every page at the leaf level from start to end.", ar: "الـ seek ينزل عبر الشجرة إلى الصفوف المطلوبة بالضبط، والـ scan يقرأ كل صفحات المستوى الأسفل من البداية إلى النهاية." } },
+          { k: { en: "Key lookup", ar: "Key lookup" },
+            v: { en: "The extra trip from a non-clustered index back to the clustered index to fetch columns the non-clustered index does not carry.", ar: "الرحلة الإضافية من الـ non-clustered index إلى الـ clustered index لجلب أعمدة لا يحملها الـ non-clustered index." } },
+          { k: { en: "Heap", ar: "Heap" },
+            v: { en: "A table with no clustered index. Its rows sit in no particular order, and non-clustered indexes point at them by physical address (RID).", ar: "جدول بلا clustered index. صفوفه غير مرتبة بأي ترتيب، والـ non-clustered indexes تشير إليها بعنوان فيزيائي (RID)." } },
+          { k: { en: "Logical reads", ar: "Logical reads" },
+            v: { en: "How many 8 KB pages a query touched. It is the honest cost number — unlike time, it does not change with cache warmth or machine load.", ar: "عدد صفحات الـ 8 KB التي لمسها الاستعلام. هو رقم التكلفة الصادق، لأنه لا يتغير حسب حرارة الـ cache أو حِمل الجهاز، بعكس الزمن." } }
+        ]},
+        { t: "p",
+          en: "Think of a printed phone book sorted by last name. The book itself is the clustered index: the entries are physically in that order, so finding \"Nassar\" means flipping to the N section, not reading every page. Now imagine a thin appendix at the back listing phone numbers in numeric order, each with the page number where that person appears. That appendix is a non-clustered index: it is small, it is sorted differently, and it does not contain the person's address — for that you must turn to the page it points at. That turn is the key lookup.",
+          ar: "تخيّل دليل هاتف مطبوع مرتّب حسب اسم العائلة. الكتاب نفسه هو الـ clustered index: المدخلات مرتبة فعلياً بهذا الشكل، فالوصول إلى «نصار» يعني فتح قسم النون لا قراءة كل الصفحات. الآن تخيّل ملحقاً رفيعاً في آخر الكتاب يسرد أرقام الهواتف بترتيب رقمي، ومع كل رقم رقم الصفحة التي يظهر فيها صاحبه. هذا الملحق هو الـ non-clustered index: صغير، ومرتّب بطريقة مختلفة، ولا يحتوي على عنوان الشخص، فللحصول على العنوان يجب فتح الصفحة التي يشير إليها. هذه هي عملية الـ key lookup." },
+        { t: "p",
+          en: "This distinction exists because a table can be physically stored in only one order at a time — a book can only be bound one way. So SQL Server allows at most one clustered index per table, and up to 999 non-clustered indexes. Every design question in this lesson comes from that single limit: you get one physical order for free, and every other access path costs you a separate structure that must be kept up to date on every insert, update and delete.",
+          ar: "هذا التمييز موجود لأن الجدول يمكن تخزينه فيزيائياً بترتيب واحد فقط في أي لحظة، تماماً كما يُجلَّد الكتاب بطريقة واحدة. لذلك يسمح SQL Server بـ clustered index واحد كحد أقصى لكل جدول، وحتى 999 من الـ non-clustered indexes. كل أسئلة التصميم في هذا الدرس تنبع من هذا الحد: تحصل على ترتيب فيزيائي واحد مجاناً، وأي مسار وصول آخر يكلفك بنية منفصلة يجب تحديثها مع كل insert و update و delete." },
+        { t: "callout", kind: "note",
+          en: "In SQL Server, declaring a PRIMARY KEY creates a clustered index on those columns by default. That default is a choice someone made for you, and it is often the wrong one — you can write PRIMARY KEY NONCLUSTERED and cluster on something else.",
+          ar: "في SQL Server، تعريف PRIMARY KEY ينشئ clustered index على تلك الأعمدة افتراضياً. هذا الافتراض قرار اتُّخذ نيابة عنك، وغالباً يكون خاطئاً — يمكنك كتابة PRIMARY KEY NONCLUSTERED وعمل clustering على عمود آخر." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "The running example for this lesson is one table and one query. The table is Orders in an e-commerce system: 20 million rows, about 400 bytes per row, roughly 8 GB on disk. The query powers the \"my orders\" page: give me one customer's orders from the last 90 days, newest first, returning the order id, date and total.",
+          ar: "المثال الذي سنستخدمه طوال الدرس هو جدول واحد واستعلام واحد. الجدول هو Orders في نظام تجارة إلكترونية: 20 مليون صف، حوالي 400 بايت لكل صف، أي نحو 8 GB على القرص. الاستعلام يخدم صفحة «طلباتي»: أعطني طلبات عميل واحد خلال آخر 90 يوماً، الأحدث أولاً، مع رقم الطلب والتاريخ والإجمالي." },
+        { t: "code", lang: "sql", label: { en: "The query and the table as first written", ar: "الاستعلام والجدول كما كُتبا أول مرة" },
+          code: "CREATE TABLE dbo.Orders (\n    OrderId    int IDENTITY PRIMARY KEY,   -- clustered by default\n    CustomerId int          NOT NULL,\n    OrderDate  datetime2(0) NOT NULL,\n    Status     tinyint      NOT NULL,\n    Total      decimal(18,2) NOT NULL,\n    Notes      nvarchar(400) NULL\n);\n\nSELECT OrderId, OrderDate, Total\nFROM   dbo.Orders\nWHERE  CustomerId = 91422\n  AND  OrderDate >= DATEADD(day, -90, SYSUTCDATETIME())\nORDER BY OrderDate DESC;" },
+        { t: "p",
+          en: "With only the default clustered index on OrderId, there is no structure sorted by CustomerId. SQL Server has one option: read the entire clustered index from the first page to the last and throw away every row that does not belong to customer 91422. Measured with SET STATISTICS IO ON, that is 1,010,000 logical reads — meaning the engine touched just over a million 8 KB pages, about 8 GB, to return 14 rows. On a warm cache it took 2.3 seconds of CPU; on a cold cache the disk read dominated and it took 9 seconds.",
+          ar: "مع وجود الـ clustered index الافتراضي على OrderId فقط، لا توجد أي بنية مرتبة حسب CustomerId. أمام SQL Server خيار واحد: قراءة الـ clustered index كاملاً من أول صفحة إلى آخرها ورمي كل صف لا يخص العميل 91422. بقياس SET STATISTICS IO ON، النتيجة 1,010,000 logical reads، أي أن المحرك لمس أكثر من مليون page بحجم 8 KB، نحو 8 GB، ليعيد 14 صفاً. مع cache دافئ استغرق 2.3 ثانية من الـ CPU، ومع cache بارد سيطرت قراءة القرص فاستغرق 9 ثوانٍ." },
+        { t: "p",
+          en: "Now add one non-clustered index on (CustomerId, OrderDate) that also carries Total. The same query drops to 6 logical reads and under 1 millisecond. Six pages instead of a million is a factor of about 168,000. Nothing about the hardware changed; the engine simply gained a sorted path from CustomerId straight to the rows it wanted, and the index already held every column the query asked for, so it never had to visit the table at all.",
+          ar: "الآن أضف non-clustered index واحداً على (CustomerId, OrderDate) يحمل معه عمود Total. ينخفض الاستعلام نفسه إلى 6 logical reads وأقل من ميلي ثانية واحدة. ست صفحات بدل مليون يعني تحسناً بمعامل 168,000 تقريباً. لم يتغير شيء في العتاد، فقط حصل المحرك على مسار مرتّب من CustomerId إلى الصفوف المطلوبة مباشرة، والـ index كان يحمل أصلاً كل الأعمدة التي طلبها الاستعلام، فلم يحتج لزيارة الجدول إطلاقاً." },
+        { t: "kv", rows: [
+          { k: { en: "Before: clustered index scan", ar: "قبل: clustered index scan" },
+            v: { en: "1,010,000 logical reads, 2.3 s CPU, 14 rows returned out of 20,000,000 read. Cost grows with the table.", ar: "1,010,000 logical reads و2.3 ثانية CPU، وإرجاع 14 صفاً من أصل 20,000,000 صف مقروء. التكلفة تنمو مع حجم الجدول." } },
+          { k: { en: "After: non-clustered index seek", ar: "بعد: non-clustered index seek" },
+            v: { en: "6 logical reads, under 1 ms, 14 rows read and 14 returned. Cost grows with the number of matching rows, not the table.", ar: "6 logical reads وأقل من ميلي ثانية، وقراءة 14 صفاً وإرجاع 14. التكلفة تنمو مع عدد الصفوف المطابقة لا مع حجم الجدول." } },
+          { k: { en: "What it cost", ar: "ما الذي كلّفه ذلك" },
+            v: { en: "About 420 MB of extra storage, and every INSERT into Orders now writes to two structures instead of one.", ar: "نحو 420 MB مساحة تخزين إضافية، وكل INSERT في Orders صار يكتب في بنيتين بدل واحدة." } }
+        ]}
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Both index types are B-trees. A B-tree is a shallow tree built so that finding any key takes the same small number of page reads no matter how big the table is. It has a single root page at the top, one or more levels of intermediate pages in the middle, and the leaf level at the bottom. Each non-leaf page holds a list of key values paired with the address of a page one level down. To find a key you read the root, pick the one child whose key range contains your value, read that child, and repeat until you reach a leaf.",
+          ar: "كلا النوعين عبارة عن B-tree. الـ B-tree شجرة ضحلة مبنية بحيث يستغرق الوصول إلى أي مفتاح نفس العدد الصغير من قراءات الصفحات مهما كبر الجدول. لها root page واحدة في الأعلى، ومستوى أو أكثر من الصفحات الوسيطة، ثم الـ leaf level في الأسفل. كل صفحة غير leaf تحتوي على قائمة من قيم المفاتيح مع عنوان صفحة في المستوى الأدنى. للوصول إلى مفتاح تقرأ الـ root، وتختار الابن الوحيد الذي يقع نطاق مفاتيحه على قيمتك، ثم تقرأ تلك الصفحة، وتكرر حتى تصل إلى leaf." },
+        { t: "p",
+          en: "The tree is shallow because each 8 KB page can hold hundreds of key-plus-pointer entries. With a 4-byte int key, one page holds roughly 800 entries, so three levels address about 800 × 800 × 800 = 512 million rows. That is why our 20-million-row table needs only three page reads to descend the tree, and why index depth barely grows as data grows. It is also why a wide key hurts: an 80-byte key fits only about 100 entries per page, so the same table now needs four levels instead of three, and every lookup pays an extra read.",
+          ar: "الشجرة ضحلة لأن كل page بحجم 8 KB تتسع لمئات المدخلات من نوع مفتاح + مؤشر. مع مفتاح من نوع int بحجم 4 بايت، تتسع الصفحة لنحو 800 مدخل، فثلاثة مستويات تغطي نحو 800 × 800 × 800 = 512 مليون صف. لهذا يحتاج جدولنا ذو الـ 20 مليون صف إلى ثلاث قراءات صفحات فقط للنزول في الشجرة، ولهذا لا يزداد عمق الـ index تقريباً مع نمو البيانات. ولهذا أيضاً يضر المفتاح العريض: مفتاح بحجم 80 بايت يتسع لنحو 100 مدخل فقط في الصفحة، فيحتاج الجدول نفسه إلى أربعة مستويات بدل ثلاثة، وكل بحث يدفع قراءة إضافية." },
+        { t: "p",
+          en: "The one real difference between the two index types is what sits at the leaf level. In a clustered index the leaf pages are the table: the full row, every column, stored in clustered-key order. There is no separate copy of the data. In a non-clustered index the leaf pages hold only the index key columns, any INCLUDE columns, and the clustered key of the matching row — that clustered key is the pointer back. If the table is a heap (no clustered index), the pointer is instead an 8-byte physical address called a RID, made of file number, page number and slot number.",
+          ar: "الفرق الحقيقي الوحيد بين النوعين هو ما يوجد في الـ leaf level. في الـ clustered index صفحات الـ leaf هي الجدول نفسه: الصف الكامل بكل أعمدته، مخزّن بترتيب الـ clustered key. لا توجد نسخة منفصلة من البيانات. في الـ non-clustered index تحتوي صفحات الـ leaf على أعمدة مفتاح الـ index فقط، وأي أعمدة INCLUDE، بالإضافة إلى الـ clustered key للصف المطابق — وهذا الـ clustered key هو المؤشر للعودة. وإذا كان الجدول heap بلا clustered index، يكون المؤشر عنواناً فيزيائياً بحجم 8 بايت يُسمى RID ويتكون من رقم الملف ورقم الصفحة ورقم الخانة." },
+        { t: "code", lang: "sql", label: { en: "Tracing our query with and without the covering columns", ar: "تتبّع استعلامنا مع أعمدة التغطية وبدونها" },
+          code: "-- (a) index on the filter columns only\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC);\n\n-- plan: Index Seek  ->  Key Lookup (Clustered)  ->  Nested Loops\n-- Total is not in the index, so each of the 14 rows costs a\n-- separate 3-page descent of the clustered index: 6 + 14*3 = 48 reads.\n\n-- (b) same index, carrying Total at the leaf\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC)\n    INCLUDE (Total)\n    WITH (DROP_EXISTING = ON);\n\n-- plan: Index Seek only. 6 reads. The index now answers the\n-- whole query by itself, so it is a covering index for it." },
+        { t: "p",
+          en: "Follow version (b) step by step. SQL Server reads the index root page and finds the child covering CustomerId 91422. It reads that intermediate page and finds the leaf page where customer 91422's newest orders begin. Because the key is (CustomerId, OrderDate DESC), all of that customer's rows are physically next to each other and already in newest-first order — so the ORDER BY costs nothing, no sort operator appears in the plan. The engine walks the leaf forward until OrderDate falls below the 90-day cutoff, then stops. It read 3 pages descending plus 3 leaf pages: 6 logical reads.",
+          ar: "تابع النسخة (b) خطوة بخطوة. يقرأ SQL Server صفحة الـ root ويجد الابن الذي يغطي CustomerId رقم 91422. ثم يقرأ تلك الصفحة الوسيطة ويجد صفحة الـ leaf التي تبدأ عندها أحدث طلبات العميل 91422. ولأن المفتاح هو (CustomerId, OrderDate DESC)، فإن كل صفوف هذا العميل متجاورة فيزيائياً ومرتبة أصلاً من الأحدث إلى الأقدم، فلا تكلف جملة ORDER BY شيئاً ولا يظهر أي sort operator في الخطة. يمشي المحرك في الـ leaf إلى الأمام حتى يهبط OrderDate تحت حد الـ 90 يوماً ثم يتوقف. قرأ 3 صفحات في النزول و3 صفحات leaf: أي 6 logical reads." },
+        { t: "kv", rows: [
+          { k: { en: "Clustered index leaf", ar: "leaf الـ clustered index" },
+            v: { en: "The actual data rows, in key order. One per table. Changing the clustered key of a row physically moves the row.", ar: "صفوف البيانات الفعلية بترتيب المفتاح. واحد لكل جدول. تغيير الـ clustered key لصف ينقل الصف فيزيائياً." } },
+          { k: { en: "Non-clustered leaf", ar: "leaf الـ non-clustered" },
+            v: { en: "Key columns + INCLUDE columns + the clustered key as a pointer. Much narrower, so far more rows fit per page.", ar: "أعمدة المفتاح + أعمدة INCLUDE + الـ clustered key كمؤشر. أضيق بكثير، فيتسع عدد أكبر من الصفوف في كل صفحة." } },
+          { k: { en: "Page split", ar: "Page split" },
+            v: { en: "When a row must be inserted into a full page, SQL Server allocates a new page and moves half the rows there. Costs writes and leaves both pages half empty.", ar: "عندما يجب إدراج صف في صفحة ممتلئة، يخصص SQL Server صفحة جديدة وينقل نصف الصفوف إليها. يكلّف عمليات كتابة ويترك الصفحتين نصف فارغتين." } },
+          { k: { en: "Fragmentation", ar: "Fragmentation" },
+            v: { en: "The result of many page splits: leaf pages are no longer in physical order on disk, so range scans read more pages and lose the benefit of sequential I/O.", ar: "نتيجة كثرة الـ page splits: صفحات الـ leaf لم تعد بترتيب فيزيائي على القرص، فتقرأ عمليات المسح صفحات أكثر وتفقد ميزة الـ I/O المتسلسل." } },
+          { k: { en: "Uniquifier", ar: "Uniquifier" },
+            v: { en: "If a clustered index is not declared UNIQUE, SQL Server silently adds a hidden 4-byte counter to duplicate keys, widening every non-clustered index too.", ar: "إذا لم يُعرَّف الـ clustered index كـ UNIQUE، يضيف SQL Server بصمت عدّاداً مخفياً بحجم 4 بايت للمفاتيح المكررة، ما يوسّع كل الـ non-clustered indexes أيضاً." } }
+        ]},
+        { t: "p",
+          en: "One more consequence follows from the leaf layout, and it is the one people miss. Because every non-clustered index stores the clustered key inside every one of its leaf entries, the clustered key is copied into every other index on the table. A 4-byte int clustered key on a table with six non-clustered indexes adds 4 bytes × 20 million rows × 6 indexes = about 480 MB. Swap it for a 16-byte GUID and the same tables cost 1.9 GB — an extra 1.4 GB that buys nothing, and pushes real data out of memory.",
+          ar: "تنتج نتيجة أخرى من ترتيب الـ leaf، وهي التي يغفل عنها الناس. لأن كل non-clustered index يخزّن الـ clustered key داخل كل مدخل من مدخلات الـ leaf، فإن الـ clustered key يُنسخ إلى كل index آخر على الجدول. مفتاح int بحجم 4 بايت على جدول فيه ستة non-clustered indexes يضيف 4 بايت × 20 مليون صف × 6 indexes، أي نحو 480 MB. استبدله بـ GUID بحجم 16 بايت فتصبح التكلفة 1.9 GB، أي 1.4 GB إضافية لا تشتري شيئاً وتدفع بيانات حقيقية خارج الذاكرة." }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "A clustered index makes range queries on its key almost free — matching rows are physically adjacent, so one seek plus a short walk returns them all.",
+              "It removes sorts: data already in key order means ORDER BY on that key costs nothing.",
+              "Non-clustered indexes are narrow, so a query answered entirely from one touches a fraction of the pages the table would.",
+              "You can have many non-clustered indexes, each serving a different access pattern of the same table."
+            ],
+            ar: [
+              "الـ clustered index يجعل استعلامات النطاق على مفتاحه شبه مجانية، لأن الصفوف المطابقة متجاورة فيزيائياً، فيكفي seek واحد ومشي قصير لإرجاعها كلها.",
+              "يلغي عمليات الفرز: البيانات مرتبة أصلاً بترتيب المفتاح، فلا تكلّف ORDER BY على ذلك المفتاح شيئاً.",
+              "الـ non-clustered indexes ضيقة، فالاستعلام الذي يُجاب كلياً من أحدها يلمس جزءاً بسيطاً من الصفحات التي يلمسها الجدول.",
+              "يمكنك امتلاك عدة non-clustered indexes، كل واحد يخدم نمط وصول مختلفاً لنفس الجدول."
+            ]
+          },
+          cons: {
+            en: [
+              "Every index must be updated on INSERT, UPDATE and DELETE — six indexes means six writes per row inserted.",
+              "The clustered key is copied into every non-clustered index, so a wide clustered key inflates the whole table's storage.",
+              "A non-clustered index that lacks a needed column triggers a key lookup per row, which is fine for 14 rows and terrible for 50,000.",
+              "Indexes consume buffer pool memory; pages cached for an unused index are pages not cached for a hot one."
+            ],
+            ar: [
+              "يجب تحديث كل index عند INSERT وUPDATE وDELETE — ستة indexes تعني ست عمليات كتابة لكل صف مُدرج.",
+              "يُنسخ الـ clustered key داخل كل non-clustered index، فالمفتاح العريض يضخّم تخزين الجدول كله.",
+              "الـ non-clustered index الذي ينقصه عمود مطلوب يسبب key lookup لكل صف، وهذا مقبول مع 14 صفاً وكارثي مع 50,000.",
+              "الـ indexes تستهلك ذاكرة الـ buffer pool، والصفحات المخزّنة لـ index غير مستخدم هي صفحات لم تُخزَّن لـ index نشط."
+            ]
+          },
+          limits: {
+            en: [
+              "At most one clustered index per table, because a table has only one physical order.",
+              "An index only helps when the leading key column appears in the WHERE or JOIN — an index on (CustomerId, OrderDate) cannot seek on OrderDate alone.",
+              "Index keys are limited to 900 bytes for a clustered index and 1700 for a non-clustered one.",
+              "Indexes do not help when the query returns most of the table; past roughly 1-5% of rows the optimizer prefers a scan and is usually right."
+            ],
+            ar: [
+              "clustered index واحد كحد أقصى لكل جدول، لأن للجدول ترتيباً فيزيائياً واحداً فقط.",
+              "الـ index يفيد فقط عندما يظهر عمود المفتاح الأول في WHERE أو JOIN — الـ index على (CustomerId, OrderDate) لا يستطيع عمل seek على OrderDate وحده.",
+              "مفاتيح الـ index محدودة بـ 900 بايت للـ clustered index و1700 بايت للـ non-clustered.",
+              "الـ indexes لا تفيد عندما يعيد الاستعلام معظم الجدول؛ فبعد نحو 1-5% من الصفوف يفضّل الـ optimizer عمل scan، وهو محق عادة."
+            ]
+          },
+          alts: {
+            en: [
+              "Heap plus non-clustered indexes: acceptable for staging tables written once and read by index only.",
+              "Columnstore index: stores data by column instead of by row, far better for scanning millions of rows for analytics.",
+              "Filtered index (WHERE clause on the index): a much smaller index when queries only ever touch a subset, such as active orders.",
+              "Indexed view: pre-computes a join or aggregate and stores it, at the cost of slowing every write to the base tables."
+            ],
+            ar: [
+              "heap مع non-clustered indexes: مقبول لجداول التجهيز التي تُكتب مرة وتُقرأ عبر الـ index فقط.",
+              "Columnstore index: يخزّن البيانات حسب العمود لا حسب الصف، وهو أفضل بكثير لمسح ملايين الصفوف لأغراض التحليل.",
+              "Filtered index (بجملة WHERE على الـ index): index أصغر بكثير عندما تلمس الاستعلامات مجموعة جزئية فقط، مثل الطلبات النشطة.",
+              "Indexed view: يحسب مسبقاً join أو aggregate ويخزّنه، مقابل إبطاء كل عملية كتابة على الجداول الأساسية."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Clustering on a random GUID", ar: "عمل clustering على GUID عشوائي" },
+          body: {
+            en: "A team declared OrderId as uniqueidentifier DEFAULT NEWID() and made it the primary key, so it became the clustered key. NEWID() produces random values, so each new order lands in a random position in the middle of the table instead of at the end. Every insert had a good chance of hitting a full page, forcing a page split. Within three weeks the index was 78% fragmented, inserts had slowed from 900 to 210 per second, and the 16-byte key had added 1.4 GB across the table's six non-clustered indexes. The fix is NEWSEQUENTIALID(), which generates GUIDs in increasing order so inserts always append at the end, or an int IDENTITY clustered key with the GUID kept as a unique non-clustered index for external references.",
+            ar: "عرّف فريق العمود OrderId على أنه uniqueidentifier DEFAULT NEWID() وجعله primary key، فصار هو الـ clustered key. الدالة NEWID() تنتج قيماً عشوائية، فكل طلب جديد يهبط في موضع عشوائي وسط الجدول بدل نهايته. لذلك كان لكل insert احتمال كبير أن يصادف صفحة ممتلئة فيفرض page split. خلال ثلاثة أسابيع بلغ الـ fragmentation نسبة 78%، وتباطأت عمليات الإدراج من 900 إلى 210 في الثانية، وأضاف المفتاح ذو الـ 16 بايت نحو 1.4 GB عبر الـ non-clustered indexes الستة للجدول. الحل هو NEWSEQUENTIALID() التي تولّد GUIDs بترتيب تصاعدي فتُلحَق عمليات الإدراج دائماً في النهاية، أو استخدام int IDENTITY كـ clustered key مع إبقاء الـ GUID كـ unique non-clustered index للإشارات الخارجية." },
+          fix: "ALTER TABLE dbo.Orders\n  ADD CONSTRAINT PK_Orders PRIMARY KEY NONCLUSTERED (OrderGuid);\nCREATE UNIQUE CLUSTERED INDEX CX_Orders_OrderId ON dbo.Orders (OrderId);" },
+        { t: "mistake",
+          title: { en: "One index per column", ar: "index لكل عمود" },
+          body: {
+            en: "Someone read that indexes make queries faster and created eight single-column non-clustered indexes on Orders — one on CustomerId, one on OrderDate, one on Status, and so on. Our query still could not be answered by any of them alone, because the filter needs CustomerId and OrderDate together and no single-column index gives that. Meanwhile the nightly import that inserts 2 million orders went from 6 minutes to 41 minutes, because each row now wrote nine structures. Two well-chosen composite indexes replaced all eight and brought the import back to 9 minutes.",
+            ar: "قرأ أحدهم أن الـ indexes تسرّع الاستعلامات فأنشأ ثمانية non-clustered indexes بعمود واحد على Orders: واحد على CustomerId وآخر على OrderDate وآخر على Status وهكذا. ومع ذلك لم يستطع أي منها الإجابة على استعلامنا وحده، لأن الفلترة تحتاج CustomerId وOrderDate معاً ولا يوفر ذلك أي index بعمود واحد. في المقابل ارتفع زمن الاستيراد الليلي الذي يُدرج مليوني طلب من 6 دقائق إلى 41 دقيقة، لأن كل صف صار يكتب في تسع بنى. استُبدلت الثمانية بـ composite index مدروسين، فعاد الاستيراد إلى 9 دقائق." },
+          fix: "-- one composite index that actually matches the WHERE clause\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC) INCLUDE (Total);" },
+        { t: "mistake",
+          title: { en: "Wrong column order in a composite key", ar: "ترتيب خاطئ للأعمدة في مفتاح مركّب" },
+          body: {
+            en: "The index was created as (OrderDate, CustomerId) instead of (CustomerId, OrderDate). An index is sorted by its first key column first, so this one groups all orders by date and scatters each customer's rows across every date. The query could no longer seek to one customer; SQL Server had to scan the whole 90-day date range — 340,000 rows — and filter CustomerId row by row. Reads went from 6 to 4,900. Rule: the column you compare with equals (=) goes first; the column you compare with a range (>=, BETWEEN) goes after it.",
+            ar: "أُنشئ الـ index بترتيب (OrderDate, CustomerId) بدل (CustomerId, OrderDate). الـ index مرتّب حسب عمود مفتاحه الأول أولاً، فهذا الترتيب يجمّع الطلبات حسب التاريخ ويبعثر صفوف كل عميل عبر كل التواريخ. لم يعد بإمكان الاستعلام عمل seek لعميل واحد، فاضطر SQL Server لمسح نطاق الـ 90 يوماً كاملاً — 340,000 صف — وفلترة CustomerId صفاً صفاً. ارتفعت القراءات من 6 إلى 4,900. القاعدة: العمود الذي تقارنه بالمساواة (=) يأتي أولاً، والعمود الذي تقارنه بنطاق (>= أو BETWEEN) يأتي بعده." },
+          fix: "-- equality column first, range column second\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC) INCLUDE (Total);" },
+        { t: "mistake",
+          title: { en: "Wrapping the indexed column in a function", ar: "تغليف العمود المفهرس داخل دالة" },
+          body: {
+            en: "A developer wrote WHERE CAST(OrderDate AS date) = @day. The index is sorted by OrderDate, not by CAST(OrderDate AS date), so SQL Server cannot use the sorted order — it must compute the function for all 20 million rows before it can compare. This is called a non-sargable predicate, meaning a condition the engine cannot turn into an index seek. The plan flipped from a seek to a full scan and the query went from 3 ms to 2.1 s. Rewriting it as a range against the raw column restored the seek.",
+            ar: "كتب أحد المطورين WHERE CAST(OrderDate AS date) = @day. الـ index مرتّب حسب OrderDate لا حسب CAST(OrderDate AS date)، فلا يستطيع SQL Server استخدام الترتيب المخزّن، ويضطر لحساب الدالة على العشرين مليون صف قبل المقارنة. يُسمى هذا predicate غير sargable، أي شرط لا يستطيع المحرك تحويله إلى index seek. تحوّلت الخطة من seek إلى scan كامل وارتفع زمن الاستعلام من 3 ميلي ثانية إلى 2.1 ثانية. وإعادة كتابته كنطاق على العمود الخام أعادت الـ seek." },
+          fix: "WHERE OrderDate >= @day\n  AND OrderDate <  DATEADD(day, 1, @day);" }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What is the difference between a clustered and a non-clustered index?", ar: "ما الفرق بين الـ clustered index والـ non-clustered index؟" },
+          a: {
+            en: "The clustered index is the table. Its bottom level holds the actual rows, stored in the order of its key columns, so a table can only have one — you can only store the rows in one order. A non-clustered index is a separate, narrower structure: its bottom level holds just the indexed columns plus a pointer back to the row, which in SQL Server is the clustered key. So a non-clustered index is a shortcut, and if it doesn't carry a column your query needs, the engine has to follow the pointer back to the table for each row.",
+            ar: "الـ clustered index هو الجدول نفسه. مستواه الأسفل يحتوي على الصفوف الفعلية مخزّنة بترتيب أعمدة مفتاحه، ولهذا لا يمكن أن يوجد أكثر من واحد — لأن الصفوف تُخزَّن بترتيب واحد فقط. أما الـ non-clustered index فبنية منفصلة أضيق: مستواه الأسفل يحتوي على الأعمدة المفهرسة فقط مع مؤشر يعود إلى الصف، وهو في SQL Server الـ clustered key. إذن الـ non-clustered index اختصار، وإذا لم يحمل عموداً يحتاجه استعلامك فسيتبع المحرك المؤشر إلى الجدول لكل صف." } },
+        { t: "qa", level: "mid",
+          q: { en: "You see a Key Lookup in a plan. What is it and when do you care?", ar: "ترى Key Lookup في خطة تنفيذ. ما هي ومتى تهتم بها؟" },
+          a: {
+            en: "A key lookup is the engine going back to the clustered index to fetch columns the non-clustered index didn't have. It costs roughly three extra page reads per row, because it walks the clustered index tree from the root each time. For a query returning 14 rows that's 42 reads and I ignore it. For one returning 50,000 rows that's 150,000 reads and the optimizer will usually abandon the index entirely and scan the table instead. So I care once the row count is in the thousands — and the fix is to add the missing columns to the index with INCLUDE, as long as they aren't huge.",
+            ar: "الـ key lookup هي رجوع المحرك إلى الـ clustered index لجلب أعمدة لم يحملها الـ non-clustered index. تكلفتها نحو ثلاث قراءات صفحات إضافية لكل صف، لأنها تنزل في شجرة الـ clustered index من الـ root في كل مرة. مع استعلام يعيد 14 صفاً تعني 42 قراءة وأتجاهلها. ومع استعلام يعيد 50,000 صف تعني 150,000 قراءة، وغالباً سيتخلى الـ optimizer عن الـ index كلياً ويمسح الجدول. لذلك أهتم عندما يصل عدد الصفوف إلى الآلاف، والحل إضافة الأعمدة الناقصة إلى الـ index عبر INCLUDE ما دامت ليست ضخمة." } },
+        { t: "qa", level: "mid",
+          q: { en: "What makes a good clustered key?", ar: "ما الذي يجعل الـ clustered key جيداً؟" },
+          a: {
+            en: "Four things: narrow, because the key is copied into every non-clustered index; unique, because otherwise SQL Server adds a hidden 4-byte uniquifier; ever-increasing, so inserts append at the end of the last page instead of splitting pages in the middle; and static, because changing a clustered key physically moves the row and updates the pointer in every non-clustered index. An int or bigint IDENTITY column hits all four. A random GUID fails three of them. Occasionally I'll cluster on something else — a tenant id plus id on a multi-tenant table — when almost every query filters on that tenant and I want its rows physically together.",
+            ar: "أربعة أشياء: أن يكون ضيقاً لأنه يُنسخ داخل كل non-clustered index؛ وفريداً وإلا أضاف SQL Server uniquifier مخفياً بحجم 4 بايت؛ ومتزايداً باستمرار حتى تُلحَق عمليات الإدراج في نهاية آخر صفحة بدل تقسيم صفحات في المنتصف؛ وثابتاً لأن تغيير الـ clustered key ينقل الصف فيزيائياً ويحدّث المؤشر في كل non-clustered index. عمود int أو bigint من نوع IDENTITY يحقق الأربعة، والـ GUID العشوائي يفشل في ثلاثة منها. أحياناً أختار مفتاحاً آخر — مثل tenant id مع id في جدول متعدد المستأجرين — عندما تفلتر كل الاستعلامات تقريباً على ذلك الـ tenant وأريد صفوفه متجاورة فيزيائياً." } },
+        { t: "qa", level: "senior",
+          q: { en: "When is a heap — a table with no clustered index — the right choice?", ar: "متى يكون الـ heap، أي جدول بلا clustered index، هو الخيار الصحيح؟" },
+          a: {
+            en: "Rarely, but it happens. A staging table that gets bulk-loaded, read once and truncated is a fair case: there is no range query to benefit from physical order, and skipping the clustered index makes the bulk insert measurably faster because rows just get appended wherever there is space. The catch is that once you UPDATE rows in a heap and they no longer fit in place, SQL Server leaves a forwarding pointer behind, and reads start chasing two pages per row. So: heap for write-once-read-once tables, clustered index for anything that lives and gets updated.",
+            ar: "نادراً، لكنه يحدث. جدول تجهيز يُحمَّل دفعة واحدة ويُقرأ مرة ثم يُفرَّغ حالة معقولة: لا يوجد استعلام نطاق يستفيد من الترتيب الفيزيائي، وتجاهل الـ clustered index يجعل الإدراج الكمّي أسرع بشكل ملموس لأن الصفوف تُلحَق في أي مساحة متاحة. المشكلة أنك حين تُجري UPDATE على صفوف في heap ولم تعد تتسع في مكانها، يترك SQL Server forwarding pointer، فتبدأ القراءات بملاحقة صفحتين لكل صف. إذن: heap للجداول التي تُكتب مرة وتُقرأ مرة، وclustered index لأي جدول يعيش ويُحدَّث." } },
+        { t: "qa", level: "senior",
+          q: { en: "The optimizer ignored the index you created. Why might that be correct?", ar: "تجاهل الـ optimizer الـ index الذي أنشأته. لماذا قد يكون محقاً؟" },
+          a: {
+            en: "The usual reason is the tipping point. If a query matches a large share of the table, using a non-clustered index means one key lookup per row — thousands of random page reads — while scanning the clustered index reads pages sequentially, which is much cheaper per page. Somewhere around 1-5% of rows the scan wins, and the optimizer picks it. The other honest reasons are stale statistics making it estimate the wrong row count, a leading key column that isn't in the WHERE clause, and a predicate wrapped in a function so it can't seek at all. I check the estimated versus actual row counts in the plan first; a big gap points at statistics rather than the index.",
+            ar: "السبب الشائع هو نقطة الانقلاب. إذا طابق الاستعلام نسبة كبيرة من الجدول، فاستخدام non-clustered index يعني key lookup لكل صف، أي آلاف القراءات العشوائية، بينما مسح الـ clustered index يقرأ الصفحات بالتسلسل وهو أرخص بكثير لكل صفحة. عند حدود 1-5% من الصفوف يفوز الـ scan فيختاره الـ optimizer. الأسباب الأخرى الحقيقية: statistics قديمة تجعله يقدّر عدد صفوف خاطئاً، أو عمود مفتاح أول غير موجود في WHERE، أو predicate مغلّف بدالة فلا يستطيع عمل seek أصلاً. أبدأ بمقارنة الصفوف المقدّرة بالفعلية في الخطة؛ الفجوة الكبيرة تشير إلى الـ statistics لا إلى الـ index." } },
+        { t: "qa", level: "staff",
+          q: { en: "Your team keeps adding indexes to fix slow queries and the write path keeps degrading. How do you fix this structurally?", ar: "فريقك يضيف indexes باستمرار لإصلاح استعلامات بطيئة، ومسار الكتابة يتدهور. كيف تعالج هذا بنيوياً؟" },
+          a: {
+            en: "The problem isn't the individual index, it's that nobody owns the total. I do three things. First, make the cost visible: a weekly report from sys.dm_db_index_usage_stats showing every index with more writes than reads, and every index unused since restart — those get dropped on a schedule, not debated case by case. Second, make index changes go through migrations reviewed like code, with the query they serve and its measured before/after reads in the pull request description; that alone stops most duplicate indexes, since reviewers can see an existing index already covers it. Third, set a per-table budget — say five non-clustered indexes on hot write tables — so adding a sixth forces someone to justify removing one. The point is turning an invisible, gradual cost into a decision someone has to make out loud.",
+            ar: "المشكلة ليست في الـ index الواحد بل في أن لا أحد يملك المجموع. أفعل ثلاثة أشياء. أولاً أجعل التكلفة مرئية: تقرير أسبوعي من sys.dm_db_index_usage_stats يعرض كل index عدد عمليات الكتابة عليه أكبر من القراءة، وكل index غير مستخدم منذ إعادة التشغيل — وتُحذف هذه وفق جدول ثابت لا بنقاش لكل حالة. ثانياً أجعل تغييرات الـ index تمر عبر migrations تُراجَع مثل الكود، مع ذكر الاستعلام الذي تخدمه وقياس القراءات قبل وبعد في وصف الـ pull request؛ هذا وحده يمنع معظم الـ indexes المكررة لأن المراجع يرى أن index موجوداً يغطيها. ثالثاً أضع ميزانية لكل جدول — مثلاً خمسة non-clustered indexes على جداول الكتابة النشطة — فإضافة السادس تُجبر أحدهم على تبرير حذف واحد. الهدف تحويل تكلفة خفية تدريجية إلى قرار يجب أن يُعلن." } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Random GUID as the clustered primary key", ar: "GUID عشوائي كـ clustered primary key" },
+          bad: "CREATE TABLE dbo.Orders (\n    OrderId    uniqueidentifier NOT NULL\n                 CONSTRAINT DF_Orders_Id DEFAULT NEWID()\n                 CONSTRAINT PK_Orders PRIMARY KEY,   -- clustered!\n    CustomerId int NOT NULL,\n    OrderDate  datetime2(0) NOT NULL\n);",
+          good: "CREATE TABLE dbo.Orders (\n    OrderId    bigint IDENTITY(1,1) NOT NULL,\n    PublicId   uniqueidentifier NOT NULL\n                 CONSTRAINT DF_Orders_PublicId DEFAULT NEWID(),\n    CustomerId int NOT NULL,\n    OrderDate  datetime2(0) NOT NULL,\n    CONSTRAINT PK_Orders PRIMARY KEY NONCLUSTERED (PublicId)\n);\nCREATE UNIQUE CLUSTERED INDEX CX_Orders ON dbo.Orders (OrderId);",
+          why: {
+            en: "PRIMARY KEY is clustered by default, so this stores 20 million rows in random GUID order. New rows land in the middle of full pages and split them, which fragments the index and slows inserts; and the 16-byte key is copied into every non-clustered index. The fix keeps a GUID for URLs and external systems but clusters on an increasing bigint, so inserts append at the end and the copied pointer is 8 bytes instead of 16.",
+            ar: "الـ PRIMARY KEY يكون clustered افتراضياً، فهذا يخزّن 20 مليون صف بترتيب GUID عشوائي. تهبط الصفوف الجديدة وسط صفحات ممتلئة فتقسمها، ما يسبب fragmentation ويبطئ الإدراج؛ كما يُنسخ المفتاح ذو الـ 16 بايت داخل كل non-clustered index. الحل يُبقي الـ GUID للروابط والأنظمة الخارجية لكنه يعمل clustering على bigint متزايد، فتُلحَق عمليات الإدراج في النهاية ويصبح المؤشر المنسوخ 8 بايت بدل 16." } },
+        { t: "review", severity: "medium",
+          title: { en: "Duplicate index that a wider one already covers", ar: "index مكرر يغطيه index أوسع موجود" },
+          bad: "-- already exists:\n-- IX_Orders_Customer_Date ON Orders (CustomerId, OrderDate DESC) INCLUDE (Total)\n\n-- added in this pull request:\nCREATE NONCLUSTERED INDEX IX_Orders_Customer\n    ON dbo.Orders (CustomerId);",
+          good: "-- nothing new is needed: a seek on CustomerId alone already\n-- uses IX_Orders_Customer_Date, because CustomerId is its\n-- leading key column.\n\n-- if Status is also filtered, extend the existing index instead:\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC)\n    INCLUDE (Total, Status)\n    WITH (DROP_EXISTING = ON);",
+          why: {
+            en: "An index can be used by any query that filters on a prefix of its key columns, so (CustomerId, OrderDate) already serves queries that filter on CustomerId alone. The new index adds nothing readers can use, but every insert, update and delete now maintains one more structure. When you need an extra column, widen the existing index rather than creating a second one that overlaps it.",
+            ar: "يمكن استخدام الـ index في أي استعلام يفلتر على بادئة من أعمدة مفتاحه، فالـ index على (CustomerId, OrderDate) يخدم أصلاً الاستعلامات التي تفلتر على CustomerId وحده. الـ index الجديد لا يضيف شيئاً للقراءة، لكن كل insert وupdate وdelete صار يصون بنية إضافية. وعندما تحتاج عموداً إضافياً، وسّع الـ index الموجود بدل إنشاء ثانٍ يتداخل معه." } }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "Index choice is a system design decision, not a database detail, because it fixes which access patterns are cheap. In our e-commerce example, clustering Orders on (CustomerId, OrderId) instead of OrderId alone puts each customer's orders physically together — the \"my orders\" page becomes a single seek plus a short walk, and it stays that fast at 200 million rows. But the same choice makes the operations dashboard's \"all orders in the last hour\" query scan, because recent orders are now scattered across every customer. You cannot have both from one physical order; you choose which query is the one that must never be slow.",
+          ar: "اختيار الـ index قرار تصميم نظام لا تفصيلة قاعدة بيانات، لأنه يحدد أي أنماط الوصول ستكون رخيصة. في مثالنا، عمل clustering لجدول Orders على (CustomerId, OrderId) بدل OrderId وحده يضع طلبات كل عميل متجاورة فيزيائياً، فتصبح صفحة «طلباتي» seek واحداً ومشياً قصيراً، وتبقى بهذه السرعة عند 200 مليون صف. لكن الاختيار نفسه يجعل استعلام لوحة التشغيل «كل الطلبات في آخر ساعة» يعمل scan، لأن الطلبات الحديثة صارت مبعثرة عبر كل العملاء. لا يمكن الحصول على الاثنين من ترتيب فيزيائي واحد، فتختار أي استعلام يجب ألا يبطؤ أبداً." },
+        { t: "ul",
+          en: [
+            "Multi-tenant systems usually cluster every large table on (TenantId, Id): each tenant's data sits together, so one tenant's big scan reads its own pages and evicts less of everyone else's data from memory.",
+            "Time-series and log tables cluster on (Timestamp, Id) because nearly every query is a time range and the writes naturally arrive in increasing order — the ideal insert pattern.",
+            "Reporting workloads often keep the row-based clustered index for the application and add a non-clustered columnstore index for analytics, so scans of millions of rows do not fight the transactional path.",
+            "Read replicas let you add indexes that only reporting needs, keeping the write-heavy primary's index count low — the cost is replication lag between what a report sees and what the primary has."
+          ],
+          ar: [
+            "الأنظمة متعددة المستأجرين تعمل clustering لكل جدول كبير على (TenantId, Id): بيانات كل مستأجر متجاورة، فمسح مستأجر واحد يقرأ صفحاته هو ويطرد قدراً أقل من بيانات الآخرين من الذاكرة.",
+            "جداول السلاسل الزمنية والسجلات تعمل clustering على (Timestamp, Id) لأن معظم الاستعلامات نطاق زمني، ولأن الكتابات تصل طبيعياً بترتيب تصاعدي، وهو نمط الإدراج المثالي.",
+            "أحمال التقارير غالباً تُبقي الـ clustered index الصفّي للتطبيق وتضيف non-clustered columnstore index للتحليلات، حتى لا يتنازع مسح ملايين الصفوف مع المسار المعاملاتي.",
+            "الـ read replicas تتيح إضافة indexes تحتاجها التقارير فقط، مع إبقاء عدد الـ indexes منخفضاً على الـ primary كثيف الكتابة — والتكلفة هي تأخر النسخ بين ما يراه التقرير وما لدى الـ primary."
+          ] },
+        { t: "callout", kind: "warn",
+          en: "Changing a clustered index on a large table rebuilds the table and every non-clustered index on it. On 20 million rows that is minutes of blocking and roughly 1.5× the table size in extra space and transaction log. Plan it as a migration with a maintenance window, or use ONLINE = ON on an edition that supports it.",
+          ar: "تغيير الـ clustered index على جدول كبير يعيد بناء الجدول وكل الـ non-clustered indexes عليه. على 20 مليون صف يعني ذلك دقائق من الحجب، ونحو 1.5 ضعف حجم الجدول من المساحة الإضافية والـ transaction log. خطّط له كـ migration بنافذة صيانة، أو استخدم ONLINE = ON في الإصدارات التي تدعمه." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Memory", ar: "الذاكرة" },
+            v: { en: "Index pages compete with data pages for the buffer pool — SQL Server's in-memory page cache. A 420 MB index that serves a hot query pays for itself; an unused one just evicts pages you needed.", ar: "صفحات الـ index تتنافس مع صفحات البيانات على الـ buffer pool، وهو ذاكرة SQL Server المؤقتة للصفحات. index بحجم 420 MB يخدم استعلاماً نشطاً يستحق تكلفته، وآخر غير مستخدم يطرد صفحات كنت تحتاجها." } },
+          { k: { en: "Database reads", ar: "قراءات قاعدة البيانات" },
+            v: { en: "The number that matters. Our query went from 1,010,000 logical reads to 6. Measure with SET STATISTICS IO ON, not with a stopwatch — time varies with cache warmth, reads do not.", ar: "الرقم المهم. انخفض استعلامنا من 1,010,000 logical reads إلى 6. قسه بـ SET STATISTICS IO ON لا بساعة إيقاف، لأن الزمن يتغير بحرارة الـ cache والقراءات لا تتغير." } },
+          { k: { en: "Write cost", ar: "تكلفة الكتابة" },
+            v: { en: "Each index adds one structure to maintain per row changed. In the example, going from 1 to 9 indexes turned a 6-minute nightly import into 41 minutes.", ar: "كل index يضيف بنية تُصان لكل صف يتغير. في المثال، الانتقال من index واحد إلى تسعة حوّل استيراداً ليلياً مدته 6 دقائق إلى 41 دقيقة." } },
+          { k: { en: "Latency", ar: "زمن الاستجابة" },
+            v: { en: "A seek's cost stays flat as the table grows because tree depth grows logarithmically; a scan's cost grows linearly. That is why scans quietly get worse over months while seeks do not.", ar: "تكلفة الـ seek تبقى ثابتة تقريباً مع نمو الجدول لأن عمق الشجرة ينمو لوغاريتمياً، بينما تنمو تكلفة الـ scan خطياً. لهذا تسوء عمليات الـ scan بهدوء عبر الأشهر بينما لا تسوء عمليات الـ seek." } },
+          { k: { en: "Scalability", ar: "قابلية التوسّع" },
+            v: { en: "Scans hold shared locks over many pages and lengthen blocking chains under load. Replacing one scan with a seek often removes a concurrency problem, not just a slow query.", ar: "عمليات الـ scan تحتفظ بأقفال مشتركة على صفحات كثيرة وتطيل سلاسل الحجب تحت الحمل. استبدال scan واحد بـ seek يزيل غالباً مشكلة تزامن، لا مجرد استعلام بطيء." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "SET STATISTICS IO, TIME ON before the query: read the \"logical reads\" number per table. A number far larger than the rows returned means the engine is reading pages it throws away.",
+            "The actual execution plan (Ctrl+M in SSMS): look for the operator names — Index Seek is good, Clustered Index Scan on a filtered query is the smell, Key Lookup with a high row count is the next thing to fix.",
+            "Hover any plan operator and compare \"Estimated Number of Rows\" with \"Actual Number of Rows\". A gap of 10× or more means statistics are stale; run UPDATE STATISTICS before blaming the index.",
+            "sys.dm_db_index_usage_stats: shows seeks, scans and updates per index since the last restart. Indexes with many updates and zero seeks are pure write cost and are candidates to drop.",
+            "sys.dm_db_index_physical_stats: reports avg_fragmentation_in_percent and page fullness. Above ~30% fragmentation on a large index, rebuild it and then ask what insert pattern caused it."
+          ],
+          ar: [
+            "شغّل SET STATISTICS IO, TIME ON قبل الاستعلام واقرأ رقم «logical reads» لكل جدول. رقم أكبر بكثير من عدد الصفوف المُعادة يعني أن المحرك يقرأ صفحات يرميها.",
+            "خطة التنفيذ الفعلية (Ctrl+M في SSMS): انظر إلى أسماء العمليات — Index Seek جيد، وClustered Index Scan في استعلام مفلتر هو المؤشر السيئ، وKey Lookup مع عدد صفوف كبير هو ما تصلحه تالياً.",
+            "مرّر المؤشر على أي operator في الخطة وقارن «Estimated Number of Rows» بـ «Actual Number of Rows». فجوة بمقدار 10 أضعاف أو أكثر تعني statistics قديمة، فشغّل UPDATE STATISTICS قبل أن تلوم الـ index.",
+            "sys.dm_db_index_usage_stats: يعرض عمليات الـ seek والـ scan والتحديث لكل index منذ آخر إعادة تشغيل. الـ indexes ذات التحديثات الكثيرة وصفر seeks تكلفة كتابة صافية ومرشحة للحذف.",
+            "sys.dm_db_index_physical_stats: يعرض avg_fragmentation_in_percent ومدى امتلاء الصفحات. فوق نحو 30% fragmentation على index كبير، أعد بناءه ثم اسأل أي نمط إدراج تسبب فيه."
+          ] },
+        { t: "callout", kind: "tip",
+          en: "Do not blindly create the index the plan's green \"missing index\" hint suggests. It is generated from one query in isolation, it always puts the columns in an order it did not think about, and it often duplicates an index you already have. Read it as a hint about which columns matter, then decide whether to widen an existing index instead.",
+          ar: "لا تنشئ بشكل أعمى الـ index الذي يقترحه تلميح «missing index» الأخضر في الخطة. فهو مولَّد من استعلام واحد بمعزل عن غيره، ويضع الأعمدة دائماً بترتيب لم يفكر فيه، وغالباً يكرر index تملكه أصلاً. اقرأه كإشارة إلى الأعمدة المهمة، ثم قرر ما إذا كان الأفضل توسيع index موجود." }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "The pattern repeats across industries: a table grows past the point where a scan is affordable, and the fix is choosing which order the rows live in. Teams usually meet it the same way — a page that was fine at 2 million rows starts timing out at 40 million, and the plan shows the same clustered index scan that was always there but used to be cheap.",
+          ar: "يتكرر النمط عبر القطاعات: يكبر الجدول حتى يتجاوز النقطة التي يكون فيها الـ scan محتملاً، ويكون الحل هو اختيار الترتيب الذي تعيش به الصفوف. وعادة يصطدم الفريق بالأمر بنفس الطريقة: صفحة كانت سليمة عند مليوني صف تبدأ بانتهاء المهلة عند 40 مليوناً، وتُظهر الخطة نفس الـ clustered index scan الذي كان موجوداً دائماً لكنه كان رخيصاً." },
+        { t: "ul",
+          en: [
+            "Payment systems cluster the ledger on (AccountId, PostedAt) so a statement for one account is one contiguous range read, no matter how many accounts the system holds.",
+            "Chat platforms cluster messages on (ConversationId, MessageId): loading the last 50 messages of a room reads a handful of adjacent pages instead of searching a global message table.",
+            "IoT and metrics pipelines cluster on (DeviceId, Timestamp) and partition by month, so old data can be dropped by removing a partition instead of running a DELETE over billions of rows.",
+            "Multi-tenant SaaS products cluster on (TenantId, Id), which also limits blast radius: a heavy query from one customer reads mostly its own pages rather than pushing every other tenant's data out of cache."
+          ],
+          ar: [
+            "أنظمة المدفوعات تعمل clustering لدفتر الحسابات على (AccountId, PostedAt)، فيصبح كشف حساب واحد قراءة نطاق متصل واحد مهما بلغ عدد الحسابات في النظام.",
+            "منصات المحادثة تعمل clustering للرسائل على (ConversationId, MessageId): تحميل آخر 50 رسالة في غرفة يقرأ عدداً قليلاً من الصفحات المتجاورة بدل البحث في جدول رسائل عام.",
+            "خطوط بيانات IoT والمقاييس تعمل clustering على (DeviceId, Timestamp) مع partition شهري، فيمكن التخلص من البيانات القديمة بحذف partition بدل تشغيل DELETE على مليارات الصفوف.",
+            "منتجات SaaS متعددة المستأجرين تعمل clustering على (TenantId, Id)، وهذا يحدّ أيضاً من نطاق الضرر: استعلام ثقيل من عميل واحد يقرأ صفحاته هو غالباً بدل دفع بيانات بقية المستأجرين خارج الـ cache."
+          ] }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Create a table with 1 million rows and an int IDENTITY clustered primary key. Run a query filtering on a non-indexed column with SET STATISTICS IO ON and write down the logical reads. Add a non-clustered index on that column and run it again. You are done when you can state both read counts and explain, in one sentence, why the second one does not grow if you double the table size.",
+          ar: "أنشئ جدولاً بمليون صف مع clustered primary key من نوع int IDENTITY. شغّل استعلاماً يفلتر على عمود غير مفهرس مع SET STATISTICS IO ON ودوّن عدد الـ logical reads. ثم أضف non-clustered index على ذلك العمود وأعد التشغيل. تكون قد أنجزت عندما تستطيع ذكر الرقمين وتفسير سبب عدم نمو الرقم الثاني إذا ضاعفت حجم الجدول، في جملة واحدة." },
+        { t: "ex", diff: "medium",
+          en: "Reproduce a key lookup and then remove it. Index only the filter column, run a query that also selects a column not in the index, and confirm the plan shows Index Seek plus Key Lookup. Then rebuild the index with INCLUDE for the missing column. You are done when the Key Lookup operator is gone and you can quote the before and after logical reads.",
+          ar: "أعد إنتاج key lookup ثم أزلها. افهرس عمود الفلترة فقط، وشغّل استعلاماً يختار أيضاً عموداً غير موجود في الـ index، وتأكد أن الخطة تُظهر Index Seek مع Key Lookup. ثم أعد بناء الـ index بـ INCLUDE للعمود الناقص. تكون قد أنجزت عندما تختفي عملية Key Lookup وتستطيع ذكر الـ logical reads قبل وبعد." },
+        { t: "ex", diff: "hard",
+          en: "Find the tipping point yourself. Keep one non-clustered index and one covering-free query, and run it selecting 10, 100, 1,000, 10,000 and 100,000 rows from a 5-million-row table. Record the plan operator each time. You are done when you can name the row count at which the optimizer switched from Index Seek with Key Lookup to Clustered Index Scan, and express it as a percentage of the table.",
+          ar: "اعثر على نقطة الانقلاب بنفسك. أبقِ non-clustered index واحداً واستعلاماً غير مغطّى، وشغّله ليعيد 10 ثم 100 ثم 1,000 ثم 10,000 ثم 100,000 صف من جدول فيه 5 ملايين صف. سجّل الـ operator في الخطة كل مرة. تكون قد أنجزت عندما تحدد عدد الصفوف الذي انتقل عنده الـ optimizer من Index Seek مع Key Lookup إلى Clustered Index Scan، وتعبّر عنه كنسبة مئوية من الجدول." },
+        { t: "ex", diff: "senior",
+          en: "Build the two-table case. Create Orders clustered on OrderId and a copy clustered on (CustomerId, OrderId), each with 5 million rows and identical data. Run three workloads on both: the per-customer page query, a last-hour operations query, and a 100,000-row insert. You are done when you can produce a short table of reads and duration for all six runs, and write two sentences saying which clustered key you would ship and what you are giving up.",
+          ar: "ابنِ حالة الجدولين. أنشئ Orders بـ clustering على OrderId، ونسخة بـ clustering على (CustomerId, OrderId)، كلٌّ بخمسة ملايين صف وببيانات متطابقة. شغّل ثلاثة أحمال على الاثنين: استعلام صفحة العميل، واستعلام تشغيل لآخر ساعة، وإدراج 100,000 صف. تكون قد أنجزت عندما تنتج جدولاً قصيراً بالقراءات والمدة للتشغيلات الستة، وتكتب جملتين تحددان أي clustered key ستعتمده وما الذي تتنازل عنه." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref",
+          label: { en: "SQL Server index architecture and design guide", ar: "دليل بنية وتصميم الـ indexes في SQL Server" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-index-design-guide",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref",
+          label: { en: "Clustered and non-clustered indexes described", ar: "شرح الـ clustered والـ non-clustered indexes" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/indexes/clustered-and-nonclustered-indexes-described",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref",
+          label: { en: "Use The Index, Luke — anatomy of an index", ar: "Use The Index, Luke — تشريح الـ index" },
+          url: "https://use-the-index-luke.com/sql/anatomy",
+          meta: { en: "Guide", ar: "دليل" } },
+        { t: "ref",
+          label: { en: "Brent Ozar — How to think like the SQL Server engine", ar: "Brent Ozar — كيف تفكر مثل محرك SQL Server" },
+          url: "https://www.brentozar.com/archive/2018/02/how-to-think-like-the-sql-server-engine/",
+          meta: { en: "Article", ar: "مقال" } }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "How many clustered indexes can a single table have, and why?", ar: "كم clustered index يمكن أن يوجد على جدول واحد، ولماذا؟" },
+      options: [
+        { en: "One, because the clustered index defines the physical order the rows are stored in", ar: "واحد، لأن الـ clustered index يحدد الترتيب الفيزيائي لتخزين الصفوف" },
+        { en: "One per filegroup, because each filegroup stores its own copy", ar: "واحد لكل filegroup، لأن كل filegroup يخزّن نسخته الخاصة" },
+        { en: "Up to 999, the same as non-clustered indexes", ar: "حتى 999، مثل الـ non-clustered indexes" },
+        { en: "Unlimited, but only one can be used per query", ar: "بلا حد، لكن يمكن استخدام واحد فقط في كل استعلام" }
+      ],
+      correct: 0,
+      why: { en: "The clustered index's leaf level is the table data itself, stored in key order. Rows can only be stored in one order, so there can only be one clustered index.", ar: "المستوى الأسفل للـ clustered index هو بيانات الجدول نفسها مخزّنة بترتيب المفتاح. والصفوف تُخزَّن بترتيب واحد فقط، لذلك لا يمكن وجود أكثر من clustered index واحد." }
+    },
+    {
+      q: { en: "What does the leaf level of a non-clustered index contain in SQL Server?", ar: "ماذا يحتوي المستوى الأسفل للـ non-clustered index في SQL Server؟" },
+      options: [
+        { en: "The full rows, duplicated from the table", ar: "الصفوف الكاملة، منسوخة من الجدول" },
+        { en: "The key columns, any INCLUDE columns, and the clustered key as a pointer", ar: "أعمدة المفتاح وأي أعمدة INCLUDE والـ clustered key كمؤشر" },
+        { en: "Only the key columns, with no way back to the row", ar: "أعمدة المفتاح فقط، بلا طريقة للعودة إلى الصف" },
+        { en: "A compressed copy of the whole table", ar: "نسخة مضغوطة من الجدول كله" }
+      ],
+      correct: 1,
+      why: { en: "It stores only the indexed columns plus INCLUDE columns, and uses the clustered key (or a RID on a heap) to find the full row when more columns are needed.", ar: "يخزّن الأعمدة المفهرسة فقط مع أعمدة INCLUDE، ويستخدم الـ clustered key (أو RID في الـ heap) للوصول إلى الصف الكامل عند الحاجة إلى أعمدة إضافية." }
+    },
+    {
+      q: { en: "Why does clustering on a random GUID slow down inserts?", ar: "لماذا يبطئ الـ clustering على GUID عشوائي عمليات الإدراج؟" },
+      options: [
+        { en: "GUIDs cannot be compared, so the engine falls back to a scan", ar: "لا يمكن مقارنة الـ GUIDs، فيلجأ المحرك إلى الـ scan" },
+        { en: "The engine must rebuild statistics after every insert", ar: "يجب على المحرك إعادة بناء الـ statistics بعد كل إدراج" },
+        { en: "New rows land in random positions inside already-full pages, forcing page splits", ar: "تهبط الصفوف الجديدة في مواضع عشوائية داخل صفحات ممتلئة، ما يفرض page splits" },
+        { en: "GUID keys disable the buffer pool for that table", ar: "مفاتيح الـ GUID تعطّل الـ buffer pool لذلك الجدول" }
+      ],
+      correct: 2,
+      why: { en: "Random keys mean inserts hit the middle of the index. When the target page is full, SQL Server splits it — extra writes, fragmentation, and half-empty pages.", ar: "المفاتيح العشوائية تجعل الإدراج يصيب وسط الـ index. وعندما تكون الصفحة الهدف ممتلئة يقسمها SQL Server، فتنتج كتابات إضافية وfragmentation وصفحات نصف فارغة." }
+    },
+    {
+      q: { en: "A query filters on CustomerId and OrderDate. Which index lets it seek?", ar: "استعلام يفلتر على CustomerId وOrderDate. أي index يتيح له عمل seek؟" },
+      options: [
+        { en: "(OrderDate, CustomerId)", ar: "(OrderDate, CustomerId)" },
+        { en: "(CustomerId, OrderDate)", ar: "(CustomerId, OrderDate)" },
+        { en: "Two separate single-column indexes on each", ar: "index منفصل بعمود واحد لكل منهما" },
+        { en: "Any of them — column order does not affect seeks", ar: "أي منها — ترتيب الأعمدة لا يؤثر على الـ seek" }
+      ],
+      correct: 1,
+      why: { en: "An index is sorted by its first key column first. Putting the equality column (CustomerId) first groups that customer's rows together; the range column (OrderDate) then narrows within that group.", ar: "الـ index مرتّب حسب عمود مفتاحه الأول أولاً. وضع عمود المساواة (CustomerId) أولاً يجمّع صفوف ذلك العميل معاً، ثم يضيّق عمود النطاق (OrderDate) داخل تلك المجموعة." }
+    },
+    {
+      q: { en: "The plan shows an Index Seek followed by a Key Lookup returning 60,000 rows. What is the usual fix?", ar: "تُظهر الخطة Index Seek يتبعه Key Lookup يعيد 60,000 صف. ما الحل المعتاد؟" },
+      options: [
+        { en: "Add the columns the query selects to the index with INCLUDE", ar: "أضف الأعمدة التي يختارها الاستعلام إلى الـ index عبر INCLUDE" },
+        { en: "Drop the non-clustered index so the engine scans instead", ar: "احذف الـ non-clustered index ليعمل المحرك scan بدلاً منه" },
+        { en: "Add a second non-clustered index on the selected columns", ar: "أضف non-clustered index ثانياً على الأعمدة المختارة" },
+        { en: "Rebuild the clustered index to remove fragmentation", ar: "أعد بناء الـ clustered index لإزالة الـ fragmentation" }
+      ],
+      correct: 0,
+      why: { en: "The lookup exists because the index lacks a column the query needs. INCLUDE stores that column at the leaf, making the index cover the query so no trip back to the table is needed.", ar: "الـ lookup موجودة لأن الـ index ينقصه عمود يحتاجه الاستعلام. وINCLUDE يخزّن ذلك العمود في الـ leaf فيصبح الـ index مغطياً للاستعلام ولا يحتاج للعودة إلى الجدول." }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: covering indexes
+
+const coveringLesson = {
+  id: "covering",
+  moduleId: "sql",
+  title: { en: "Covering indexes and key lookups", ar: "الفهارس الشاملة وعمليات البحث بالمفتاح" },
+  summary: {
+    en: "A covering index holds every column a query asks for, so SQL Server answers the query from the index alone and never goes back to the table.",
+    ar: "الـ covering index يحتوي كل الأعمدة التي يطلبها الـ query، فيجيب SQL Server من الـ index وحده ولا يعود إلى الجدول."
+  },
+  mins: 15,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "An index normally holds only the columns you search on. If your query also asks for other columns, SQL Server has to go back to the table row by row to fetch them. That second trip is called a key lookup, and it is the single most common reason a query that 'has an index' is still slow. A covering index removes the second trip by storing those extra columns inside the index itself.",
+          ar: "الـ index عادةً يحتوي فقط الأعمدة التي تبحث بها. إذا طلب الـ query أعمدة أخرى، يضطر SQL Server للعودة إلى الجدول صفاً بصف ليجلبها. هذه الرحلة الثانية اسمها key lookup، وهي أشهر سبب لبقاء query بطيئاً رغم وجود index. الـ covering index يلغي الرحلة الثانية لأنه يخزّن تلك الأعمدة داخل الـ index نفسه." },
+        { t: "kv", rows: [
+          { k: { en: "Index", ar: "Index" },
+            v: { en: "A separate, sorted copy of one or more columns, kept in sync with the table, used to find rows fast.", ar: "نسخة منفصلة ومرتّبة من عمود أو أكثر، تبقى متزامنة مع الجدول، تُستخدم لإيجاد الصفوف بسرعة." } },
+          { k: { en: "Clustered index", ar: "Clustered index" },
+            v: { en: "The table itself, physically sorted by its key. A table has at most one. Its leaf pages ARE the full rows.", ar: "الجدول نفسه، مرتّب فيزيائياً حسب مفتاحه. لكل جدول واحد على الأكثر. صفحاته الطرفية هي الصفوف الكاملة." } },
+          { k: { en: "Non-clustered index", ar: "Non-clustered index" },
+            v: { en: "A side structure holding its key columns plus a pointer back to the full row. A table can have many.", ar: "بنية جانبية تحتوي أعمدة مفتاحها بالإضافة إلى pointer يعود للصف الكامل. يمكن أن يكون للجدول عدة منها." } },
+          { k: { en: "Key lookup", ar: "Key lookup" },
+            v: { en: "The extra read that follows that pointer into the clustered index to fetch columns the index does not have. Happens once per matching row.", ar: "القراءة الإضافية التي تتبع ذلك الـ pointer إلى الـ clustered index لجلب أعمدة لا يملكها الـ index. تحدث مرة لكل صف مطابق." } },
+          { k: { en: "Covering index", ar: "Covering index" },
+            v: { en: "An index that already contains every column one specific query needs, so no key lookup is required.", ar: "index يحتوي أصلاً كل عمود يحتاجه query معيّن، فلا حاجة لأي key lookup." } },
+          { k: { en: "INCLUDE", ar: "INCLUDE" },
+            v: { en: "A CREATE INDEX clause that stores extra columns in the index leaf without making them part of the sort key.", ar: "جملة في CREATE INDEX تخزّن أعمدة إضافية في leaf الـ index دون جعلها جزءاً من مفتاح الترتيب." } }
+        ]},
+        { t: "p",
+          en: "Think of a printed cookbook. The index at the back lists dish names in alphabetical order, and next to each name a page number. If you only want to know whether the book has a recipe for lasagne, the back index answers you instantly. If you also want the cooking time, the back index cannot help — you flip to page 214 and read it there. One flip is cheap. Two hundred flips, one per dish, is not. Now imagine the back index printed the cooking time next to each name. That is a covering index: the answer is complete where you are already looking.",
+          ar: "تخيّل كتاب طبخ مطبوع. الفهرس في آخره يسرد أسماء الأطباق أبجدياً، وبجانب كل اسم رقم صفحة. إذا أردت فقط معرفة هل يوجد وصفة للازانيا، الفهرس يجيبك فوراً. أما إذا أردت أيضاً مدة الطهي، فالفهرس لا يكفي — تفتح صفحة 214 وتقرأها هناك. فتح صفحة واحدة رخيص. فتح مئتي صفحة، واحدة لكل طبق، ليس رخيصاً. الآن تخيّل أن الفهرس طبع مدة الطهي بجانب كل اسم. هذا هو الـ covering index: الجواب كامل في المكان الذي تنظر إليه أصلاً." },
+        { t: "p",
+          en: "The running example for this whole lesson is one endpoint: GET /customers/{id}/orders, which returns a customer's recent orders. It runs this query against an Orders table of 40 million rows: SELECT OrderId, OrderDate, TotalAmount FROM Orders WHERE CustomerId = 4821 ORDER BY OrderDate DESC. There is already an index on CustomerId. The endpoint still takes 900 ms. We will find out why and fix it.",
+          ar: "المثال الجاري في هذا الدرس كله هو endpoint واحد: GET /customers/{id}/orders، يعيد آخر طلبات عميل. ينفّذ هذا الـ query على جدول Orders فيه 40 مليون صف: SELECT OrderId, OrderDate, TotalAmount FROM Orders WHERE CustomerId = 4821 ORDER BY OrderDate DESC. يوجد أصلاً index على CustomerId. ومع ذلك الـ endpoint يستغرق 900 ms. سنعرف السبب ونصلحه." },
+        { t: "callout", kind: "note",
+          en: "\"Covering\" is not a property of an index by itself. It is a relationship between an index and one query. The same index covers query A and does not cover query B. Always say \"this index covers that query\".",
+          ar: "«Covering» ليست خاصية في الـ index بذاته، بل علاقة بين index و query واحد. نفس الـ index قد يغطي query A ولا يغطي query B. قل دائماً «هذا الـ index يغطي ذلك الـ query»." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "With only IX_Orders_CustomerId on (CustomerId), SQL Server finds the 400 rows for customer 4821 quickly. Finding them is not the problem. The index leaf stores CustomerId and the clustered key OrderId, and nothing else. The query also wants OrderDate and TotalAmount. So the engine performs 400 key lookups. Each one is a separate jump into the clustered index, reading an 8 KB page from a different place on disk.",
+          ar: "مع وجود IX_Orders_CustomerId على (CustomerId) فقط، يجد SQL Server الـ 400 صف الخاصة بالعميل 4821 بسرعة. إيجادها ليس المشكلة. الـ leaf في الـ index يخزّن CustomerId والمفتاح الـ clustered وهو OrderId، ولا شيء آخر. لكن الـ query يريد أيضاً OrderDate و TotalAmount. لذلك ينفّذ المحرّك 400 key lookup. كل واحدة قفزة منفصلة إلى الـ clustered index، تقرأ صفحة 8 KB من مكان مختلف على القرص." },
+        { t: "kv", rows: [
+          { k: { en: "Before — index on (CustomerId)", ar: "قبل — index على (CustomerId)" },
+            v: { en: "1 213 logical reads (a logical read is one 8 KB page fetched, from memory or disk), ~900 ms, plan shows Index Seek + Key Lookup + Nested Loops + Sort.", ar: "1213 logical reads (الـ logical read هو جلب صفحة واحدة بحجم 8 KB، من الذاكرة أو القرص)، حوالي 900 ms، والخطة تُظهر Index Seek و Key Lookup و Nested Loops و Sort." } },
+          { k: { en: "After — index on (CustomerId, OrderDate DESC) INCLUDE (TotalAmount)", ar: "بعد — index على (CustomerId, OrderDate DESC) INCLUDE (TotalAmount)" },
+            v: { en: "6 logical reads, ~4 ms, plan shows one Index Seek and nothing else.", ar: "6 logical reads، حوالي 4 ms، والخطة تُظهر Index Seek واحداً فقط ولا شيء غيره." } },
+          { k: { en: "What changed", ar: "ما الذي تغيّر" },
+            v: { en: "Reads dropped about 200x. The rows returned are identical. No query text was rewritten — only the index definition.", ar: "انخفضت القراءات نحو 200 ضعف. الصفوف المعادة نفسها تماماً. لم يُعد كتابة أي جزء من الـ query — فقط تعريف الـ index." } }
+        ]},
+        { t: "p",
+          en: "Two numbers matter here. 1 213 reads means the engine touched 1 213 pages to return 400 small rows — roughly three pages per row, which is pure waste. And 900 ms is wall-clock time on a warm cache. On a cold cache each lookup can be a separate random disk read. The same query has been measured at over 6 seconds that way. The fix cost one CREATE INDEX statement.",
+          ar: "رقمان مهمان هنا. 1213 قراءة تعني أن المحرّك لمس 1213 صفحة ليعيد 400 صفاً صغيراً — أي نحو ثلاث صفحات لكل صف، وهذا هدر خالص. و900 ms هو زمن فعلي مع cache دافئ. ومع cache بارد قد تكون كل عملية lookup قراءة قرص عشوائية منفصلة. وقيس نفس الـ query عندها بأكثر من 6 ثوانٍ. والإصلاح كلّف جملة CREATE INDEX واحدة." },
+        { t: "p",
+          en: "Notice the Sort operator in the 'before' plan too. The query ends with ORDER BY OrderDate DESC, and the old index knows nothing about OrderDate, so SQL Server had to collect all 400 rows and sort them in memory afterwards. Putting OrderDate into the index key in DESC order removed the sort as well — one index change fixed two separate problems.",
+          ar: "لاحظ أيضاً وجود operator اسمه Sort في الخطة «قبل». الـ query ينتهي بـ ORDER BY OrderDate DESC، والـ index القديم لا يعرف شيئاً عن OrderDate، فاضطر SQL Server لجمع الـ 400 صف ثم ترتيبها في الذاكرة. وضع OrderDate في مفتاح الـ index بترتيب DESC ألغى الـ sort أيضاً — تغيير index واحد أصلح مشكلتين منفصلتين." }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Every index in SQL Server is a B-tree — a tree structure where each node is one 8 KB page, and each level narrows the search until you reach the bottom. The bottom level is called the leaf level, and it holds the actual index entries in sorted order. Levels above the leaf are just signposts saying 'keys from X to Y live on that page'. A 40-million-row index is typically 3 to 4 levels deep, so finding one entry costs 3 or 4 page reads no matter how big the table is.",
+          ar: "كل index في SQL Server هو B-tree — بنية شجرية كل عقدة فيها صفحة 8 KB، وكل مستوى يضيّق البحث حتى تصل إلى الأسفل. المستوى الأسفل اسمه leaf level ويحتوي مدخلات الـ index الفعلية مرتّبة. أما المستويات فوقه فهي لافتات تقول «المفاتيح من X إلى Y موجودة في تلك الصفحة». الـ index على 40 مليون صف عمقه عادةً 3 أو 4 مستويات، فإيجاد مدخلة واحدة يكلّف 3 أو 4 قراءات صفحات مهما كبر الجدول." },
+        { t: "p",
+          en: "What sits in the leaf is the whole story. In a clustered index the leaf pages contain the complete rows — the clustered index is the table. In a non-clustered index the leaf contains the index key columns, any INCLUDE columns, and a pointer to the row. On a table that has a clustered index, that pointer is the clustered key value itself. On a table with no clustered index — such a table is called a heap — it is a physical address called a RID. So a non-clustered index leaf entry is small, and its size is exactly what decides whether a lookup is needed.",
+          ar: "ما يوجد في الـ leaf هو القصة كلها. في الـ clustered index تحتوي صفحات الـ leaf الصفوف الكاملة — فالـ clustered index هو الجدول. أما في الـ non-clustered index فيحتوي الـ leaf أعمدة مفتاح الـ index، وأي أعمدة INCLUDE، و pointer إلى الصف. في جدول له clustered index يكون هذا الـ pointer هو قيمة المفتاح الـ clustered نفسها. أما في جدول بلا clustered index — ويسمّى heap — فيكون عنواناً فيزيائياً اسمه RID. إذن مدخلة الـ leaf في الـ non-clustered index صغيرة، وحجمها بالضبط هو ما يحدّد إن كنا نحتاج lookup أم لا." },
+        { t: "kv", rows: [
+          { k: { en: "Key columns", ar: "أعمدة المفتاح" },
+            v: { en: "The columns after CREATE INDEX ... ON Table(...). They define the sort order, so they can be searched, range-scanned and used to satisfy ORDER BY.", ar: "الأعمدة التي تأتي بعد CREATE INDEX ... ON Table(...). تحدّد ترتيب الفرز، لذلك يمكن البحث بها ومسح نطاقات منها واستخدامها لتلبية ORDER BY." } },
+          { k: { en: "INCLUDE columns", ar: "أعمدة INCLUDE" },
+            v: { en: "Stored only in the leaf, not sorted. Useless for searching or ordering, perfect for returning. They do not count toward the 900-byte key size limit.", ar: "تُخزَّن في الـ leaf فقط وغير مرتّبة. لا تفيد في البحث أو الترتيب، ومثالية للإرجاع. ولا تُحتسب ضمن حد حجم المفتاح البالغ 900 بايت." } },
+          { k: { en: "Row locator", ar: "Row locator" },
+            v: { en: "The clustered key (or RID) silently added to every non-clustered leaf entry. This is why the clustered key should be narrow.", ar: "المفتاح الـ clustered (أو RID) يُضاف ضمنياً إلى كل مدخلة leaf في الـ non-clustered. لهذا يجب أن يكون المفتاح الـ clustered ضيقاً." } },
+          { k: { en: "Key Lookup operator", ar: "Key Lookup operator" },
+            v: { en: "What appears in the plan when the leaf entry is not enough. Always paired with Nested Loops, and executed once per matching row.", ar: "ما يظهر في الخطة عندما لا تكفي مدخلة الـ leaf. يظهر دائماً مع Nested Loops، وينفَّذ مرة لكل صف مطابق." } }
+        ]},
+        { t: "p",
+          en: "Now trace our query step by step. The engine seeks into IX_Orders_CustomerId looking for CustomerId = 4821: three page reads to walk down the tree, then it reads the leaf entries in order. Each entry gives it an OrderId. For each of those 400 OrderIds it starts again at the top of the clustered index and walks down 3 levels to fetch the row and read OrderDate and TotalAmount. That is 400 × 3 = 1 200 extra reads. Add the initial seek and you get the 1 213 we measured. The cost is not one big scan; it is four hundred small ones.",
+          ar: "الآن تتبّع الـ query خطوة بخطوة. يبدأ المحرّك بـ seek داخل IX_Orders_CustomerId بحثاً عن CustomerId = 4821: ثلاث قراءات صفحات للنزول في الشجرة، ثم يقرأ مدخلات الـ leaf بالترتيب. كل مدخلة تعطيه OrderId. ولكل واحد من هذه الـ 400 OrderId يبدأ من جديد من أعلى الـ clustered index وينزل 3 مستويات ليجلب الصف ويقرأ OrderDate و TotalAmount. هذا 400 × 3 = 1200 قراءة إضافية. أضف الـ seek الأول تحصل على 1213 التي قسناها. التكلفة ليست مسحاً كبيراً واحداً، بل أربعمئة مسح صغير." },
+        { t: "code", lang: "sql",
+          label: { en: "The before index, the after index, and how to see the difference", ar: "الـ index قبل، والـ index بعد، وكيف ترى الفرق" },
+          code: "-- what exists today: finds the rows, then must go get the columns\nCREATE NONCLUSTERED INDEX IX_Orders_CustomerId\n    ON dbo.Orders (CustomerId);\n\n-- the query the endpoint runs\nSET STATISTICS IO ON;      -- prints how many 8 KB pages were read\nSET STATISTICS TIME ON;    -- prints CPU and elapsed milliseconds\n\nSELECT OrderId, OrderDate, TotalAmount\nFROM   dbo.Orders\nWHERE  CustomerId = 4821\nORDER  BY OrderDate DESC;\n-- Table 'Orders'. logical reads 1213   <-- 400 key lookups hiding here\n\n-- the covering index: CustomerId to seek, OrderDate to seek+sort,\n-- TotalAmount only to return. OrderId is already there as the clustered key.\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC)\n    INCLUDE (TotalAmount);\n\n-- same query, now: logical reads 6, no Key Lookup, no Sort" },
+        { t: "p",
+          en: "Why is TotalAmount in INCLUDE and not in the key? Because the query never searches or sorts by it — it only returns it. Key columns cost more. They are stored at every level of the B-tree, and they must be kept in sort order on every insert. All key columns together also cannot exceed 900 bytes. INCLUDE columns live only in the leaf, are not sorted, and have no such limit. The rule is simple: search or sort on it, put it in the key; only display it, put it in INCLUDE.",
+          ar: "لماذا وُضع TotalAmount في INCLUDE وليس في المفتاح؟ لأن الـ query لا يبحث ولا يرتّب به — فقط يعيده. أعمدة المفتاح أغلى. تُخزَّن في كل مستوى من الـ B-tree، ويجب إبقاؤها مرتّبة عند كل insert. كما أن مجموع أعمدة المفتاح لا يتجاوز 900 بايت. أما أعمدة INCLUDE فتوجد في الـ leaf فقط وغير مرتّبة وبلا هذا الحد. القاعدة بسيطة: إن كنت تبحث أو ترتّب بالعمود ضعه في المفتاح، وإن كنت تعرضه فقط ضعه في INCLUDE." },
+        { t: "callout", kind: "tip",
+          en: "The optimizer does not decide 'is this index covering'. It costs each option. When the number of matching rows is small it accepts key lookups; past a tipping point of roughly 25-30% of the table it abandons the index and scans instead. That is why the same index seeks for customer 4821 and scans for a customer with a million orders.",
+          ar: "الـ optimizer لا يقرّر «هل هذا الـ index covering». بل يحسب تكلفة كل خيار. عندما يكون عدد الصفوف المطابقة صغيراً يقبل الـ key lookups؛ وبعد نقطة انقلاب تقارب 25-30% من الجدول يترك الـ index ويقوم بـ scan. لهذا نفس الـ index يعمل seek للعميل 4821 و scan لعميل عنده مليون طلب." }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "Removes the key lookup entirely — reads drop by 10x to 200x on selective queries.",
+              "Ordering the key columns right also removes the Sort operator, which frees memory grants.",
+              "No application change: the query text stays the same, only the index definition moves.",
+              "Makes the query's cost predictable, because it no longer depends on how scattered the rows are on disk."
+            ],
+            ar: [
+              "يلغي الـ key lookup تماماً — تنخفض القراءات بين 10 و200 ضعف في الاستعلامات الانتقائية.",
+              "ترتيب أعمدة المفتاح بشكل صحيح يلغي أيضاً operator الـ Sort، وهذا يحرّر memory grants.",
+              "لا تغيير في التطبيق: نص الـ query يبقى كما هو، ويتغيّر تعريف الـ index فقط.",
+              "يجعل تكلفة الـ query متوقّعة، لأنها لم تعد تعتمد على مدى تشتّت الصفوف على القرص."
+            ]
+          },
+          cons: {
+            en: [
+              "Every INCLUDE column is a second physical copy of that data, so the index grows and takes disk, memory and backup space.",
+              "Every INSERT, UPDATE and DELETE must maintain the index too — writes get slower.",
+              "Updating an included column now dirties the index as well as the table, doubling the log written.",
+              "Covering is per-query, so a wide covering strategy tends to breed one index per query."
+            ],
+            ar: [
+              "كل عمود في INCLUDE هو نسخة فيزيائية ثانية من البيانات، فيكبر الـ index ويأخذ مساحة قرص وذاكرة ونسخ احتياطي.",
+              "كل INSERT و UPDATE و DELETE يجب أن يصون الـ index أيضاً — فتصبح الكتابة أبطأ.",
+              "تحديث عمود موجود في INCLUDE صار يمسّ الـ index والجدول معاً، فيتضاعف حجم الـ log المكتوب.",
+              "الـ covering مرتبط بـ query واحد، لذلك التوسّع فيه يميل إلى إنتاج index لكل query."
+            ]
+          },
+          limits: {
+            en: [
+              "Key columns together cannot exceed 900 bytes; INCLUDE columns are exempt but still consume leaf space.",
+              "A non-clustered index allows at most 32 key columns and 1023 INCLUDE columns.",
+              "SELECT * can almost never be covered — adding every column just duplicates the table.",
+              "Covering does not help if the WHERE clause is not selective; the optimizer will scan anyway."
+            ],
+            ar: [
+              "مجموع أعمدة المفتاح لا يتجاوز 900 بايت؛ وأعمدة INCLUDE مستثناة لكنها تستهلك مساحة الـ leaf.",
+              "الـ non-clustered index يسمح بـ 32 عمود مفتاح كحد أقصى و1023 عمود INCLUDE.",
+              "SELECT * يستحيل تغطيته تقريباً — إضافة كل الأعمدة تكرّر الجدول ببساطة.",
+              "الـ covering لا يفيد إذا لم تكن شروط WHERE انتقائية؛ الـ optimizer سيقوم بـ scan على أي حال."
+            ]
+          },
+          alts: {
+            en: [
+              "Narrow the SELECT list: often the query asks for columns nobody displays, and removing them makes an existing index covering.",
+              "A filtered index (WHERE clause on the index) covers a hot subset at a fraction of the size.",
+              "A columnstore index for analytic queries that touch few columns across many rows.",
+              "Accept the key lookup when the query returns 1-5 rows; three extra reads are not worth a new index."
+            ],
+            ar: [
+              "قلّل أعمدة SELECT: كثيراً ما يطلب الـ query أعمدة لا يعرضها أحد، وحذفها يجعل index موجوداً يغطي الاستعلام.",
+              "الـ filtered index (بشرط WHERE على الـ index) يغطي مجموعة فرعية مطلوبة بحجم أصغر بكثير.",
+              "الـ columnstore index للاستعلامات التحليلية التي تلمس أعمدة قليلة عبر صفوف كثيرة.",
+              "اقبل الـ key lookup عندما يعيد الـ query من 1 إلى 5 صفوف؛ ثلاث قراءات إضافية لا تستحق index جديداً."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Blindly applying the missing-index suggestion", ar: "تطبيق اقتراح missing index بشكل أعمى" },
+          body: {
+            en: "SQL Server's execution plan showed a green 'Missing Index (Impact 96%)' hint, and a developer pasted it in as-is. The suggestion listed 11 INCLUDE columns because the query did SELECT *. The new index was 3.2 GB on a 4 GB table, and nightly imports went from 8 minutes to 41. The suggestion had also ignored an existing index that already covered 9 of those columns. The engine only ever suggests, never judges cost of writes or overlap with existing indexes.",
+            ar: "أظهرت خطة التنفيذ في SQL Server تلميحاً أخضر «Missing Index (Impact 96%)»، فنسخه المطوّر كما هو. الاقتراح سرد 11 عموداً في INCLUDE لأن الـ query كان SELECT *. صار حجم الـ index الجديد 3.2 GB على جدول حجمه 4 GB، وارتفع زمن الاستيراد الليلي من 8 دقائق إلى 41. كما تجاهل الاقتراح وجود index قائم يغطي 9 من تلك الأعمدة. المحرّك يقترح فقط، ولا يقيّم أبداً تكلفة الكتابة ولا التداخل مع الـ indexes الموجودة."
+          },
+          fix: "-- read the suggestion, then trim it:\n-- 1. replace SELECT * with the 3 columns the UI shows\n-- 2. check sys.dm_db_index_usage_stats for an index you can extend instead\n-- 3. only then CREATE INDEX with the columns that survived"
+        },
+        { t: "mistake",
+          title: { en: "Putting return-only columns in the key", ar: "وضع أعمدة العرض فقط في المفتاح" },
+          body: {
+            en: "Someone wrote the index as (CustomerId, OrderDate, TotalAmount, Notes) with no INCLUDE at all. Notes is an nvarchar(400) column, so every level of the B-tree — not just the leaf — now carries up to 800 bytes of text per entry. The index grew about 5x, the tree gained a level, and inserts had to keep Notes in sort order for no reason, since nothing ever sorts or filters by Notes.",
+            ar: "كتب أحدهم الـ index هكذا (CustomerId, OrderDate, TotalAmount, Notes) بدون INCLUDE إطلاقاً. وعمود Notes من نوع nvarchar(400)، فصار كل مستوى في الـ B-tree — لا الـ leaf وحده — يحمل حتى 800 بايت من النص لكل مدخلة. كبر الـ index نحو 5 أضعاف، واكتسبت الشجرة مستوى إضافياً، واضطرت عمليات الـ insert لإبقاء Notes مرتّباً بلا سبب، لأن لا أحد يرتّب أو يفلتر بـ Notes."
+          },
+          fix: "-- key = what you search or sort by; INCLUDE = what you only return\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n    ON dbo.Orders (CustomerId, OrderDate DESC)\n    INCLUDE (TotalAmount, Notes);"
+        },
+        { t: "mistake",
+          title: { en: "Wrong key column order", ar: "ترتيب خاطئ لأعمدة المفتاح" },
+          body: {
+            en: "An index on (OrderDate, CustomerId) was created for our query. It contains both columns, so it looks covering — and the plan still scanned it. A B-tree is sorted by the first key column first, exactly like a phone book sorted by surname then first name. Asking for everyone named 'Sara' means reading the whole book. The query filters on CustomerId, so CustomerId must come first.",
+            ar: "أُنشئ index على (OrderDate, CustomerId) من أجل استعلامنا. يحتوي العمودين، فيبدو covering — ومع ذلك بقيت الخطة تقوم بـ scan عليه. الـ B-tree مرتّب حسب عمود المفتاح الأول أولاً، تماماً مثل دليل هاتف مرتّب بالاسم العائلي ثم الأول. طلب كل من اسمه «سارة» يعني قراءة الدليل كله. والـ query يفلتر على CustomerId، لذلك يجب أن يأتي CustomerId أولاً."
+          },
+          fix: "-- equality filter first, then the range/ORDER BY column, then INCLUDE\nON dbo.Orders (CustomerId, OrderDate DESC) INCLUDE (TotalAmount)"
+        },
+        { t: "mistake",
+          title: { en: "Wrapping the indexed column in a function", ar: "تغليف العمود المفهرس بدالة" },
+          body: {
+            en: "The covering index was perfect, then a filter was added: WHERE YEAR(OrderDate) = 2024. The moment a column is passed to a function, SQL Server can no longer match it against the sorted index entries — the index stores OrderDate values, not YEAR(OrderDate) values. This is called a non-sargable predicate, meaning 'not searchable by index'. The plan fell back to scanning all 40 million rows even though the index still covered every column.",
+            ar: "كان الـ covering index مثالياً، ثم أُضيف فلتر: WHERE YEAR(OrderDate) = 2024. في اللحظة التي يُمرَّر فيها العمود إلى دالة، لا يستطيع SQL Server مطابقته مع مدخلات الـ index المرتّبة — لأن الـ index يخزّن قيم OrderDate لا قيم YEAR(OrderDate). يسمّى هذا predicate غير sargable، أي «غير قابل للبحث بالـ index». وعادت الخطة إلى مسح 40 مليون صف رغم أن الـ index ما زال يغطي كل الأعمدة."
+          },
+          fix: "-- bad:  WHERE YEAR(OrderDate) = 2024\n-- good: keep the column bare and turn it into a range\nWHERE OrderDate >= '2024-01-01' AND OrderDate < '2025-01-01'"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What is a key lookup?", ar: "ما هو الـ key lookup؟" },
+          a: { en: "It's the extra read SQL Server does when a non-clustered index finds your rows but doesn't hold all the columns you asked for. The index entry has a pointer to the full row, so the engine follows that pointer into the clustered index to fetch the missing columns. It does that once per row, so 400 matching rows means 400 lookups. It's cheap for a couple of rows and very expensive for a few hundred.",
+            ar: "هي القراءة الإضافية التي ينفّذها SQL Server عندما يجد الـ non-clustered index صفوفك لكنه لا يحتوي كل الأعمدة التي طلبتها. مدخلة الـ index فيها pointer إلى الصف الكامل، فيتبعه المحرّك إلى الـ clustered index ليجلب الأعمدة الناقصة. يفعل ذلك مرة لكل صف، فـ 400 صف مطابق تعني 400 lookup. رخيصة لصفّين، وغالية جداً لبضع مئات." } },
+        { t: "qa", level: "mid",
+          q: { en: "When would you put a column in INCLUDE instead of the index key?", ar: "متى تضع عموداً في INCLUDE بدل مفتاح الـ index؟" },
+          a: { en: "When the query only returns the column and never filters, joins or sorts by it. Key columns are stored at every level of the B-tree and have to stay sorted, so they make the whole index bigger and slower to write. INCLUDE columns sit only in the leaf pages. So TotalAmount, which we just display, goes in INCLUDE; CustomerId, which we filter on, and OrderDate, which we sort by, go in the key.",
+            ar: "عندما يعيد الـ query العمود فقط ولا يفلتر ولا يعمل join ولا يرتّب به. أعمدة المفتاح تُخزَّن في كل مستوى من الـ B-tree ويجب أن تبقى مرتّبة، فتكبّر الـ index كله وتبطّئ الكتابة. أما أعمدة INCLUDE فتوجد في صفحات الـ leaf فقط. لذلك TotalAmount الذي نعرضه فقط يذهب إلى INCLUDE؛ و CustomerId الذي نفلتر به و OrderDate الذي نرتّب به يذهبان إلى المفتاح." } },
+        { t: "qa", level: "mid",
+          q: { en: "You added every column to INCLUDE and the query got faster. What did you actually buy and pay?", ar: "أضفت كل الأعمدة إلى INCLUDE وصار الـ query أسرع. ما الذي ربحته وما الذي دفعته فعلياً؟" },
+          a: { en: "I bought read speed by making a second copy of the table. That copy has to be written on every insert and update. It also sits in the buffer pool competing for memory with real table pages, and it makes backups and index rebuilds longer. If the table is write-heavy that trade is usually bad. The honest fix is almost always to shrink the SELECT list first and see how many columns actually need covering.",
+            ar: "ربحت سرعة القراءة مقابل إنشاء نسخة ثانية من الجدول. هذه النسخة يجب كتابتها عند كل insert و update. كما تجلس في الـ buffer pool تنافس صفحات الجدول الحقيقية على الذاكرة، وتطيل النسخ الاحتياطي وإعادة بناء الـ indexes. إذا كان الجدول كثيف الكتابة فهذه مقايضة سيئة عادةً. والحل الصادق غالباً أن تقلّص قائمة SELECT أولاً وترى كم عموداً يحتاج التغطية فعلاً." } },
+        { t: "qa", level: "senior",
+          q: { en: "The plan shows a key lookup but the query is fast. Do you fix it?", ar: "الخطة تُظهر key lookup لكن الـ query سريع. هل تصلحه؟" },
+          a: { en: "Not by itself. A key lookup on a query returning three rows costs about nine extra page reads — that's noise. What I'd check is how the row count behaves across real parameter values. If some customers have 3 orders and others have 5 000, the same plan is fine for one and terrible for the other. So I'd look at the actual row counts in production, not the one execution in front of me, and only add the index if the expensive case is common.",
+            ar: "ليس بمجرّد وجوده. الـ key lookup في query يعيد ثلاثة صفوف يكلّف نحو تسع قراءات صفحات إضافية — وهذا ضجيج. ما أفحصه هو كيف يتغيّر عدد الصفوف عبر قيم الـ parameters الحقيقية. إذا كان بعض العملاء لديهم 3 طلبات وآخرون 5000، فنفس الخطة ممتازة لحالة وكارثية لأخرى. لذلك أنظر إلى أعداد الصفوف الفعلية في الإنتاج، لا إلى التنفيذ الواحد أمامي، ولا أضيف الـ index إلا إذا كانت الحالة الغالية شائعة." } },
+        { t: "qa", level: "senior",
+          q: { en: "How do you decide between adding a new covering index and extending an existing one?", ar: "كيف تقرّر بين إضافة covering index جديد وتوسيع index قائم؟" },
+          a: { en: "I look for an index whose key columns are a prefix of what I need. If one exists on (CustomerId) and I need (CustomerId, OrderDate), extending it is strictly better — I get the new query covered and I drop one index instead of maintaining two. If the leading columns differ, extending doesn't work and I need a separate index. The thing I never do is add an index that's a duplicate with one extra INCLUDE; I merge them, because two nearly identical indexes pay full write cost twice.",
+            ar: "أبحث عن index تكون أعمدة مفتاحه بادئة لما أحتاجه. إذا وُجد index على (CustomerId) وأحتاج (CustomerId, OrderDate) فتوسيعه أفضل قطعاً — أغطّي الـ query الجديد وأتخلّص من index بدل صيانة اثنين. وإذا اختلفت الأعمدة الأولى فالتوسيع لا ينفع وأحتاج index منفصلاً. الشيء الذي لا أفعله أبداً هو إضافة index مكرّر بفارق عمود INCLUDE واحد؛ أدمجهما، لأن index شبه متطابقين يدفعان تكلفة الكتابة كاملة مرتين." } },
+        { t: "qa", level: "staff",
+          q: { en: "Your team keeps shipping one-off covering indexes and the biggest tables now have 20 each. How do you stop this structurally?", ar: "فريقك يشحن باستمرار covering indexes لمرة واحدة، وصار في أكبر الجداول 20 index لكل منها. كيف توقف هذا هيكلياً؟" },
+          a: { en: "The root cause is that adding an index has no owner and no cost signal, so it always looks free at review time. I'd do three things. First, make index changes go through migrations in the same repo as the code, so they get reviewed like code instead of being applied by hand. Second, put a weekly report in the team channel from sys.dm_db_index_usage_stats showing indexes with zero seeks and non-zero writes — that turns 'we might need it' into a number. Third, add a rule to the review checklist: a new index needs the query it serves, the row counts, and a check that no existing index shares its leading columns. That last one alone usually cuts half of them.",
+            ar: "السبب الجذري أن إضافة index بلا مالك وبلا إشارة تكلفة، فتبدو دائماً مجانية وقت المراجعة. سأفعل ثلاثة أشياء. أولاً، أجعل تغييرات الـ indexes تمرّ عبر migrations في نفس مستودع الكود، فتُراجَع مثل الكود بدل تطبيقها يدوياً. ثانياً، أضع تقريراً أسبوعياً في قناة الفريق من sys.dm_db_index_usage_stats يُظهر الـ indexes التي seeks لها صفر وكتاباتها ليست صفراً — هذا يحوّل «ربما نحتاجه» إلى رقم. ثالثاً، أضيف قاعدة إلى قائمة المراجعة: أي index جديد يحتاج الـ query الذي يخدمه، وأعداد الصفوف، وتأكيداً أن لا index قائماً يشاركه أعمدته الأولى. هذه الأخيرة وحدها تحذف نصفها عادةً." } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "SELECT * in a hot read path makes covering impossible", ar: "استخدام SELECT * في مسار قراءة مزدحم يجعل التغطية مستحيلة" },
+          bad: "// OrdersRepository.cs — returns the whole entity to the API\npublic async Task<List<Order>> GetForCustomerAsync(int customerId) =>\n    await _db.Orders\n        .Where(o => o.CustomerId == customerId)\n        .OrderByDescending(o => o.OrderDate)\n        .ToListAsync();\n// EF emits: SELECT o.OrderId, o.CustomerId, o.OrderDate, o.TotalAmount,\n//                  o.Notes, o.ShippingAddress, o.BillingAddress, o.Status, ...\n// 400 key lookups, 1213 logical reads",
+          good: "// return only what the endpoint serializes\npublic async Task<List<OrderListItem>> GetForCustomerAsync(int customerId) =>\n    await _db.Orders\n        .Where(o => o.CustomerId == customerId)\n        .OrderByDescending(o => o.OrderDate)\n        .Select(o => new OrderListItem(o.OrderId, o.OrderDate, o.TotalAmount))\n        .ToListAsync();\n// SELECT o.OrderId, o.OrderDate, o.TotalAmount -> covered, 6 logical reads",
+          why: {
+            en: "Loading the full entity forces every column into the SELECT list, and a covering index for all of them would be a copy of the table. Projecting to a small type first makes a three-column index enough. This is the cheapest fix in the lesson: it changes one query and needs no new storage.",
+            ar: "تحميل الـ entity كاملاً يفرض كل الأعمدة في قائمة SELECT، و covering index لكل هذه الأعمدة سيكون نسخة من الجدول. الإسقاط إلى نوع صغير أولاً يجعل index بثلاثة أعمدة كافياً. هذا أرخص إصلاح في الدرس: يغيّر query واحداً ولا يحتاج أي تخزين جديد."
+          }
+        },
+        { t: "review", severity: "medium",
+          title: { en: "A new index that duplicates an existing one", ar: "index جديد يكرّر index موجوداً" },
+          bad: "-- already in the database\nCREATE INDEX IX_Orders_Cust ON dbo.Orders (CustomerId) INCLUDE (TotalAmount);\n\n-- added in this pull request for a new screen\nCREATE INDEX IX_Orders_Cust_2 ON dbo.Orders (CustomerId) INCLUDE (TotalAmount, Status);",
+          good: "-- extend the existing index instead of adding a near-twin\nDROP INDEX IX_Orders_Cust ON dbo.Orders;\nCREATE INDEX IX_Orders_Cust ON dbo.Orders (CustomerId)\n    INCLUDE (TotalAmount, Status);\n\n-- or, in one statement:\nCREATE INDEX IX_Orders_Cust ON dbo.Orders (CustomerId)\n    INCLUDE (TotalAmount, Status) WITH (DROP_EXISTING = ON);",
+          why: {
+            en: "Two indexes with the same key columns both get updated on every write, both occupy buffer pool memory, and both are backed up — for one extra column. Because the key columns match exactly, the wider one serves every query the narrow one served, so merging loses nothing. DROP_EXISTING = ON rebuilds in place and keeps the table usable.",
+            ar: "index بنفس أعمدة المفتاح يُحدَّثان كلاهما عند كل كتابة، ويشغلان معاً ذاكرة الـ buffer pool، ويُنسخان احتياطياً — مقابل عمود إضافي واحد. ولأن أعمدة المفتاح متطابقة تماماً، فالأوسع يخدم كل query كان يخدمه الأضيق، والدمج لا يخسر شيئاً. و DROP_EXISTING = ON يعيد البناء في مكانه ويبقي الجدول قابلاً للاستخدام."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a typical order-management system the Orders table serves two very different populations. The customer-facing API reads a handful of columns for one customer at a time, thousands of times a minute. The back-office and reporting jobs read many columns across date ranges, a few times an hour. Designing one index for both gives you an index that is too wide for the first and too narrow for the second.",
+          ar: "في نظام إدارة طلبات نموذجي يخدم جدول Orders فئتين مختلفتين تماماً. الـ API الموجّه للعميل يقرأ عدداً قليلاً من الأعمدة لعميل واحد في المرة، آلاف المرات في الدقيقة. أما وظائف الـ back-office والتقارير فتقرأ أعمدة كثيرة عبر نطاقات تواريخ، بضع مرات في الساعة. تصميم index واحد للاثنين ينتج index أوسع مما يلزم للأول وأضيق مما يلزم للثاني." },
+        { t: "ul",
+          en: [
+            "Cover the top few read paths by request volume, not by how slow they feel. A 900 ms query called 40 times a day matters less than a 90 ms one called 40 times a second.",
+            "Let reporting queries pay for key lookups or a scan; they run off-peak and nobody is waiting on a screen.",
+            "If a read replica exists, put the wide reporting indexes there only, so the write-serving primary stays lean.",
+            "Keep the clustered key narrow — an int identity, not a composite of four columns. It is silently copied into every non-clustered leaf entry, so a wide clustered key inflates every index you have.",
+            "Ship index changes as versioned migrations next to the code, so a covering index is reviewed together with the query that needs it."
+          ],
+          ar: [
+            "غطِّ أهم مسارات القراءة حسب حجم الطلبات، لا حسب شعورك ببطئها. فـ query يستغرق 900 ms ويُستدعى 40 مرة يومياً أقل أهمية من آخر يستغرق 90 ms ويُستدعى 40 مرة في الثانية.",
+            "دع استعلامات التقارير تدفع ثمن الـ key lookups أو الـ scan؛ فهي تعمل خارج وقت الذروة ولا أحد ينتظر أمام شاشة.",
+            "إذا وُجد read replica فضع indexes التقارير الواسعة عليه فقط، ليبقى الـ primary الذي يخدم الكتابة خفيفاً.",
+            "أبقِ المفتاح الـ clustered ضيقاً — int identity وليس تركيبة من أربعة أعمدة. فهو يُنسَخ ضمنياً في كل مدخلة leaf في كل non-clustered index، والمفتاح الواسع ينفخ كل الـ indexes لديك.",
+            "اشحن تغييرات الـ indexes على شكل migrations مُصدَّرة بجانب الكود، ليُراجَع الـ covering index مع الـ query الذي يحتاجه."
+          ] },
+        { t: "callout", kind: "warn",
+          en: "Creating an index on a large table takes a schema modification lock and blocks writers unless you use WITH (ONLINE = ON), which needs Enterprise Edition. On a 40-million-row table this can mean minutes of blocked inserts. Plan index creation like a deployment, not like a config change.",
+          ar: "إنشاء index على جدول كبير يأخذ schema modification lock ويحجب الكتابة إلا إذا استخدمت WITH (ONLINE = ON) التي تحتاج Enterprise Edition. على جدول فيه 40 مليون صف قد يعني هذا دقائق من عمليات insert محجوبة. خطّط لإنشاء الـ index كأنه عملية نشر لا كأنه تغيير إعدادات." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Latency", ar: "Latency" },
+            v: { en: "Our endpoint went from ~900 ms to ~4 ms. The saving scales with matching rows: 3 rows saves almost nothing, 400 rows saves 200x, 5 000 rows the optimizer would have scanned anyway.", ar: "انخفض الـ endpoint من نحو 900 ms إلى نحو 4 ms. والتوفير يتناسب مع عدد الصفوف المطابقة: 3 صفوف لا توفّر شيئاً تقريباً، و400 صف توفّر 200 ضعفاً، و5000 صف كان الـ optimizer سيقوم بـ scan لها أصلاً." } },
+          { k: { en: "Database I/O", ar: "Database I/O" },
+            v: { en: "1 213 logical reads to 6. Each key lookup is a random access to a different page. The covering seek reads a few pages that sit next to each other, which is far friendlier to disk and to read-ahead.", ar: "من 1213 logical read إلى 6. كل key lookup وصول عشوائي إلى صفحة مختلفة. أما الـ seek المغطّى فيقرأ بضع صفحات متجاورة، وهذا ألطف بكثير على القرص وعلى الـ read-ahead." } },
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "Two effects pull in opposite directions. Dropping the Sort operator releases the memory grant SQL Server reserved for sorting. But every INCLUDE column makes the index bigger, so it occupies more buffer pool and evicts other pages.", ar: "أثران متعاكسان. إلغاء operator الـ Sort يحرّر الـ memory grant الذي حجزه SQL Server للترتيب. لكن كل عمود INCLUDE يكبّر الـ index، فيشغل مساحة أكبر في الـ buffer pool ويطرد صفحات أخرى." } },
+          { k: { en: "Write cost", ar: "تكلفة الكتابة" },
+            v: { en: "Each extra index adds work to every INSERT and DELETE, and to any UPDATE that touches one of its columns. A table with 12 indexes can spend more time maintaining indexes than writing rows.", ar: "كل index إضافي يضيف عملاً إلى كل INSERT و DELETE، وإلى أي UPDATE يمسّ أحد أعمدته. جدول فيه 12 index قد يقضي في صيانة الـ indexes وقتاً أطول مما يقضيه في كتابة الصفوف." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "Fewer reads per request means each request holds shared locks for less time, so concurrency improves beyond the direct latency win — the same server handles more requests per second.", ar: "قراءات أقل لكل طلب تعني أن كل طلب يمسك shared locks لوقت أقصر، فتتحسّن الـ concurrency أكثر من مجرد كسب الـ latency المباشر — ونفس الخادم يخدم طلبات أكثر في الثانية." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "SET STATISTICS IO ON before running the query — the 'logical reads' number per table is the honest cost; if it is far larger than the rows returned, you are paying for lookups.",
+            "Include Actual Execution Plan in SSMS (Ctrl+M) — look for a Key Lookup operator; hover it to see 'Number of Executions', which is how many rows paid the extra trip.",
+            "In the same plan, check the Output List of the Key Lookup — those are exactly the columns missing from your index, so it tells you what to INCLUDE.",
+            "Query sys.dm_db_missing_index_details joined to sys.dm_db_missing_index_group_stats — a starting suggestion, never a final answer; always trim its INCLUDE list.",
+            "Query sys.dm_db_index_usage_stats — user_seeks near zero with high user_updates means an index that only costs you money, and is a candidate to drop."
+          ],
+          ar: [
+            "شغّل SET STATISTICS IO ON قبل تنفيذ الـ query — رقم «logical reads» لكل جدول هو التكلفة الصادقة؛ وإذا كان أكبر بكثير من عدد الصفوف المعادة فأنت تدفع ثمن lookups.",
+            "فعّل Actual Execution Plan في SSMS (Ctrl+M) — ابحث عن operator اسمه Key Lookup؛ ومرّر المؤشر فوقه لترى «Number of Executions»، وهو عدد الصفوف التي دفعت الرحلة الإضافية.",
+            "في نفس الخطة، افحص Output List الخاص بالـ Key Lookup — هذه بالضبط الأعمدة الناقصة من الـ index، فهي تخبرك بما تضعه في INCLUDE.",
+            "استعلم sys.dm_db_missing_index_details مع sys.dm_db_missing_index_group_stats — اقتراح للبدء لا جواباً نهائياً؛ وقلّص دائماً قائمة INCLUDE فيه.",
+            "استعلم sys.dm_db_index_usage_stats — قيمة user_seeks قريبة من الصفر مع user_updates عالية تعني index يكلّفك فقط، وهو مرشّح للحذف."
+          ] },
+        { t: "callout", kind: "tip",
+          en: "Fastest way to prove a covering index will help, without creating it: run the query with SELECT list trimmed to only the indexed columns. If reads collapse, key lookups were the whole cost. This takes ten seconds and needs no schema change or maintenance window.",
+          ar: "أسرع طريقة لإثبات أن الـ covering index سيفيد، دون إنشائه: نفّذ الـ query مع تقليص قائمة SELECT إلى الأعمدة المفهرسة فقط. إذا انهارت القراءات فالـ key lookups كانت التكلفة كلها. يستغرق هذا عشر ثوانٍ ولا يحتاج تغيير schema ولا نافذة صيانة." }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "Covering indexes show up wherever one screen reads a small, fixed set of columns from a very large table, over and over. The pattern is always the same: a list view filtered by one owner id and sorted by time. Recognising that shape is most of the work — the index almost writes itself once you know which columns the screen displays.",
+          ar: "تظهر الـ covering indexes في كل مكان تقرأ فيه شاشة واحدة مجموعة صغيرة ثابتة من الأعمدة من جدول ضخم، مراراً وتكراراً. النمط دائماً نفسه: قائمة مفلترة بمعرّف مالك واحد ومرتّبة زمنياً. التعرّف على هذا الشكل هو معظم العمل — فالـ index يكتب نفسه تقريباً بمجرد معرفة الأعمدة التي تعرضها الشاشة." },
+        { t: "ul",
+          en: [
+            "E-commerce order history: an index on (CustomerId, OrderDate DESC) including the two or three fields the list row shows. The order detail page reads a single row, so it needs no covering.",
+            "Chat and messaging: (ConversationId, SentAt DESC) including sender and a truncated preview, so loading the last 50 messages never touches the message body column.",
+            "Audit and activity logs: (EntityId, OccurredAt DESC) including action type and actor — huge append-only tables where a wide covering index is affordable because rows are never updated.",
+            "Multi-tenant SaaS: nearly every index starts with TenantId, and covering the tenant's most-used list view is usually the single biggest latency win in the product."
+          ],
+          ar: [
+            "سجل الطلبات في التجارة الإلكترونية: index على (CustomerId, OrderDate DESC) يتضمّن الحقلين أو الثلاثة التي يعرضها صف القائمة. أما صفحة تفاصيل الطلب فتجلب صفاً واحداً ولا تحتاج تغطية.",
+            "الدردشة والمراسلة: (ConversationId, SentAt DESC) يتضمّن المرسل ومعاينة مختصرة، فتحميل آخر 50 رسالة لا يلمس عمود نص الرسالة إطلاقاً.",
+            "سجلات التدقيق والنشاط: (EntityId, OccurredAt DESC) يتضمّن نوع الإجراء والفاعل — جداول ضخمة للإضافة فقط، والـ covering index الواسع فيها مقبول لأن الصفوف لا تُحدَّث أبداً.",
+            "أنظمة SaaS متعددة المستأجرين: كل index تقريباً يبدأ بـ TenantId، وتغطية شاشة القائمة الأكثر استخداماً عند المستأجر هي عادةً أكبر مكسب latency في المنتج."
+          ] }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Create an Orders table with 1 million rows and an index on (CustomerId) only. Run the lesson's query with SET STATISTICS IO ON and write down the logical reads. Add the covering index and run it again. You are done when you can state both numbers and point at the Key Lookup operator that disappeared.",
+          ar: "أنشئ جدول Orders فيه مليون صف مع index على (CustomerId) فقط. نفّذ query الدرس مع SET STATISTICS IO ON وسجّل عدد الـ logical reads. أضف الـ covering index ونفّذه مرة أخرى. تنتهي عندما تستطيع ذكر الرقمين والإشارة إلى operator الـ Key Lookup الذي اختفى." },
+        { t: "ex", diff: "medium",
+          en: "Build two indexes on the same table: (CustomerId, OrderDate) and (OrderDate, CustomerId). Run the same WHERE CustomerId = @id query against each using an index hint. Explain in two sentences why one seeks and the other scans, using the sort order of the B-tree.",
+          ar: "أنشئ index اثنين على نفس الجدول: (CustomerId, OrderDate) و (OrderDate, CustomerId). نفّذ نفس الـ query بشرط WHERE CustomerId = @id على كل منهما باستخدام index hint. اشرح في جملتين لماذا يقوم أحدهما بـ seek والآخر بـ scan، مستنداً إلى ترتيب الفرز في الـ B-tree." },
+        { t: "ex", diff: "hard",
+          en: "Measure the write cost. Time inserting 100 000 rows into the table with only the clustered index, then again with three covering indexes present. Report the percentage slowdown and the extra space used from sys.dm_db_partition_stats. You have succeeded when you can argue both sides of adding the third index with your own numbers.",
+          ar: "قِس تكلفة الكتابة. سجّل زمن إدخال 100000 صف إلى الجدول مع الـ clustered index وحده، ثم مرة أخرى مع وجود ثلاثة covering indexes. اذكر نسبة التباطؤ والمساحة الإضافية من sys.dm_db_partition_stats. تنجح عندما تستطيع الدفاع عن الرأيين في إضافة الـ index الثالث بأرقامك أنت." },
+        { t: "ex", diff: "senior",
+          en: "Take a real database you work on. Write a query over sys.dm_db_index_usage_stats and sys.indexes that lists every index with fewer than 100 seeks and more than 10 000 updates since the last restart, together with its size. Turn the result into a one-page proposal naming which indexes to drop and the risk of each. Done means a teammate can act on it without asking you a question.",
+          ar: "خذ قاعدة بيانات حقيقية تعمل عليها. اكتب query على sys.dm_db_index_usage_stats و sys.indexes يسرد كل index عدد seeks له أقل من 100 و updates أكثر من 10000 منذ آخر إعادة تشغيل، مع حجمه. حوّل النتيجة إلى مقترح من صفحة واحدة يسمّي الـ indexes المرشّحة للحذف ومخاطر كل منها. تنتهي عندما يستطيع زميل التصرّف بناءً عليه دون أن يسألك شيئاً." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref", label: { en: "SQL Server Index Architecture and Design Guide", ar: "دليل بنية وتصميم الـ indexes في SQL Server" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-index-design-guide",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "CREATE INDEX (Transact-SQL) — key columns, INCLUDE, limits", ar: "CREATE INDEX (Transact-SQL) — أعمدة المفتاح و INCLUDE والحدود" },
+          url: "https://learn.microsoft.com/en-us/sql/t-sql/statements/create-index-transact-sql",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "Use The Index, Luke — index-only scan (covering index)", ar: "Use The Index, Luke — الـ index-only scan (الـ covering index)" },
+          url: "https://use-the-index-luke.com/sql/clustering/index-only-scan-covering-index",
+          meta: { en: "Guide", ar: "دليل" } },
+        { t: "ref", label: { en: "Showplan logical and physical operators reference (Key Lookup)", ar: "مرجع operators الخطة المنطقية والفيزيائية (Key Lookup)" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/showplan-logical-and-physical-operators-reference",
+          meta: { en: "Docs", ar: "توثيق" } }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "What exactly is a key lookup?", ar: "ما هو الـ key lookup بالضبط؟" },
+      options: [
+        { en: "A second read into the clustered index to fetch columns the non-clustered index does not store, performed once per matching row.", ar: "قراءة ثانية داخل الـ clustered index لجلب أعمدة لا يخزّنها الـ non-clustered index، تُنفَّذ مرة لكل صف مطابق." },
+        { en: "The initial descent through the B-tree levels to find the first matching entry.", ar: "النزول الأول عبر مستويات الـ B-tree لإيجاد أول مدخلة مطابقة." },
+        { en: "A lock taken on the index key while the row is read.", ar: "قفل يؤخذ على مفتاح الـ index أثناء قراءة الصف." },
+        { en: "The optimizer's step that decides which index to use.", ar: "خطوة الـ optimizer التي تقرّر أي index يُستخدم." }
+      ],
+      correct: 0,
+      why: { en: "The index entry holds only its key columns, any INCLUDE columns and a pointer to the row. If the query needs a column that is not there, the engine follows that pointer — once per row, which is why 400 rows cost 400 lookups.", ar: "مدخلة الـ index تحتوي فقط أعمدة مفتاحها وأعمدة INCLUDE و pointer إلى الصف. فإذا احتاج الـ query عموداً غير موجود، يتبع المحرّك ذلك الـ pointer — مرة لكل صف، ولهذا تكلّف 400 صف 400 lookup." }
+    },
+    {
+      q: { en: "Which column belongs in INCLUDE rather than in the index key?", ar: "أي عمود ينتمي إلى INCLUDE بدل مفتاح الـ index؟" },
+      options: [
+        { en: "A column used in the WHERE clause with an equality test.", ar: "عمود يُستخدم في WHERE باختبار مساواة." },
+        { en: "A column the query only returns in the SELECT list.", ar: "عمود يعيده الـ query في قائمة SELECT فقط." },
+        { en: "A column used in ORDER BY.", ar: "عمود يُستخدم في ORDER BY." },
+        { en: "A column used as a join condition.", ar: "عمود يُستخدم كشرط join." }
+      ],
+      correct: 1,
+      why: { en: "INCLUDE columns are stored only in the leaf and are not sorted, so they cannot help with searching, joining or ordering. They are exactly right for columns you only display, and they keep the key narrow.", ar: "أعمدة INCLUDE تُخزَّن في الـ leaf فقط وغير مرتّبة، فلا تفيد في البحث أو الـ join أو الترتيب. وهي مناسبة تماماً للأعمدة التي تعرضها فقط، وتُبقي المفتاح ضيقاً." }
+    },
+    {
+      q: { en: "An index exists on (OrderDate, CustomerId). The query filters WHERE CustomerId = 4821. Why is it still slow?", ar: "يوجد index على (OrderDate, CustomerId). والـ query يفلتر بـ WHERE CustomerId = 4821. لماذا ما زال بطيئاً؟" },
+      options: [
+        { en: "Because the index is missing the TotalAmount column.", ar: "لأن الـ index تنقصه TotalAmount." },
+        { en: "Because two-column indexes cannot be used for single-column filters.", ar: "لأن الـ indexes بعمودين لا تُستخدم لفلاتر عمود واحد." },
+        { en: "Because the index is sorted by OrderDate first, so rows for one CustomerId are scattered through the whole index.", ar: "لأن الـ index مرتّب بـ OrderDate أولاً، فصفوف CustomerId واحد متناثرة عبر الـ index كله." },
+        { en: "Because SQL Server ignores indexes whose first column is a date.", ar: "لأن SQL Server يتجاهل الـ indexes التي عمودها الأول تاريخ." }
+      ],
+      correct: 2,
+      why: { en: "A B-tree is sorted by the leading key column first, like a phone book sorted by surname. Filtering only on the second column means the engine cannot narrow the search and must scan the index. The filtered column must lead.", ar: "الـ B-tree مرتّب حسب عمود المفتاح الأول، مثل دليل هاتف مرتّب بالاسم العائلي. الفلترة على العمود الثاني فقط تعني أن المحرّك لا يستطيع تضييق البحث ويضطر لمسح الـ index. يجب أن يتصدّر العمود المفلتر." }
+    },
+    {
+      q: { en: "What is the main cost of adding a wide covering index to a write-heavy table?", ar: "ما التكلفة الرئيسية لإضافة covering index واسع على جدول كثيف الكتابة؟" },
+      options: [
+        { en: "Reads of other queries become incorrect until statistics are updated.", ar: "تصبح قراءات الاستعلامات الأخرى غير صحيحة حتى تُحدَّث الإحصائيات." },
+        { en: "The index must be maintained on every insert, update and delete, and it duplicates the included data on disk and in memory.", ar: "يجب صيانة الـ index عند كل insert و update و delete، وهو يكرّر البيانات المضمّنة على القرص وفي الذاكرة." },
+        { en: "SQL Server will stop using the clustered index.", ar: "سيتوقف SQL Server عن استخدام الـ clustered index." },
+        { en: "Query plans can no longer be cached.", ar: "لن يعود بالإمكان تخزين خطط الاستعلام في الـ cache." }
+      ],
+      correct: 1,
+      why: { en: "A covering index is a second copy of the columns it holds. Every write has to update that copy, and the copy competes for buffer pool memory and backup time. On a write-heavy table this can outweigh the read gain.", ar: "الـ covering index نسخة ثانية من الأعمدة التي يحملها. كل كتابة يجب أن تحدّث تلك النسخة، والنسخة تنافس على ذاكرة الـ buffer pool ووقت النسخ الاحتياطي. وفي جدول كثيف الكتابة قد يفوق هذا مكسب القراءة." }
+    },
+    {
+      q: { en: "A perfect covering index exists, but the query uses WHERE YEAR(OrderDate) = 2024 and still scans. Why?", ar: "يوجد covering index مثالي، لكن الـ query يستخدم WHERE YEAR(OrderDate) = 2024 وما زال يقوم بـ scan. لماذا؟" },
+      options: [
+        { en: "The index stores raw OrderDate values, not YEAR(OrderDate), so the sorted entries cannot be matched against the function's result.", ar: "الـ index يخزّن قيم OrderDate الخام لا YEAR(OrderDate)، فلا يمكن مطابقة المدخلات المرتّبة مع نتيجة الدالة." },
+        { en: "YEAR() is not supported in a WHERE clause.", ar: "الدالة YEAR() غير مدعومة في جملة WHERE." },
+        { en: "Covering indexes only work with equality on integer columns.", ar: "الـ covering indexes تعمل فقط مع المساواة على أعمدة integer." },
+        { en: "The statistics for the index are out of date.", ar: "إحصائيات الـ index قديمة." }
+      ],
+      correct: 0,
+      why: { en: "Wrapping a column in a function makes the predicate non-sargable — not searchable by index — because the sorted values in the index no longer line up with what is being compared. Rewrite it as a range: OrderDate >= '2024-01-01' AND OrderDate < '2025-01-01'.", ar: "تغليف العمود بدالة يجعل الـ predicate غير sargable — أي غير قابل للبحث بالـ index — لأن القيم المرتّبة في الـ index لم تعد تطابق ما تجري مقارنته. أعد كتابته كنطاق: OrderDate >= '2024-01-01' AND OrderDate < '2025-01-01'." }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: reading a plan
+
+const readPlanLesson = {
+  id: "read-plan",
+  moduleId: "sql",
+  title: { en: "Reading a plan", ar: "قراءة الخطة" },
+  summary: {
+    en: "An execution plan is the step-by-step recipe SQL Server chose for your query — learn to read it and you stop guessing why a query is slow.",
+    ar: "الـ execution plan هي الخطوات التي اختارها SQL Server لتنفيذ الـ query — إذا عرفت قراءتها تتوقف عن التخمين في سبب البطء."
+  },
+  mins: 19,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "An execution plan is the list of steps SQL Server decided to run to answer your query. You write what you want; the database picks how to get it. The plan is the record of that choice, and it is the only place that tells you which step read 20 million rows to return 37.",
+        ar: "الـ execution plan هي قائمة الخطوات التي قرر SQL Server تنفيذها للإجابة على الـ query. أنت تكتب ما تريده، وقاعدة البيانات تختار الطريقة. الخطة هي سجل هذا الاختيار، وهي المكان الوحيد الذي يخبرك أي خطوة قرأت 20 مليون صف لتعيد 37 صفاً."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Execution plan", ar: "Execution plan" },
+          v: { en: "The ordered set of physical steps the database runs to produce your result.", ar: "مجموعة الخطوات الفعلية المرتّبة التي تنفّذها قاعدة البيانات لإنتاج النتيجة." } },
+        { k: { en: "Operator", ar: "Operator" },
+          v: { en: "One step in the plan — a scan, a seek, a join, a sort. Each has a name, a row count and a cost.", ar: "خطوة واحدة داخل الخطة — scan أو seek أو join أو sort. لكل واحدة اسم وعدد صفوف وتكلفة." } },
+        { k: { en: "Scan", ar: "Scan" },
+          v: { en: "Read every row in a table or index, then throw away the ones that do not match.", ar: "قراءة كل صف في الجدول أو الـ index ثم استبعاد الصفوف غير المطابقة." } },
+        { k: { en: "Seek", ar: "Seek" },
+          v: { en: "Use the index's sorted order to jump straight to the matching rows and read only those.", ar: "استخدام ترتيب الـ index للقفز مباشرة إلى الصفوف المطابقة وقراءتها وحدها." } },
+        { k: { en: "Estimated rows", ar: "Estimated rows" },
+          v: { en: "How many rows the optimizer predicted a step would produce, before the query ran.", ar: "عدد الصفوف الذي توقّعه الـ optimizer لخطوة ما قبل تنفيذ الـ query." } },
+        { k: { en: "Actual rows", ar: "Actual rows" },
+          v: { en: "How many rows that step really produced when the query ran.", ar: "عدد الصفوف الذي أنتجته الخطوة فعلياً عند تنفيذ الـ query." } },
+        { k: { en: "Logical read", ar: "Logical read" },
+          v: { en: "One 8 KB page fetched by the engine, from memory or from disk. It is the cleanest measure of work done.", ar: "قراءة صفحة واحدة بحجم 8 KB من الذاكرة أو القرص. هي أوضح مقياس لكمية العمل المنفَّذ." } }
+      ]},
+      { t: "p",
+        en: "Think of a phone book sorted by last name. To find everyone called Mansour you can open it at the M section and read a few entries — that is a seek. Or you can start at page one and read every name to the end, keeping the Mansours — that is a scan. Both give the right answer. One reads 37 entries, the other reads two million. The plan tells you which one the database picked.",
+        ar: "تخيّل دليل هاتف مرتّب حسب اسم العائلة. للعثور على كل من يُدعى منصور يمكنك فتحه عند حرف M وقراءة بضعة أسطر — هذا هو الـ seek. أو تبدأ من الصفحة الأولى وتقرأ كل اسم حتى النهاية وتحتفظ بمن يُدعى منصور — هذا هو الـ scan. الاثنان يعطيان النتيجة الصحيحة. أحدهما يقرأ 37 سطراً والآخر يقرأ مليونين. الخطة تخبرك أي طريقة اختارتها قاعدة البيانات."
+      },
+      { t: "p",
+        en: "SQL is declarative: the text of your query never says \"use this index\" or \"join in this order\". A component called the query optimizer makes those decisions using statistics — small summaries the engine keeps about how values are distributed in each column. Because you did not make the decision, the only way to understand a slow query is to read the decision the optimizer made.",
+        ar: "لغة SQL تصريحية: نص الـ query لا يقول أبداً «استخدم هذا الـ index» أو «نفّذ الـ join بهذا الترتيب». هناك مكوّن اسمه query optimizer يتخذ هذه القرارات اعتماداً على الـ statistics، وهي ملخّصات صغيرة يحتفظ بها المحرّك عن توزيع القيم في كل عمود. وبما أن القرار ليس قرارك، فالطريقة الوحيدة لفهم query بطيء هي قراءة القرار الذي اتخذه الـ optimizer."
+      },
+      { t: "callout", kind: "note",
+        en: "A plan is a decision made from statistics, not from your data as it is right now. If the statistics are stale — say the table grew from 1,000 rows to 20 million since they were last updated — the SQL is fine and the plan is still wrong.",
+        ar: "الخطة قرار مبني على الـ statistics، لا على بياناتك كما هي الآن. إذا كانت الـ statistics قديمة — مثلاً الجدول كبر من 1000 صف إلى 20 مليون منذ آخر تحديث لها — فالـ SQL سليم لكن الخطة تبقى خاطئة."
+      }
+    ]},
+
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "Here is the query we will follow through the whole lesson. It backs the endpoint GET /customers/42/orders. The Orders table holds 20 million rows. Its clustered index — the index that stores the actual table rows in sorted order — is on OrderId. There is no index on CustomerId.",
+        ar: "هذا هو الـ query الذي سنتابعه في الدرس كله. هو خلف الـ endpoint المسمّى GET /customers/42/orders. جدول Orders فيه 20 مليون صف. والـ clustered index الخاص به — وهو الـ index الذي يخزّن صفوف الجدول نفسها مرتّبة — موجود على OrderId. ولا يوجد أي index على CustomerId."
+      },
+      { t: "code", lang: "sql", label: { en: "The query we will trace", ar: "الـ query الذي سنتتبّعه" },
+        code: "SELECT o.OrderId, o.PlacedAt, o.Total\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = 42\n  AND  o.PlacedAt >= '2026-01-01'\nORDER BY o.PlacedAt DESC;"
+      },
+      { t: "p",
+        en: "The endpoint returns 37 rows and takes 4.2 seconds. Nothing in the SQL text hints at why. The plan does: the top operator is a Clustered Index Scan on Orders with 20,000,000 actual rows, feeding a Filter that keeps 37 of them. In words: the engine read the entire table and threw away 99.9998% of it.",
+        ar: "الـ endpoint يعيد 37 صفاً ويستغرق 4.2 ثانية. لا شيء في نص الـ SQL يشرح السبب. لكن الخطة تشرحه: الـ operator الأعلى هو Clustered Index Scan على Orders بعدد actual rows يساوي 20,000,000، يغذّي Filter يحتفظ بـ 37 صفاً منها. بكلمات أخرى: المحرّك قرأ الجدول كاملاً ثم رمى 99.9998% منه."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Before — operator", ar: "قبل — الـ operator" },
+          v: { en: "Clustered Index Scan, 20,000,000 actual rows read to return 37.", ar: "Clustered Index Scan، قرأ 20,000,000 صف actual ليعيد 37." } },
+        { k: { en: "Before — logical reads", ar: "قبل — logical reads" },
+          v: { en: "412,000 pages. At 8 KB a page that is about 3.2 GB of data moved for 37 rows.", ar: "412,000 صفحة. بحجم 8 KB للصفحة يعني نحو 3.2 GB من البيانات تم تحريكها مقابل 37 صفاً." } },
+        { k: { en: "Before — duration", ar: "قبل — المدة" },
+          v: { en: "4.2 s, and it gets slower every month as the table grows.", ar: "4.2 ثانية، وتزداد بطئاً كل شهر مع نمو الجدول." } },
+        { k: { en: "After — operator", ar: "بعد — الـ operator" },
+          v: { en: "Index Seek on a new index, 37 actual rows read to return 37.", ar: "Index Seek على index جديد، قرأ 37 صفاً actual ليعيد 37." } },
+        { k: { en: "After — logical reads / duration", ar: "بعد — logical reads والمدة" },
+          v: { en: "5 pages, 3 ms. Same SQL text, same data — only the plan changed.", ar: "5 صفحات و3 ميلي ثانية. نفس نص الـ SQL ونفس البيانات — الخطة وحدها هي التي تغيّرت." } }
+      ]},
+      { t: "p",
+        en: "The fix was one index: CREATE INDEX IX_Orders_Customer_Placed ON dbo.Orders (CustomerId, PlacedAt) INCLUDE (Total). But the fix is not the point of this lesson. The point is that you could only choose that index because the plan showed you which step was reading everything, and how many rows it was reading versus how many it kept.",
+        ar: "الحل كان index واحداً: CREATE INDEX IX_Orders_Customer_Placed ON dbo.Orders (CustomerId, PlacedAt) INCLUDE (Total). لكن الحل ليس موضوع الدرس. الموضوع أنك لم تستطع اختيار هذا الـ index إلا لأن الخطة أرتك أي خطوة تقرأ كل شيء، وكم صفاً تقرأ مقابل كم صفاً تحتفظ به."
+      }
+    ]},
+
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "Your query text becomes a plan in four stages. Parse: check the text is valid SQL. Bind: resolve every name — does dbo.Orders exist, does it have a Total column, what type is it. Optimize: search many possible ways to run the query and pick one. Cache: store the winner in the plan cache, an area of memory keyed by the exact query text, so the next identical query skips optimization.",
+        ar: "نص الـ query يتحوّل إلى خطة عبر أربع مراحل. Parse: التحقق أن النص SQL صالح. Bind: حلّ كل الأسماء — هل dbo.Orders موجود، هل فيه عمود Total، وما نوعه. Optimize: البحث في طرق تنفيذ كثيرة واختيار واحدة. Cache: تخزين الطريقة الفائزة في الـ plan cache، وهي منطقة ذاكرة مفهرسة بنص الـ query الحرفي، حتى يتخطّى الـ query المطابق التالي مرحلة الـ optimize."
+      },
+      { t: "p",
+        en: "Optimizing is a search, not a calculation. The optimizer generates candidate plans, gives each one a cost — an abstract number estimating CPU and page reads, not seconds — and keeps the cheapest it found before its time budget ran out. Cost is computed from statistics, so the whole choice rests on the estimates being close to reality.",
+        ar: "الـ optimize عملية بحث لا عملية حساب. الـ optimizer يولّد خططاً مرشّحة، ويعطي كل واحدة cost — وهو رقم تجريدي يقدّر استهلاك الـ CPU وعدد قراءات الصفحات، وليس ثواني — ثم يحتفظ بالأرخص الذي وجده قبل انتهاء ميزانية وقته. والـ cost محسوب من الـ statistics، لذلك القرار كله يقوم على أن تكون التقديرات قريبة من الواقع."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Optimizer", ar: "Optimizer" },
+          v: { en: "The component that searches for a plan and picks the cheapest candidate it found.", ar: "المكوّن الذي يبحث عن خطة ويختار أرخص مرشّح وجده." } },
+        { k: { en: "Statistics", ar: "Statistics" },
+          v: { en: "A histogram per index or column: value ranges and roughly how many rows fall in each.", ar: "histogram لكل index أو عمود: نطاقات القيم وكم صفاً يقع تقريباً في كل نطاق." } },
+        { k: { en: "Cardinality estimate", ar: "Cardinality estimate" },
+          v: { en: "The row count the optimizer predicts for a step, read off those statistics.", ar: "عدد الصفوف الذي يتوقّعه الـ optimizer لخطوة ما، مأخوذاً من تلك الـ statistics." } },
+        { k: { en: "Plan cache", ar: "Plan cache" },
+          v: { en: "Memory holding compiled plans, keyed by query text, so identical queries reuse a plan.", ar: "ذاكرة تحتفظ بالخطط المُجمَّعة، مفهرسة بنص الـ query، ليعيد الـ queries المتطابقة استخدام الخطة." } },
+        { k: { en: "Memory grant", ar: "Memory grant" },
+          v: { en: "Memory reserved before the query runs for sorting and hashing, sized from the estimates.", ar: "ذاكرة تُحجز قبل تنفيذ الـ query لعمليات الـ sort والـ hash، ويُحدَّد حجمها من التقديرات." } }
+      ]},
+      { t: "p",
+        en: "At run time the plan is a tree of operators that pull rows from each other, one row at a time. The operator at the top asks its child for a row; that child asks its own child; the request travels down to a scan or seek that actually touches data, and a row travels back up. It is a kitchen pass: the plating station asks the grill for the next plate, the grill asks the prep station. Nobody builds the whole result first. This is why you read a plan right to left for data flow — data starts at the rightmost operators and moves left toward the result.",
+        ar: "أثناء التنفيذ تكون الخطة شجرة من الـ operators تسحب الصفوف من بعضها صفاً بصف. الـ operator الأعلى يطلب صفاً من ابنه، وذلك الابن يطلب من ابنه، وينزل الطلب حتى يصل إلى scan أو seek يلمس البيانات فعلاً، ثم يصعد الصف عائداً. الأمر يشبه مطبخ مطعم: محطة التقديم تطلب الطبق التالي من محطة الشوي، وهذه تطلب من محطة التحضير. لا أحد يجهّز النتيجة كاملة أولاً. لهذا تُقرأ الخطة من اليمين إلى اليسار لتتبّع تدفّق البيانات — البيانات تبدأ من الـ operators في أقصى اليمين وتتحرك يساراً نحو النتيجة."
+      },
+      { t: "code", lang: "sql", label: { en: "Getting the actual plan and the real numbers", ar: "الحصول على الخطة الفعلية والأرقام الحقيقية" },
+        code: "-- STATISTICS IO prints pages read per table; TIME prints CPU and elapsed ms.\nSET STATISTICS IO, TIME ON;\n\n-- In SSMS press Ctrl+M first: that captures the ACTUAL plan,\n-- which carries real row counts. Ctrl+L gives only the estimated plan.\nSELECT o.OrderId, o.PlacedAt, o.Total\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = 42\n  AND  o.PlacedAt >= '2026-01-01'\nORDER BY o.PlacedAt DESC;\n\n-- Output before the index:\n-- Table 'Orders'. Scan count 1, logical reads 412000\n-- CPU time = 3980 ms, elapsed time = 4210 ms\n\n-- Output after the index:\n-- Table 'Orders'. Scan count 1, logical reads 5\n-- CPU time = 0 ms, elapsed time = 3 ms"
+      },
+      { t: "p",
+        en: "The single most useful thing in an actual plan is the gap between estimated rows and actual rows on each operator. Hover any operator in SSMS and both numbers appear. If a step estimated 1 row and produced 20 million, every decision made above that step was based on a lie: the join type is wrong, the sort is spilling to disk because too little memory was reserved, and the index choice made no sense. Find the deepest operator — the one furthest right — where the two numbers first diverge badly. That is where the real problem starts; everything left of it is a symptom.",
+        ar: "أهم شيء في الخطة الفعلية هو الفارق بين estimated rows و actual rows في كل operator. مرّر المؤشر فوق أي operator في SSMS فيظهر الرقمان. إذا قدّرت خطوة صفاً واحداً وأنتجت 20 مليوناً، فكل قرار فوق تلك الخطوة بُني على معلومة خاطئة: نوع الـ join غير مناسب، والـ sort ينزل إلى القرص لأن الذاكرة المحجوزة قليلة، واختيار الـ index بلا معنى. ابحث عن أعمق operator — الأبعد إلى اليمين — يظهر فيه الفارق الكبير أول مرة. هناك تبدأ المشكلة الحقيقية، وكل ما على يساره مجرد عرَض."
+      },
+      { t: "p",
+        en: "A few operator names carry most of the signal. Index Seek reads only matching rows. Index Scan or Clustered Index Scan reads everything. Key Lookup means the index found the row but not all the columns you asked for, so the engine goes back to the table once per row — fine for 10 rows, disastrous for 100,000. Sort means the rows arrived in the wrong order and must be buffered; if the memory grant was too small it spills to tempdb, a temporary on-disk workspace, and slows down sharply. Hash Match builds an in-memory hash table for a join or grouping — normal for large sets, suspicious when the row counts are small.",
+        ar: "بعض أسماء الـ operators تحمل معظم الإشارة. Index Seek يقرأ الصفوف المطابقة فقط. Index Scan أو Clustered Index Scan يقرأ كل شيء. Key Lookup يعني أن الـ index وجد الصف لكن ليس كل الأعمدة المطلوبة، فيعود المحرّك إلى الجدول مرة لكل صف — مقبول لعشرة صفوف، وكارثي لمئة ألف. Sort يعني أن الصفوف وصلت بترتيب خاطئ ويجب تخزينها مؤقتاً؛ وإذا كان الـ memory grant صغيراً ينزل إلى tempdb، وهي مساحة عمل مؤقتة على القرص، فيبطؤ بشكل حاد. Hash Match يبني hash table في الذاكرة لعملية join أو grouping — طبيعي مع مجموعات كبيرة، ومريب حين تكون أعداد الصفوف صغيرة."
+      }
+    ]},
+
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "Shows exactly which step does the work, so tuning stops being guesswork.",
+            "The estimated-vs-actual gap points straight at stale or missing statistics.",
+            "Free and always available — no extra tooling to install in production.",
+            "A saved plan is portable evidence you can attach to a ticket or review."
+          ],
+          ar: [
+            "تُظهر بالضبط أي خطوة تقوم بالعمل، فيتوقف الضبط عن كونه تخميناً.",
+            "الفارق بين estimated و actual يشير مباشرة إلى statistics قديمة أو مفقودة.",
+            "مجانية ومتاحة دائماً — لا تحتاج أدوات إضافية في الإنتاج.",
+            "الخطة المحفوظة دليل قابل للنقل ترفقه بتذكرة أو بمراجعة."
+          ]
+        },
+        cons: {
+          en: [
+            "The cost percentages are estimates; the highest-cost operator is often not the slow one.",
+            "Capturing an actual plan adds overhead, so you avoid it on the hottest paths.",
+            "Plans for big queries are wide and hard to read without practice.",
+            "The plan you get in SSMS can differ from the one the app gets."
+          ],
+          ar: [
+            "نسب الـ cost تقديرية، والـ operator الأعلى تكلفة كثيراً ما لا يكون البطيء فعلاً.",
+            "التقاط الخطة الفعلية يضيف overhead، لذا تتجنّبه في أكثر المسارات ازدحاماً.",
+            "خطط الـ queries الكبيرة عريضة وصعبة القراءة بلا تمرين.",
+            "الخطة التي تراها في SSMS قد تختلف عن الخطة التي يحصل عليها التطبيق."
+          ]
+        },
+        limits: {
+          en: [
+            "A plan explains one execution, not the average of a thousand.",
+            "It shows what the engine did, never why the query was written that way.",
+            "Blocking and waiting on locks do not appear as an operator.",
+            "Estimated plans carry no actual row counts at all."
+          ],
+          ar: [
+            "الخطة تشرح تنفيذاً واحداً، لا متوسط ألف تنفيذ.",
+            "تُظهر ما فعله المحرّك، ولا تُظهر أبداً لماذا كُتب الـ query بهذا الشكل.",
+            "الـ blocking والانتظار على الـ locks لا يظهران كـ operator.",
+            "الخطط التقديرية لا تحمل أي actual row counts."
+          ]
+        },
+        alts: {
+          en: [
+            "Query Store: keeps plans and runtime stats per query over time, including regressions.",
+            "Extended Events: capture the plans of the slowest real executions in production.",
+            "sys.dm_exec_query_stats: rank cached queries by total CPU or reads first, then read plans.",
+            "Application-level tracing (OpenTelemetry) to confirm the database is even the bottleneck."
+          ],
+          ar: [
+            "Query Store: يحفظ الخطط وإحصاءات التنفيذ لكل query عبر الزمن، بما فيها حالات التراجع.",
+            "Extended Events: التقاط خطط أبطأ التنفيذات الحقيقية في الإنتاج.",
+            "sys.dm_exec_query_stats: رتّب الـ queries المخزّنة حسب إجمالي الـ CPU أو القراءات أولاً ثم اقرأ الخطط.",
+            "التتبّع على مستوى التطبيق (OpenTelemetry) للتأكد أصلاً أن قاعدة البيانات هي عنق الزجاجة."
+          ]
+        }
+      }
+    ]},
+
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "Tuning from the estimated plan", ar: "الضبط اعتماداً على الخطة التقديرية" },
+        body: {
+          en: "A developer pressed Ctrl+L in SSMS, saw an Index Seek with 12 estimated rows, and closed the ticket saying the query was fine. The estimated plan never runs the query, so those 12 rows were a prediction from statistics last updated when the table had 1,000 rows. The actual plan showed the same seek producing 4.1 million rows because the seek predicate matched a whole date range. Always capture the actual plan (Ctrl+M) before you conclude anything.",
+          ar: "مطوّر ضغط Ctrl+L في SSMS ورأى Index Seek بتقدير 12 صفاً فأغلق التذكرة قائلاً إن الـ query سليم. الخطة التقديرية لا تنفّذ الـ query أصلاً، لذا كانت الـ 12 صفاً توقّعاً من statistics آخر تحديث لها كان والجدول فيه 1000 صف. الخطة الفعلية أظهرت أن نفس الـ seek ينتج 4.1 مليون صف لأن شرط الـ seek يغطي نطاق تواريخ كاملاً. التقط دائماً الخطة الفعلية (Ctrl+M) قبل أن تستنتج شيئاً."
+        }
+      },
+      { t: "mistake",
+        title: { en: "Chasing the highest cost percentage", ar: "مطاردة أعلى نسبة cost" },
+        body: {
+          en: "The plan showed a Sort at 87% cost, so the team spent a sprint removing the ORDER BY. Runtime dropped by 4%. The real problem was a Key Lookup at 2% cost that executed 240,000 times. Cost percentages come from the optimizer's estimates, not from measurement, so an operator with a bad estimate is shown as cheap no matter how long it actually runs. Rank operators by actual rows and by execution count, not by the percentage badge.",
+          ar: "أظهرت الخطة Sort بنسبة 87% من الـ cost، فقضى الفريق sprint كاملاً في إزالة الـ ORDER BY. انخفض زمن التنفيذ 4% فقط. المشكلة الحقيقية كانت Key Lookup بنسبة 2% لكنه نُفّذ 240,000 مرة. نسب الـ cost تأتي من تقديرات الـ optimizer لا من قياس فعلي، لذا يظهر الـ operator ذو التقدير الخاطئ رخيصاً مهما طال تنفيذه. رتّب الـ operators حسب actual rows وعدد مرات التنفيذ، لا حسب شارة النسبة."
+        }
+      },
+      { t: "mistake",
+        title: { en: "Treating every scan as a bug", ar: "اعتبار كل scan خطأً" },
+        body: {
+          en: "A nightly report over a 900-row Countries table showed a Clustered Index Scan. Someone added three indexes to force seeks. Nothing got faster, writes got slower, and the extra indexes now need maintenance. A scan over a small table is the correct plan — reading 900 rows sequentially is cheaper than walking an index and jumping back for each row. A scan is only a problem when it reads far more rows than the query returns.",
+          ar: "تقرير ليلي على جدول Countries فيه 900 صف أظهر Clustered Index Scan. أضاف أحدهم ثلاثة indexes لإجبار المحرّك على الـ seek. لم يتحسّن شيء، وصارت عمليات الكتابة أبطأ، والـ indexes الإضافية تحتاج صيانة الآن. الـ scan على جدول صغير هو الخطة الصحيحة — قراءة 900 صف بالتسلسل أرخص من المرور عبر index والعودة للجدول لكل صف. الـ scan يصبح مشكلة فقط حين يقرأ صفوفاً أكثر بكثير مما يعيده الـ query."
+        }
+      },
+      { t: "mistake",
+        title: { en: "Reproducing in SSMS with different settings", ar: "إعادة الإنتاج في SSMS بإعدادات مختلفة" },
+        body: {
+          en: "The query ran in 40 ms in SSMS and 6 s from the API, so the team blamed the network. The cause was SET ARITHABORT: SSMS sets it ON by default and the .NET client leaves it OFF. That difference makes the two connections use separate entries in the plan cache, and the app's entry held a plan compiled for a very different parameter value. Reproduce with the app's exact SET options, or read the plan the app actually used from the cache.",
+          ar: "الـ query كان ينفّذ في 40 ميلي ثانية داخل SSMS وفي 6 ثوانٍ من الـ API، فألقى الفريق اللوم على الشبكة. السبب كان SET ARITHABORT: يضعه SSMS ON افتراضياً بينما يتركه عميل .NET على OFF. هذا الفرق يجعل الاتصالين يستخدمان مدخلين منفصلين في الـ plan cache، والمدخل الخاص بالتطبيق كان يحمل خطة مُجمَّعة لقيمة parameter مختلفة تماماً. أعِد الإنتاج بنفس SET options الخاصة بالتطبيق، أو اقرأ من الـ cache الخطة التي استخدمها التطبيق فعلاً."
+        },
+        fix: "SELECT qs.execution_count, qs.total_logical_reads, qp.query_plan, st.text\nFROM sys.dm_exec_query_stats AS qs\nCROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st\nCROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp\nWHERE st.text LIKE '%FROM dbo.Orders%'\nORDER BY qs.total_logical_reads DESC;"
+      }
+    ]},
+
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What is the difference between an index seek and an index scan?", ar: "ما الفرق بين index seek و index scan؟" },
+        a: {
+          en: "A seek uses the index's sorted order to jump straight to the rows that match and reads only those. A scan reads every row in the index or table and filters afterwards. So a seek's cost depends on how many rows match, while a scan's cost depends on how big the table is. On a 20-million-row table a seek returning 37 rows touches a handful of pages; the scan touches hundreds of thousands.",
+          ar: "الـ seek يستخدم ترتيب الـ index للقفز مباشرة إلى الصفوف المطابقة ويقرأها وحدها. والـ scan يقرأ كل صف في الـ index أو الجدول ثم يفلتر بعد ذلك. لذلك تكلفة الـ seek تعتمد على عدد الصفوف المطابقة، بينما تكلفة الـ scan تعتمد على حجم الجدول. على جدول فيه 20 مليون صف، الـ seek الذي يعيد 37 صفاً يلمس بضع صفحات، بينما الـ scan يلمس مئات الآلاف."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "Estimated plan or actual plan — which do you ask for, and why?", ar: "الخطة التقديرية أم الفعلية — أيهما تطلب ولماذا؟" },
+        a: {
+          en: "Actual, almost always. The estimated plan shows the shape the optimizer chose but every row count in it is a prediction. The actual plan runs the query and records the real row counts, how many times each operator executed, and whether a sort spilled to disk. The gap between predicted and real is the main thing I am looking for, and the estimated plan cannot show a gap at all.",
+          ar: "الفعلية في الغالب دائماً. الخطة التقديرية تُظهر الشكل الذي اختاره الـ optimizer لكن كل عدد صفوف فيها توقّع. الخطة الفعلية تنفّذ الـ query وتسجّل أعداد الصفوف الحقيقية وعدد مرات تنفيذ كل operator وما إذا كان الـ sort قد نزل إلى القرص. الفارق بين المتوقّع والحقيقي هو ما أبحث عنه أساساً، والخطة التقديرية لا تُظهر هذا الفارق إطلاقاً."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "You see a Key Lookup executed 200,000 times. What is happening and what do you do?", ar: "ترى Key Lookup نُفّذ 200,000 مرة. ماذا يحدث وماذا تفعل؟" },
+        a: {
+          en: "The optimizer used a non-clustered index to find the matching rows, but that index does not contain every column the query selects. So for each row it goes back to the clustered index to fetch the missing columns — 200,000 separate round trips inside the engine. The fix is to make the index cover the query: add the missing columns as INCLUDE columns, which stores them in the index leaf without making them part of the sort key. Or select fewer columns if the query is asking for ones nobody uses.",
+          ar: "الـ optimizer استخدم non-clustered index للعثور على الصفوف المطابقة، لكن هذا الـ index لا يحتوي كل الأعمدة التي يطلبها الـ query. لذلك يعود لكل صف إلى الـ clustered index لجلب الأعمدة الناقصة — 200,000 رحلة منفصلة داخل المحرّك. الحل أن تجعل الـ index يغطي الـ query: أضف الأعمدة الناقصة كـ INCLUDE columns، وهي تُخزَّن في ورقة الـ index دون أن تصبح جزءاً من مفتاح الترتيب. أو اطلب أعمدة أقل إذا كان الـ query يجلب أعمدة لا يستخدمها أحد."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "A plan estimates 1 row and produces 4 million. What does that break downstream?", ar: "خطة تقدّر صفاً واحداً وتنتج 4 ملايين. ماذا يفسد ذلك في الخطوات التالية؟" },
+        a: {
+          en: "Everything above that operator was sized for one row. The optimizer probably picked a Nested Loops join, which is right for a few rows and terrible for millions because it repeats the inner side once per outer row. The memory grant for any sort or hash was computed for one row, so the sort spills to tempdb on disk. And it may have chosen a seek plus lookup instead of a scan, turning four million lookups into the dominant cost. I would find the source of the bad estimate first — usually stale statistics, a function wrapped around a column, or a multi-statement table-valued function that always guesses a fixed row count — rather than patching the join.",
+          ar: "كل ما فوق ذلك الـ operator صُمِّم لصف واحد. غالباً اختار الـ optimizer عملية Nested Loops join، وهي مناسبة لعدد صفوف قليل وسيئة جداً للملايين لأنها تكرّر الجانب الداخلي مرة لكل صف خارجي. والـ memory grant لأي sort أو hash حُسِب لصف واحد، فينزل الـ sort إلى tempdb على القرص. وربما اختار seek مع lookup بدل الـ scan، فتصير أربعة ملايين lookup هي التكلفة الغالبة. سأبحث أولاً عن سبب التقدير الخاطئ — عادةً statistics قديمة، أو دالة ملفوفة حول عمود، أو multi-statement table-valued function تخمّن دائماً عدداً ثابتاً من الصفوف — بدل ترقيع الـ join."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "Why can the same query be fast in SSMS and slow from the application?", ar: "لماذا يكون نفس الـ query سريعاً في SSMS وبطيئاً من التطبيق؟" },
+        a: {
+          en: "Usually they are not using the same plan. Plan cache entries are keyed partly by SET options, and SSMS defaults ARITHABORT to ON while most .NET clients leave it OFF, so the two get separate cached plans. The app's plan may have been compiled for a parameter value with a very different row count — that is parameter sniffing. Other causes are a different schema being used by default, or the app running inside a transaction that holds locks. I confirm by pulling the app's plan from sys.dm_exec_query_stats rather than re-running it myself.",
+          ar: "غالباً لأنهما لا يستخدمان نفس الخطة. مفاتيح الـ plan cache تتضمن SET options، وSSMS يضع ARITHABORT على ON افتراضياً بينما معظم عملاء .NET يتركونه OFF، فيحصل كل منهما على خطة مخزّنة منفصلة. وقد تكون خطة التطبيق مُجمَّعة لقيمة parameter بعدد صفوف مختلف تماماً — وهذا هو الـ parameter sniffing. وهناك أسباب أخرى مثل اختلاف الـ schema الافتراضي، أو تنفيذ التطبيق داخل transaction يحتفظ بـ locks. أتأكد بسحب خطة التطبيق من sys.dm_exec_query_stats بدل إعادة التنفيذ بنفسي."
+        }
+      },
+      { t: "qa", level: "staff",
+        q: { en: "How do you stop plan regressions from reaching production in the first place?", ar: "كيف تمنع تراجع الخطط من الوصول إلى الإنتاج أصلاً؟" },
+        a: {
+          en: "I make plan quality a visible, owned signal instead of something one person notices during an incident. Turn on Query Store so every plan change is recorded with before-and-after runtime, and add an alert on regressed queries rather than waiting for a page. Put a check in CI that runs the top N queries against a production-sized restored database and fails the build if logical reads jump beyond a threshold — reads are stable, wall-clock time on shared CI machines is not. Make plans part of code review: any pull request that changes a query or an index attaches the before and after plan. Finally, agree as a team on where forcing a plan is allowed, so it stays a deliberate, documented exception with an expiry date instead of a permanent hidden patch.",
+          ar: "أجعل جودة الخطط إشارة ظاهرة لها مالك، بدل أن تكون شيئاً يلاحظه شخص واحد أثناء حادثة. أشغّل Query Store ليُسجَّل كل تغيّر في الخطة مع زمن التنفيذ قبله وبعده، وأضيف تنبيهاً على الـ queries المتراجعة بدل انتظار مكالمة الطوارئ. أضع فحصاً في الـ CI ينفّذ أهم N من الـ queries على نسخة مستعادة بحجم الإنتاج ويُفشل الـ build إذا قفزت الـ logical reads فوق حد معيّن — القراءات مستقرة، أما الزمن الفعلي على أجهزة CI المشتركة فلا. وأجعل الخطط جزءاً من مراجعة الكود: أي pull request يغيّر query أو index يرفق الخطة قبل وبعد. وأخيراً نتفق كفريق على الحالات المسموح فيها بفرض خطة، لتبقى استثناءً مقصوداً وموثّقاً وله تاريخ انتهاء بدل أن يصير ترقيعاً دائماً مخفياً."
+        }
+      }
+    ]},
+
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "A function around the column kills the seek", ar: "دالة حول العمود تلغي الـ seek" },
+        bad: "SELECT o.OrderId, o.Total\nFROM   dbo.Orders AS o\nWHERE  YEAR(o.PlacedAt) = 2026\n  AND  o.CustomerId = 42;",
+        good: "SELECT o.OrderId, o.Total\nFROM   dbo.Orders AS o\nWHERE  o.PlacedAt >= '2026-01-01'\n  AND  o.PlacedAt <  '2027-01-01'\n  AND  o.CustomerId = 42;",
+        why: {
+          en: "An index stores PlacedAt values in sorted order, not YEAR(PlacedAt) values. Once the column is wrapped in a function the engine cannot compare the index keys to 2026, so it computes YEAR() for every row — that forces a full scan. The plan shows Clustered Index Scan with 20 million actual rows. Rewriting it as a range on the raw column lets the same index seek to the first matching row: 37 actual rows, 5 logical reads. A predicate written so an index can be used this way is called SARGable, short for search-argument-able.",
+          ar: "الـ index يخزّن قيم PlacedAt مرتّبة، لا قيم YEAR(PlacedAt). وبمجرد لفّ العمود داخل دالة لا يستطيع المحرّك مقارنة مفاتيح الـ index بالرقم 2026، فيحسب YEAR() لكل صف — وهذا يفرض scan كاملاً. تُظهر الخطة Clustered Index Scan بـ 20 مليون صف actual. وإعادة كتابته كنطاق على العمود الخام تتيح لنفس الـ index أن يعمل seek إلى أول صف مطابق: 37 صفاً actual و5 logical reads. الشرط المكتوب بحيث يمكن للـ index استخدامه يُسمّى SARGable، اختصاراً لـ search-argument-able."
+        }
+      },
+      { t: "review", severity: "medium",
+        title: { en: "SELECT * turns a covering index into a lookup storm", ar: "SELECT * يحوّل الـ covering index إلى عاصفة lookups" },
+        bad: "// Repository method used by the orders list endpoint\nvar orders = await db.Orders\n    .Where(o => o.CustomerId == customerId)\n    .ToListAsync();   // materialises all 24 columns",
+        good: "// Project only what the list screen renders\nvar orders = await db.Orders\n    .Where(o => o.CustomerId == customerId)\n    .Select(o => new OrderListItem(o.OrderId, o.PlacedAt, o.Total))\n    .ToListAsync();",
+        why: {
+          en: "IX_Orders_Customer_Placed includes OrderId, PlacedAt and Total, so the three-column version is answered from the index alone. Loading the whole entity asks for 24 columns, 21 of which are not in the index, so the plan adds a Key Lookup that runs once per row. On a customer with 8,000 orders that is 8,000 extra lookups and about 25,000 logical reads instead of 40. The list screen shows three columns, so nothing is lost by projecting.",
+          ar: "الـ index المسمّى IX_Orders_Customer_Placed يحتوي OrderId و PlacedAt و Total، لذلك تُجاب النسخة ذات الأعمدة الثلاثة من الـ index وحده. أما تحميل الـ entity كاملاً فيطلب 24 عموداً، 21 منها ليست في الـ index، فتضيف الخطة Key Lookup ينفَّذ مرة لكل صف. مع عميل لديه 8000 order يعني ذلك 8000 lookup إضافياً ونحو 25,000 logical reads بدل 40. وشاشة القائمة تعرض ثلاثة أعمدة فقط، فلا شيء يُفقد بالـ projection."
+        }
+      }
+    ]},
+
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a real system, plan reading is not a one-off debugging trick — it is a step in a loop that runs continuously. Something reports slowness (an SLO alert, a customer ticket), you find which query is responsible, you read its plan, you change an index or the query, and you verify the plan changed the way you expected. The database is usually the first shared resource to saturate, so this loop is the one most backend teams run most often.",
+        ar: "في نظام حقيقي، قراءة الخطط ليست حيلة تصحيح لمرة واحدة، بل خطوة في حلقة تعمل باستمرار. يظهر بلاغ بالبطء (تنبيه SLO أو تذكرة عميل)، فتجد أي query هو السبب، وتقرأ خطته، وتغيّر index أو الـ query، ثم تتحقق أن الخطة تغيّرت كما توقّعت. قاعدة البيانات عادةً أول مورد مشترك يصل إلى حد التشبّع، لذلك هذه الحلقة هي الأكثر تكراراً لدى معظم فرق الـ backend."
+      },
+      { t: "ul",
+        en: [
+          "Read-heavy API on a large table: the plan tells you whether an index seek or a scan backs your busiest endpoint.",
+          "Reporting query added next to an OLTP workload: a plan with a large memory grant can starve short transactions of memory.",
+          "After a bulk import: statistics go stale within minutes, plans regress, and the same query suddenly scans.",
+          "Multi-tenant database: one tenant with a million rows and one with ten share a cached plan — read both plans, not one.",
+          "During a database version upgrade: the cardinality estimator changes, so a set of plans shifts on the same day."
+        ],
+        ar: [
+          "API كثيف القراءة على جدول كبير: الخطة تخبرك هل يقف خلف أكثر endpoint ازدحاماً عملية seek أم scan.",
+          "query تقارير يُضاف بجانب حِمل OLTP: خطة بـ memory grant كبير قد تحرم الـ transactions القصيرة من الذاكرة.",
+          "بعد استيراد دفعة بيانات: تصبح الـ statistics قديمة خلال دقائق، وتتراجع الخطط، ويبدأ نفس الـ query بعمل scan فجأة.",
+          "قاعدة بيانات متعددة المستأجرين: مستأجر بمليون صف وآخر بعشرة يتشاركان خطة مخزّنة — اقرأ الخطتين لا خطة واحدة.",
+          "أثناء ترقية إصدار قاعدة البيانات: يتغيّر الـ cardinality estimator، فتتبدّل مجموعة من الخطط في اليوم نفسه."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "Attach the before and after plan to the pull request that adds an index. It turns \"trust me, it is faster\" into evidence the next person can check when the query slows down again a year later.",
+        ar: "أرفق الخطة قبل وبعد في الـ pull request الذي يضيف index. هذا يحوّل عبارة «ثق بي، صار أسرع» إلى دليل يستطيع الشخص التالي مراجعته حين يبطؤ الـ query مجدداً بعد سنة."
+      }
+    ]},
+
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Database", ar: "قاعدة البيانات" },
+          v: { en: "Logical reads are the truest measure of query work: 412,000 pages before the index, 5 after. Unlike duration, they do not change with server load.", ar: "الـ logical reads أصدق مقياس لعمل الـ query: 412,000 صفحة قبل الـ index و5 بعده. وخلافاً للمدة، لا تتأثر بحِمل السيرفر." } },
+        { k: { en: "Memory", ar: "الذاكرة" },
+          v: { en: "Sorts and hash joins reserve memory up front from the estimate. A wrong estimate means a spill to tempdb — the plan marks the operator with a warning triangle.", ar: "عمليات الـ sort والـ hash join تحجز ذاكرة مسبقاً بناءً على التقدير. والتقدير الخاطئ يعني spill إلى tempdb — وتضع الخطة مثلث تحذير على الـ operator." } },
+        { k: { en: "CPU", ar: "المعالج" },
+          v: { en: "Scanning 20 million rows burned 3.98 s of CPU for 37 results. That CPU is taken from every other query on the same server.", ar: "الـ scan على 20 مليون صف استهلك 3.98 ثانية CPU مقابل 37 نتيجة. وهذا الـ CPU يُؤخذ من كل query آخر على نفس السيرفر." } },
+        { k: { en: "Latency", ar: "زمن الاستجابة" },
+          v: { en: "Plan-driven latency is bimodal: cache hit on a good plan gives 3 ms, a recompile with a bad parameter gives seconds. That shows up as a bad p99, not a bad average.", ar: "زمن الاستجابة المرتبط بالخطة ثنائي النمط: إصابة الـ cache بخطة جيدة تعطي 3 ميلي ثانية، وإعادة تجميع بقيمة parameter سيئة تعطي ثواني. وهذا يظهر في p99 السيئ لا في المتوسط." } },
+        { k: { en: "Scalability", ar: "قابلية التوسّع" },
+          v: { en: "A seek's cost grows with rows matched; a scan's grows with table size. The scan plan is the one that fails on the day the table doubles.", ar: "تكلفة الـ seek تنمو مع عدد الصفوف المطابقة، وتكلفة الـ scan تنمو مع حجم الجدول. خطة الـ scan هي التي تنهار يوم يتضاعف الجدول." } }
+      ]}
+    ]},
+
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "SET STATISTICS IO, TIME ON — look at logical reads per table; a table with far more reads than rows returned is your suspect.",
+          "Ctrl+M in SSMS (Include Actual Execution Plan) — hover each operator and compare Estimated Number of Rows with Actual Number of Rows.",
+          "Query Store (right-click database → Query Store → Top Resource Consuming Queries) — shows which query burns the most reads and whether its plan changed recently.",
+          "sys.dm_exec_query_stats joined to sys.dm_exec_query_plan — gives you the plan the application actually ran, not the one SSMS would compile.",
+          "sys.dm_db_missing_index_details — read it as a hint about which columns were filtered, never as an index script to run blindly."
+        ],
+        ar: [
+          "SET STATISTICS IO, TIME ON — انظر إلى الـ logical reads لكل جدول؛ الجدول الذي قراءاته أكثر بكثير من الصفوف المعادة هو المشتبه به.",
+          "Ctrl+M في SSMS (Include Actual Execution Plan) — مرّر فوق كل operator وقارن Estimated Number of Rows بـ Actual Number of Rows.",
+          "Query Store (كليك يمين على قاعدة البيانات ← Query Store ← Top Resource Consuming Queries) — يُظهر أي query يستهلك أكثر القراءات وهل تغيّرت خطته مؤخراً.",
+          "sys.dm_exec_query_stats مع sys.dm_exec_query_plan — يعطيك الخطة التي نفّذها التطبيق فعلاً، لا التي سيجمّعها SSMS.",
+          "sys.dm_db_missing_index_details — اقرأه كإشارة إلى الأعمدة التي جرى الفلترة عليها، لا كسكربت index تنفّذه بلا تفكير."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "Right-click the leftmost operator, choose \"Show Execution Plan XML\", and search the text for the word \"Warnings\". Spills to tempdb, implicit type conversions and missing statistics all appear there, and all three are invisible in the graphical view unless you notice a small yellow triangle.",
+        ar: "اضغط كليك يمين على الـ operator في أقصى اليسار واختر «Show Execution Plan XML»، ثم ابحث في النص عن كلمة Warnings. عمليات الـ spill إلى tempdb والتحويلات الضمنية للأنواع والـ statistics المفقودة تظهر كلها هناك، وهي غير مرئية في العرض الرسومي إلا إذا لاحظت مثلثاً أصفر صغيراً."
+      }
+    ]},
+
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "Plan reading matters most wherever one database serves both interactive traffic and heavy queries on the same tables. In those systems a single bad plan does not just slow one endpoint — it consumes CPU and memory that every other query needs, so one scan becomes a site-wide slowdown.",
+        ar: "قراءة الخطط تهم أكثر ما تهم حيث تخدم قاعدة بيانات واحدة حركة تفاعلية و queries ثقيلة على نفس الجداول. في هذه الأنظمة لا تبطئ الخطة السيئة endpoint واحداً فقط — بل تستهلك CPU وذاكرة يحتاجها كل query آخر، فيتحوّل scan واحد إلى بطء يعمّ الموقع كله."
+      },
+      { t: "ul",
+        en: [
+          "E-commerce order history: the same query is trivial for a new customer and enormous for a customer with 40,000 orders, so one cached plan cannot suit both.",
+          "Payment and ledger systems: reports run against the same tables as live transactions, and a report's memory grant can stall payments.",
+          "SaaS platforms with per-tenant data: tenant size varies by orders of magnitude, which is the classic source of a plan that fits the small tenants and destroys the large one.",
+          "Analytics dashboards over an operational database: wide date-range filters make cardinality estimates unreliable, so plans flip between hash and loop joins as data grows."
+        ],
+        ar: [
+          "سجل الطلبات في التجارة الإلكترونية: نفس الـ query تافه لعميل جديد وضخم لعميل لديه 40,000 order، فلا تصلح خطة مخزّنة واحدة للحالتين.",
+          "أنظمة المدفوعات والدفاتر المحاسبية: التقارير تعمل على نفس جداول المعاملات الحية، وقد يوقف الـ memory grant الخاص بتقرير عمليات الدفع.",
+          "منصات SaaS ببيانات لكل مستأجر: أحجام المستأجرين تتفاوت بمراتب كبيرة، وهذا المصدر الكلاسيكي لخطة تناسب المستأجرين الصغار وتدمّر الكبير.",
+          "لوحات التحليلات فوق قاعدة بيانات تشغيلية: فلاتر النطاقات الزمنية الواسعة تجعل تقديرات الـ cardinality غير موثوقة، فتتنقّل الخطط بين hash join و loop join مع نمو البيانات."
+        ]
+      }
+    ]},
+
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Create a table with 500,000 rows and no index besides the primary key. Run a WHERE on a non-key column with Ctrl+M on. Record the operator name, actual rows and logical reads. You are done when you can state, in one sentence, how many rows were read per row returned.",
+        ar: "أنشئ جدولاً فيه 500,000 صف بلا index غير الـ primary key. نفّذ WHERE على عمود غير مفتاحي مع تفعيل Ctrl+M. سجّل اسم الـ operator وعدد actual rows وعدد logical reads. تنتهي حين تستطيع أن تقول في جملة واحدة كم صفاً قُرئ مقابل كل صف أُعيد."
+      },
+      { t: "ex", diff: "medium",
+        en: "Take the same query and add a non-clustered index on the filtered column only. Re-run and capture the plan. It should now show an Index Seek plus a Key Lookup. Then add the selected columns as INCLUDE and re-run. You are done when the Key Lookup is gone and you can show the logical read count for all three versions.",
+        ar: "خذ نفس الـ query وأضف non-clustered index على عمود الفلترة فقط. أعد التنفيذ والتقط الخطة. يجب أن تُظهر الآن Index Seek مع Key Lookup. ثم أضف الأعمدة المطلوبة كـ INCLUDE وأعد التنفيذ. تنتهي حين يختفي الـ Key Lookup وتستطيع عرض عدد الـ logical reads للنسخ الثلاث."
+      },
+      { t: "ex", diff: "hard",
+        en: "Deliberately create a bad estimate: insert two million rows, then run UPDATE STATISTICS with a tiny sample, or disable auto-update and load the rows in bulk. Run a join and find the operator where estimated and actual first diverge by more than 100x. You are done when you can explain which downstream choice (join type, memory grant, or index choice) that gap caused.",
+        ar: "اصنع تقديراً خاطئاً عن قصد: أدخل مليوني صف ثم نفّذ UPDATE STATISTICS بعيّنة صغيرة جداً، أو عطّل التحديث التلقائي وحمّل الصفوف دفعة واحدة. نفّذ join وابحث عن الـ operator الذي يتباعد فيه estimated و actual أول مرة بأكثر من 100 ضعف. تنتهي حين تستطيع شرح أي قرار لاحق (نوع الـ join أو الـ memory grant أو اختيار الـ index) سببه ذلك الفارق."
+      },
+      { t: "ex", diff: "senior",
+        en: "Enable Query Store on a copy of a real database. Pick the top query by total logical reads, capture its plan, propose one change, apply it, and produce a one-page write-up with the before and after plans, the read counts, and the risk the change carries for writes. You are done when a colleague can review the decision without re-running anything themselves.",
+        ar: "فعّل Query Store على نسخة من قاعدة بيانات حقيقية. اختر أعلى query من حيث إجمالي الـ logical reads، والتقط خطته، واقترح تغييراً واحداً، ثم طبّقه، وأنتج صفحة واحدة فيها الخطتان قبل وبعد وأعداد القراءات والمخاطر التي يحملها التغيير على عمليات الكتابة. تنتهي حين يستطيع زميل مراجعة القرار دون إعادة تنفيذ أي شيء بنفسه."
+      }
+    ]},
+
+    { key: "refs", blocks: [
+      { t: "ref", label: { en: "Execution plans — official overview", ar: "Execution plans — نظرة رسمية" },
+        url: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/execution-plans",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref", label: { en: "Display an actual execution plan", ar: "عرض الخطة الفعلية للتنفيذ" },
+        url: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/display-an-actual-execution-plan",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref", label: { en: "Cardinality estimation in SQL Server", ar: "تقدير الـ cardinality في SQL Server" },
+        url: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/cardinality-estimation-sql-server",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref", label: { en: "Execution Plan Reference — every operator explained", ar: "مرجع الـ Execution Plan — شرح كل operator" },
+        url: "https://sqlserverfast.com/epr/",
+        meta: { en: "Reference", ar: "مرجع" } }
+    ]}
+  ],
+  quiz: [
+    {
+      q: { en: "What does the gap between estimated rows and actual rows on an operator tell you?", ar: "ماذا يخبرك الفارق بين estimated rows و actual rows على operator؟" },
+      options: [
+        { en: "The query returned the wrong results", ar: "أن الـ query أعاد نتائج خاطئة" },
+        { en: "The optimizer's row prediction was wrong, so every choice made above that step is suspect", ar: "أن توقّع الـ optimizer لعدد الصفوف كان خاطئاً، فكل قرار فوق تلك الخطوة مشكوك فيه" },
+        { en: "The server ran out of CPU during execution", ar: "أن السيرفر نفد منه الـ CPU أثناء التنفيذ" },
+        { en: "The index needs to be rebuilt because of fragmentation", ar: "أن الـ index يحتاج إعادة بناء بسبب التجزئة" }
+      ],
+      correct: 1,
+      why: { en: "Join type, memory grant and index choice are all derived from the estimate. A wrong estimate makes all of them wrong, even though the results are still correct.", ar: "نوع الـ join والـ memory grant واختيار الـ index كلها مشتقّة من التقدير. والتقدير الخاطئ يجعلها كلها خاطئة، رغم أن النتائج تبقى صحيحة." }
+    },
+    {
+      q: { en: "Why is the operator with the highest cost percentage often not the slow one?", ar: "لماذا لا يكون الـ operator الأعلى نسبة cost هو البطيء غالباً؟" },
+      options: [
+        { en: "Cost percentages are randomised to avoid over-tuning", ar: "نسب الـ cost عشوائية لتجنّب المبالغة في الضبط" },
+        { en: "Cost only counts CPU, never disk reads", ar: "الـ cost يحسب الـ CPU فقط ولا يحسب قراءات القرص" },
+        { en: "Cost comes from the optimizer's estimates, so an operator with a bad estimate looks cheap no matter how long it runs", ar: "الـ cost يأتي من تقديرات الـ optimizer، فيبدو الـ operator ذو التقدير الخاطئ رخيصاً مهما طال تنفيذه" },
+        { en: "Cost is measured only on the first execution and never updated", ar: "الـ cost يُقاس في أول تنفيذ فقط ولا يُحدَّث أبداً" }
+      ],
+      correct: 2,
+      why: { en: "Cost percentages are estimates, not measurements. Rank operators by actual rows and by how many times they executed instead.", ar: "نسب الـ cost تقديرات لا قياسات. رتّب الـ operators حسب actual rows وعدد مرات تنفيذها بدلاً منها." }
+    },
+    {
+      q: { en: "A Key Lookup appears with 200,000 executions. What is the direct cause?", ar: "يظهر Key Lookup بـ 200,000 تنفيذ. ما السبب المباشر؟" },
+      options: [
+        { en: "The non-clustered index used does not contain every column the query selects", ar: "الـ non-clustered index المستخدم لا يحتوي كل الأعمدة التي يطلبها الـ query" },
+        { en: "The table has no primary key", ar: "الجدول لا يملك primary key" },
+        { en: "The query is running at serializable isolation", ar: "الـ query يعمل بمستوى عزل serializable" },
+        { en: "Statistics were updated too recently", ar: "الـ statistics حُدِّثت مؤخراً أكثر من اللازم" }
+      ],
+      correct: 0,
+      why: { en: "The index locates the rows but the missing columns force one trip back to the clustered index per row. Adding those columns with INCLUDE removes the lookup.", ar: "الـ index يحدّد الصفوف لكن الأعمدة الناقصة تفرض رحلة عودة إلى الـ clustered index لكل صف. وإضافة تلك الأعمدة بـ INCLUDE تزيل الـ lookup." }
+    },
+    {
+      q: { en: "When is a Clustered Index Scan the correct plan?", ar: "متى يكون Clustered Index Scan هو الخطة الصحيحة؟" },
+      options: [
+        { en: "Never — a scan always means a missing index", ar: "أبداً — الـ scan يعني دائماً index مفقوداً" },
+        { en: "Only when the table has no indexes at all", ar: "فقط حين لا يملك الجدول أي indexes إطلاقاً" },
+        { en: "When the table is small, or the query genuinely needs most of its rows", ar: "حين يكون الجدول صغيراً، أو حين يحتاج الـ query فعلاً معظم صفوفه" },
+        { en: "Whenever the query has an ORDER BY clause", ar: "كلما احتوى الـ query على جملة ORDER BY" }
+      ],
+      correct: 2,
+      why: { en: "Reading 900 rows sequentially beats seeking and jumping back per row. A scan is only a problem when it reads far more rows than the query returns.", ar: "قراءة 900 صف بالتسلسل أفضل من الـ seek والعودة لكل صف. الـ scan يصبح مشكلة فقط حين يقرأ صفوفاً أكثر بكثير مما يعيده الـ query." }
+    },
+    {
+      q: { en: "Why can a query be fast in SSMS but slow from a .NET application?", ar: "لماذا قد يكون query سريعاً في SSMS وبطيئاً من تطبيق .NET؟" },
+      options: [
+        { en: "SSMS bypasses the query optimizer entirely", ar: "SSMS يتجاوز الـ query optimizer بالكامل" },
+        { en: "Different SET options mean they use separate plan cache entries, so the app may run an older plan compiled for a different parameter", ar: "اختلاف SET options يعني استخدام مدخلين منفصلين في الـ plan cache، فقد ينفّذ التطبيق خطة أقدم مُجمَّعة لقيمة parameter مختلفة" },
+        { en: "SSMS always keeps result sets in memory while applications do not", ar: "SSMS يحتفظ دائماً بالنتائج في الذاكرة بينما التطبيقات لا تفعل" },
+        { en: "The .NET client adds mandatory encryption that slows every query", ar: "عميل .NET يضيف تشفيراً إلزامياً يبطئ كل query" }
+      ],
+      correct: 1,
+      why: { en: "SSMS defaults ARITHABORT to ON and most .NET clients leave it OFF, which splits the plan cache. Pull the app's plan from sys.dm_exec_query_stats to see what it really ran.", ar: "SSMS يضع ARITHABORT على ON افتراضياً بينما معظم عملاء .NET يتركونه OFF، فينقسم الـ plan cache. اسحب خطة التطبيق من sys.dm_exec_query_stats لترى ما نفّذه فعلاً." }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: parameter sniffing
+
+const paramSniffingLesson = {
+  id: "param-sniffing",
+  moduleId: "sql",
+  title: { en: "Parameter sniffing", ar: "الـ Parameter sniffing" },
+  summary: {
+    en: "SQL Server builds a query plan using the parameter values it saw the first time, then reuses that plan for every value after — which is usually a win and occasionally a production outage.",
+    ar: "SQL Server يبني الـ plan للاستعلام باستخدام قيم الـ parameters التي رآها في أول تنفيذ، ثم يعيد استخدام نفس الـ plan لكل القيم بعدها — وهذا مفيد في الغالب، ويسبب أحياناً توقف الإنتاج."
+  },
+  mins: 14,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "When you run a parameterized query, SQL Server does not work out how to run it every time. It works it out once, using the actual parameter values from that first run, saves the resulting plan, and reuses it for all later runs. Looking at those first values is called parameter sniffing. It saves a lot of CPU. It also means one unlucky first run can leave every later run with a plan that does not fit its values.",
+          ar: "عندما تنفّذ استعلاماً فيه parameters، SQL Server لا يحسب طريقة تنفيذه في كل مرة. يحسبها مرة واحدة باستخدام القيم الفعلية من أول تنفيذ، يحفظ الـ plan الناتج، ويعيد استخدامه في كل التنفيذات التالية. النظر إلى قيم أول تنفيذ اسمه parameter sniffing. هذا يوفّر CPU كثيراً. ويعني أيضاً أن تنفيذاً أولاً سيّئ الحظ قد يترك كل التنفيذات التالية مع plan لا يناسب قيمها." },
+        { t: "kv", rows: [
+          { k: { en: "Execution plan", ar: "Execution plan" },
+            v: { en: "The step-by-step recipe SQL Server picks for one query: which index to use, in what order to join, whether to sort. Two plans can return the same rows and differ 1000x in speed.", ar: "الوصفة خطوة بخطوة التي يختارها SQL Server لاستعلام واحد: أي index يستخدم، بأي ترتيب يعمل الـ joins، وهل يعمل sort. اثنان من الـ plans قد يعيدان نفس الصفوف ويختلفان 1000 ضعف في السرعة." } },
+          { k: { en: "Plan cache", ar: "Plan cache" },
+            v: { en: "An area of SQL Server memory holding compiled plans, keyed by the text of the query. Before compiling, the engine looks here first.", ar: "منطقة في ذاكرة SQL Server تحتفظ بالـ plans المُجمّعة، مفهرسة بنص الاستعلام. قبل التجميع يبحث المحرك هنا أولاً." } },
+          { k: { en: "Statistics / histogram", ar: "Statistics / histogram" },
+            v: { en: "A small summary SQL Server keeps per column describing how values are spread — how many rows have each value. The histogram is the part that stores counts per value range.", ar: "ملخّص صغير يحتفظ به SQL Server لكل column يصف توزيع القيم — كم صفاً لكل قيمة. الـ histogram هو الجزء الذي يخزّن الأعداد لكل مدى قيم." } },
+          { k: { en: "Cardinality estimate", ar: "Cardinality estimate" },
+            v: { en: "The engine's guess at how many rows a step will produce. Every plan choice follows from this guess. A wrong guess is the root cause of nearly every bad plan.", ar: "تخمين المحرك لعدد الصفوف التي ستنتجها خطوة ما. كل قرارات الـ plan تُبنى على هذا التخمين. التخمين الخاطئ هو السبب الجذري لأغلب الـ plans السيئة." } },
+          { k: { en: "Key lookup", ar: "Key lookup" },
+            v: { en: "When a narrow index gives the engine a row's key but not the columns it needs, it goes back to the table for each row. Cheap for 3 rows, ruinous for 900,000.", ar: "عندما يعطي index ضيّق المحرك مفتاح الصف دون الأعمدة المطلوبة، يعود إلى الجدول لكل صف. رخيص لثلاثة صفوف، وكارثي لـ 900,000." } },
+          { k: { en: "Memory grant", ar: "Memory grant" },
+            v: { en: "RAM reserved for a query before it starts, sized from the row estimate, used for sorts and hash joins. Too little means spilling to disk; too much starves other queries.", ar: "ذاكرة RAM محجوزة للاستعلام قبل بدايته، حجمها مشتق من تقدير الصفوف، وتُستخدم للـ sorts والـ hash joins. القليل منها يعني spill إلى القرص، والكثير منها يجوّع باقي الاستعلامات." } }
+        ]},
+        { t: "p",
+          en: "Think of a kitchen that sets up its whole line based on the first order of the morning. The first order is one espresso, so the kitchen puts out one small cup and one shot of coffee. That setup is fast and perfect — until a bus of two hundred people walks in and the kitchen serves them one cup at a time, because that is the setup it committed to. Parameter sniffing is the same commitment: the plan is shaped around the first customer, then handed to everyone.",
+          ar: "تخيّل مطبخاً يرتّب خط عمله كله حسب أول طلب في الصباح. أول طلب هو espresso واحد، فيخرج المطبخ كوباً صغيراً وجرعة قهوة واحدة. هذا الترتيب سريع ومثالي — إلى أن يدخل باص فيه مئتا شخص فيخدمهم المطبخ كوباً واحداً في كل مرة، لأن هذا هو الترتيب الذي التزم به. الـ parameter sniffing نفس الالتزام: الـ plan يُصمَّم حول أول عميل ثم يُسلَّم للجميع." },
+        { t: "p",
+          en: "The feature exists because compiling a plan is expensive. Working out the best plan for a query with four joins can cost tens of milliseconds of CPU. On a procedure called 50,000 times a minute, recompiling every call would burn more CPU than running the query. So SQL Server compiles once and reuses. Sniffing the real values makes that one plan as good as possible — for the values it saw.",
+          ar: "هذه الآلية موجودة لأن تجميع الـ plan مكلف. حساب أفضل plan لاستعلام فيه أربعة joins قد يكلّف عشرات الميلي ثانية من الـ CPU. في procedure تُستدعى 50,000 مرة في الدقيقة، إعادة التجميع في كل استدعاء ستستهلك CPU أكثر من تنفيذ الاستعلام نفسه. لذلك يجمّع SQL Server مرة ويعيد الاستخدام. والنظر إلى القيم الحقيقية يجعل ذلك الـ plan الوحيد أفضل ما يمكن — بالنسبة للقيم التي رآها." },
+        { t: "callout", kind: "note",
+          en: "Parameter sniffing is not a bug and there is no switch that makes it always right. It only hurts when your data is skewed — when some parameter values match very few rows and others match very many. On evenly spread data you will never notice it.",
+          ar: "الـ parameter sniffing ليس خطأً، ولا يوجد مفتاح يجعله صحيحاً دائماً. لا يؤذي إلا عندما تكون بياناتك skewed — أي بعض قيم الـ parameters تطابق صفوفاً قليلة جداً وأخرى تطابق صفوفاً كثيرة جداً. على بيانات موزّعة بالتساوي لن تلاحظه أبداً." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Here is the running example for this lesson. An orders API exposes GET /orders?customerId=... and every call runs the same stored procedure. The Orders table has 40 million rows. Customer 42 is a normal shop with 3 orders. Customer 7 is a wholesale account with 900,000 orders. Same procedure, same SQL text, one cached plan for both.",
+          ar: "هذا هو المثال الجاري في هذا الدرس. واجهة orders تعرض GET /orders?customerId=... وكل استدعاء ينفّذ نفس الـ stored procedure. جدول Orders فيه 40 مليون صف. العميل 42 متجر عادي لديه 3 طلبات. العميل 7 حساب جملة لديه 900,000 طلب. نفس الـ procedure، نفس نص SQL، وplan واحد مخزّن للاثنين." },
+        { t: "code", lang: "sql",
+          label: { en: "One procedure, two very different customers", ar: "procedure واحدة، وعميلان مختلفان تماماً" },
+          code: "CREATE PROCEDURE dbo.GetOrdersByCustomer\n    @CustomerId int\nAS\nSELECT o.OrderId, o.PlacedAt, o.Status, o.TotalAmount\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = @CustomerId\nORDER  BY o.PlacedAt DESC;\nGO\n\n-- index available:\n-- CREATE NONCLUSTERED INDEX IX_Orders_CustomerId ON dbo.Orders (CustomerId);\n-- it does NOT contain PlacedAt, Status or TotalAmount, so those need a key lookup\n\nEXEC dbo.GetOrdersByCustomer @CustomerId = 42;  -- 3 rows\nEXEC dbo.GetOrdersByCustomer @CustomerId = 7;   -- 900,000 rows" },
+        { t: "p",
+          en: "If customer 42 runs first, SQL Server sees a value that matches 3 rows. It picks an index seek on IX_Orders_CustomerId — jumping straight to the matching entries instead of reading the whole index — plus a key lookup per row. That is the cheapest plan for 3 rows, about 2 ms. Then customer 7 arrives and reuses that plan: 900,000 key lookups, one row at a time. Measured p99 for that endpoint went from 40 ms to 8 s — meaning the slowest 1 request in 100 took eight seconds instead of forty milliseconds.",
+          ar: "إذا نُفّذ العميل 42 أولاً، يرى SQL Server قيمة تطابق 3 صفوف. فيختار index seek على IX_Orders_CustomerId — أي القفز مباشرةً إلى المدخلات المطابقة بدل قراءة الـ index كله — مع key lookup لكل صف. وهذا أرخص plan لثلاثة صفوف، حوالي 2 ms. ثم يأتي العميل 7 ويعيد استخدام نفس الـ plan: 900,000 عملية key lookup، صفاً بصف. الـ p99 المقاس لهذه الواجهة ارتفع من 40 ms إلى 8 s — أي أن أبطأ طلب من كل 100 طلب استغرق ثماني ثوانٍ بدل أربعين ميلي ثانية." },
+        { t: "p",
+          en: "Now restart SQL Server, or let the plan fall out of cache overnight, and suppose customer 7 runs first. SQL Server sees 900,000 rows, picks a clustered index scan — reading the whole table from start to end — with a sort, and asks for a 900 MB memory grant. That plan is right for customer 7. Customer 42 then scans 40 million rows to find 3, and holds a 900 MB reservation while doing it. Under load, other queries wait for memory — a wait type called RESOURCE_SEMAPHORE — and the whole server slows down. Same code, same data, opposite failure.",
+          ar: "الآن أعد تشغيل SQL Server، أو دع الـ plan يخرج من الـ cache ليلاً، وافترض أن العميل 7 نُفّذ أولاً. يرى SQL Server 900,000 صف، فيختار clustered index scan — أي قراءة الجدول كله من أوله إلى آخره — مع sort، ويطلب memory grant بحجم 900 MB. هذا الـ plan صحيح للعميل 7. بعدها العميل 42 يمسح 40 مليون صف ليجد 3، وهو محتجز 900 MB أثناء ذلك. تحت الضغط تنتظر بقية الاستعلامات الذاكرة — نوع انتظار اسمه RESOURCE_SEMAPHORE — ويبطؤ الخادم كله. نفس الكود، نفس البيانات، وفشل معاكس." },
+        { t: "kv", rows: [
+          { k: { en: "Plan compiled for the small value, run with a big one", ar: "plan مُجمَّع لقيمة صغيرة ويُنفَّذ بقيمة كبيرة" },
+            v: { en: "Seek plus key lookup repeated hundreds of thousands of times. The query is slow and its logical reads — the count of 8 KB pages it touched — go up by orders of magnitude. Usually one slow request, not a server-wide problem.", ar: "seek مع key lookup يتكرر مئات الآلاف من المرات. الاستعلام بطيء، وترتفع الـ logical reads — عدد صفحات الـ 8 KB التي لمسها — بمراتب. عادةً طلب بطيء واحد، لا مشكلة في الخادم كله." } },
+          { k: { en: "Plan compiled for the big value, run with a small one", ar: "plan مُجمَّع لقيمة كبيرة ويُنفَّذ بقيمة صغيرة" },
+            v: { en: "Full scan and an oversized memory grant on every tiny call. Wastes CPU and RAM, and this one does take the whole server down under concurrency.", ar: "scan كامل وmemory grant مبالغ فيه في كل استدعاء صغير. يهدر CPU وRAM، وهذا النوع تحديداً يُسقط الخادم كله تحت التزامن." } },
+          { k: { en: "The giveaway symptom", ar: "العَرَض الدال" },
+            v: { en: "The same query has a huge spread between its fastest and slowest execution, and it 'fixes itself' after a restart or an index rebuild — then comes back days later.", ar: "نفس الاستعلام لديه فارق ضخم بين أسرع وأبطأ تنفيذ، و«يُصلح نفسه» بعد إعادة تشغيل أو index rebuild — ثم يعود بعد أيام." } }
+        ]}
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Follow one call, EXEC dbo.GetOrdersByCustomer @CustomerId = 42, through the engine in order. First, SQL Server parses the text and turns it into a tree of logical operations. Second, it hashes the query text plus the connection's SET options — settings such as ANSI_NULLS — into a cache key and looks in the plan cache. If a matching plan is there, it is used as is and no optimization happens at all. If not, the optimizer runs.",
+          ar: "تابع استدعاءً واحداً، EXEC dbo.GetOrdersByCustomer @CustomerId = 42، عبر المحرك بالترتيب. أولاً، يحلّل SQL Server النص ويحوّله إلى شجرة عمليات منطقية. ثانياً، يحسب hash لنص الاستعلام مع SET options الخاصة بالاتصال — إعدادات مثل ANSI_NULLS — ليكوّن مفتاح cache ويبحث في الـ plan cache. إذا وُجد plan مطابق يُستخدم كما هو ولا يحدث أي optimization. وإن لم يوجد، يعمل الـ optimizer." },
+        { t: "p",
+          en: "This is where sniffing happens. The optimizer takes the actual runtime value 42, looks it up in the histogram for the CustomerId column, and reads out an estimate: about 3 rows. Every later decision follows from that number. With 3 rows, a seek plus key lookup is cheapest, so that is the plan. The value 42 is then baked into the plan's cost assumptions and the plan is stored in cache under the query text — not under the value.",
+          ar: "هنا يحدث الـ sniffing. يأخذ الـ optimizer القيمة الفعلية 42، ويبحث عنها في الـ histogram الخاص بعمود CustomerId، ويستخرج تقديراً: حوالي 3 صفوف. كل القرارات التالية تُبنى على هذا الرقم. مع 3 صفوف يكون seek مع key lookup هو الأرخص، فيصبح هو الـ plan. ثم تُدمَج القيمة 42 في افتراضات تكلفة الـ plan، ويُخزَّن الـ plan في الـ cache تحت نص الاستعلام — لا تحت القيمة." },
+        { t: "kv", rows: [
+          { k: { en: "Cache key", ar: "Cache key" },
+            v: { en: "Query text plus SET options. Parameter values are not part of it, which is exactly why one plan serves every value.", ar: "نص الاستعلام مع SET options. قيم الـ parameters ليست جزءاً منه، وهذا بالضبط سبب خدمة plan واحد لكل القيم." } },
+          { k: { en: "Sniffed value", ar: "القيمة المسحوبة (sniffed)" },
+            v: { en: "The parameter value present at compile time. Stored in the plan XML as ParameterCompiledValue.", ar: "قيمة الـ parameter الموجودة وقت التجميع. تُخزَّن في plan XML باسم ParameterCompiledValue." } },
+          { k: { en: "Runtime value", ar: "القيمة وقت التنفيذ" },
+            v: { en: "The value of this particular execution. Shown as ParameterRuntimeValue in an actual plan. When the two differ a lot, you have found your problem.", ar: "قيمة هذا التنفيذ بالذات. تظهر باسم ParameterRuntimeValue في الـ actual plan. عندما تختلف القيمتان كثيراً تكون قد وجدت مشكلتك." } },
+          { k: { en: "Density vector", ar: "Density vector" },
+            v: { en: "The other number statistics keep: average rows per distinct value, that is total rows divided by number of distinct values. Used when no value can be sniffed.", ar: "الرقم الآخر الذي تحتفظ به الـ statistics: متوسط الصفوف لكل قيمة مميزة، أي إجمالي الصفوف مقسوماً على عدد القيم المميزة. يُستخدم عندما لا يمكن سحب أي قيمة." } }
+        ]},
+        { t: "p",
+          en: "A car navigation app makes the same trade. You ask for a route once at 6 a.m., it sees empty roads and sends you down the small back streets. If it saved that route and reused it at 6 p.m. without re-checking traffic, it would be fast to answer and badly wrong. SQL Server's plan cache is that saved route, and the traffic it checked once is the parameter value it sniffed.",
+          ar: "تطبيق الملاحة في السيارة يعمل نفس المقايضة. تطلب طريقاً مرة عند السادسة صباحاً، فيرى شوارع فارغة ويرسلك في الطرق الجانبية الصغيرة. لو حفظ ذلك الطريق وأعاد استخدامه عند السادسة مساءً دون فحص الازدحام من جديد، لكان سريع الرد وخاطئاً تماماً. الـ plan cache في SQL Server هو ذلك الطريق المحفوظ، والازدحام الذي فحصه مرة واحدة هو قيمة الـ parameter التي سحبها." },
+        { t: "code", lang: "xml",
+          label: { en: "The proof, inside the actual execution plan XML", ar: "الدليل، داخل XML الخاص بالـ actual execution plan" },
+          code: "<ParameterList>\n  <ColumnReference Column=\"@CustomerId\"\n                   ParameterCompiledValue=\"(42)\"\n                   ParameterRuntimeValue=\"(7)\" />\n</ParameterList>\n\n<!-- and on the seek operator: -->\n<!-- EstimateRows=\"3.02\"  ActualRows=\"900000\" -->\n<!-- compiled for 42, executed for 7: a 300,000x estimate error -->" },
+        { t: "p",
+          en: "Plans do not live forever, and that is why the problem seems random. A cached plan is thrown away when the instance restarts or fails over, when memory pressure evicts it, when statistics on the table are updated automatically after enough rows change, when an index on the table is rebuilt, when someone runs ALTER PROCEDURE, or when DBCC FREEPROCCACHE is executed. The next call after any of those recompiles and re-sniffs. So the plan you get depends on who happened to call first after the last eviction — which is why the answer to 'what changed?' is often 'nothing'.",
+          ar: "الـ plans لا تعيش للأبد، ولهذا تبدو المشكلة عشوائية. يُلغى الـ plan المخزَّن عند إعادة تشغيل الـ instance أو الـ failover، وعند طرده بسبب ضغط الذاكرة، وعند تحديث الـ statistics تلقائياً بعد تغيّر عدد كافٍ من الصفوف، وعند إعادة بناء index على الجدول، وعند تنفيذ ALTER PROCEDURE، وعند تنفيذ DBCC FREEPROCCACHE. أول استدعاء بعد أي من هذه يعيد التجميع ويعيد الـ sniffing. لذلك الـ plan الذي تحصل عليه يعتمد على من صادف أن استدعى أولاً بعد آخر عملية طرد — ولهذا الإجابة على «ما الذي تغيّر؟» تكون غالباً «لا شيء»." },
+        { t: "p",
+          en: "There is one more mechanism worth knowing, because it explains a popular but misunderstood trick. If you copy a parameter into a local variable, or declare a variable and assign it, the optimizer cannot see the value at compile time — assignment happens at run time. So it falls back to the density vector: total rows divided by distinct customers. With 40 million orders and 200,000 customers that is a flat estimate of 200 rows for every customer, forever. OPTIMIZE FOR UNKNOWN does exactly the same thing, explicitly. It is not a fix; it is a different, permanently mediocre guess.",
+          ar: "هناك آلية أخرى تستحق المعرفة، لأنها تفسّر حيلة شائعة لكن مُساء فهمها. إذا نسخت الـ parameter إلى متغير محلي، أو أعلنت متغيراً وأسندت له قيمة، لا يستطيع الـ optimizer رؤية القيمة وقت التجميع — لأن الإسناد يحدث وقت التنفيذ. فيرجع إلى الـ density vector: إجمالي الصفوف مقسوماً على عدد العملاء المميزين. مع 40 مليون طلب و200,000 عميل يعطي ذلك تقديراً ثابتاً قدره 200 صف لكل عميل، دائماً. وOPTIMIZE FOR UNKNOWN يفعل نفس الشيء بشكل صريح. هذه ليست حلاً، بل تخمين مختلف ومتوسط الجودة بشكل دائم." },
+        { t: "callout", kind: "tip",
+          en: "SQL Server 2022 added Parameter Sensitive Plan optimization. For an eligible predicate — a single WHERE condition on a skewed column — the engine caches up to three plan variants, for low, medium and high row counts, and picks between them by value. It reduces the problem but does not remove it: it covers a limited set of condition shapes, and only when the database runs at compatibility level 160, the setting that turns on SQL Server 2022 optimizer behaviour.",
+          ar: "أضاف SQL Server 2022 ميزة Parameter Sensitive Plan optimization. لشرط مؤهَّل — أي شرط WHERE واحد على عمود skewed — يخزّن المحرك حتى ثلاثة variants من الـ plan، لأعداد صفوف منخفضة ومتوسطة وعالية، ويختار بينها حسب القيمة. تقلّل المشكلة لكنها لا تلغيها: تغطي أشكالاً محدودة من الشروط، وفقط عندما تعمل قاعدة البيانات على compatibility level 160، وهو الإعداد الذي يفعّل سلوك optimizer الخاص بـ SQL Server 2022." }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "One compile serves millions of executions, so CPU spent on optimization stays near zero.",
+              "The cached plan is tuned to real data, not to a generic guess — for matching values it is the best plan available.",
+              "Plan reuse keeps execution times stable and predictable when data is evenly spread.",
+              "Nothing to configure: it is on by default and correct for most workloads."
+            ],
+            ar: [
+              "تجميع واحد يخدم ملايين التنفيذات، فيبقى الـ CPU المستهلك في الـ optimization قريباً من الصفر.",
+              "الـ plan المخزَّن مضبوط على بيانات حقيقية لا على تخمين عام — وللقيم المشابهة هو أفضل plan متاح.",
+              "إعادة استخدام الـ plan تُبقي أزمنة التنفيذ مستقرة ومتوقّعة عندما تكون البيانات موزّعة بالتساوي.",
+              "لا شيء لتضبطه: مفعّل افتراضياً وصحيح لمعظم أحمال العمل."
+            ]
+          },
+          cons: {
+            en: [
+              "On skewed data the plan fits one class of values and is wrong for the rest.",
+              "Which plan you get depends on who called first after the last cache eviction — effectively random.",
+              "A plan compiled for a large value reserves a large memory grant for every small call too.",
+              "The symptom is intermittent, so it is usually misdiagnosed as a network, index or 'flaky server' problem."
+            ],
+            ar: [
+              "على البيانات الـ skewed يناسب الـ plan فئة واحدة من القيم ويكون خاطئاً لبقيتها.",
+              "أي plan تحصل عليه يعتمد على من استدعى أولاً بعد آخر طرد من الـ cache — أي عشوائياً عملياً.",
+              "الـ plan المُجمَّع لقيمة كبيرة يحجز memory grant كبيراً حتى في الاستدعاءات الصغيرة.",
+              "العَرَض متقطّع، فيُشخَّص عادةً بشكل خاطئ كمشكلة شبكة أو index أو «خادم غير مستقر»."
+            ]
+          },
+          limits: {
+            en: [
+              "Only matters when the column's values are unevenly spread; on uniform data it is invisible.",
+              "Cannot be fixed by better indexes alone — a wrong row estimate picks the wrong plan even with a perfect index.",
+              "SQL Server 2022's Parameter Sensitive Plan optimization covers only some predicate shapes, at compatibility level 160.",
+              "Statistics are sampled, not exact, so even a sniffed estimate can be off on very large tables."
+            ],
+            ar: [
+              "لا يهم إلا عندما تكون قيم العمود غير موزّعة بالتساوي؛ على البيانات المنتظمة يكون غير مرئي.",
+              "لا يُحلّ بتحسين الـ indexes وحده — تقدير الصفوف الخاطئ يختار plan خاطئاً حتى مع index مثالي.",
+              "ميزة Parameter Sensitive Plan optimization في SQL Server 2022 تغطي أشكالاً معيّنة فقط من الشروط، وعند compatibility level 160.",
+              "الـ statistics مأخوذة بالعيّنة لا بشكل دقيق، فحتى التقدير المسحوب قد يكون بعيداً على الجداول الضخمة."
+            ]
+          },
+          alts: {
+            en: [
+              "OPTION (RECOMPILE) on the one skewed statement: a fresh plan per call, paid for in compile CPU.",
+              "OPTIMIZE FOR (@CustomerId = 7): always compile for a chosen value you decide is representative.",
+              "Split the work: separate procedures or an IF branch so small and large cases get their own cached plans.",
+              "Force a known-good plan in Query Store, and review it on a schedule so it does not become a fossil."
+            ],
+            ar: [
+              "OPTION (RECOMPILE) على الجملة الـ skewed وحدها: plan جديد لكل استدعاء، ثمنه CPU للتجميع.",
+              "OPTIMIZE FOR (@CustomerId = 7): التجميع دائماً لقيمة تختارها أنت وتعتبرها ممثِّلة.",
+              "قسّم العمل: procedures منفصلة أو فرع IF بحيث تحصل الحالات الصغيرة والكبيرة على plans مخزّنة خاصة بها.",
+              "ثبّت plan معروف الجودة في Query Store، وراجعه دورياً حتى لا يتحوّل إلى أثر قديم."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Copying the parameter into a local variable to 'disable sniffing'", ar: "نسخ الـ parameter إلى متغير محلي لـ«تعطيل الـ sniffing»" },
+          body: {
+            en: "A developer found a blog post and added DECLARE @cid int = @CustomerId at the top of GetOrdersByCustomer, then used @cid in the WHERE. The 8 s outlier disappeared, so it shipped. Two weeks later every call was slow-ish: the optimizer now estimates 200 rows for everyone, so customer 7 gets a plan sized for 200 rows and still does hundreds of thousands of key lookups, while customer 42 pays for a plan that is no longer a clean 3-row seek. They traded one broken case for a permanently mediocre one across the board.",
+            ar: "وجد مطوّر منشوراً على مدونة فأضاف DECLARE @cid int = @CustomerId في أعلى GetOrdersByCustomer، ثم استخدم @cid في الـ WHERE. اختفت الحالة الشاذة ذات الثماني ثوانٍ فتم النشر. بعد أسبوعين صار كل استدعاء بطيئاً نسبياً: الـ optimizer صار يقدّر 200 صف للجميع، فيحصل العميل 7 على plan مصمَّم لـ200 صف ويظل ينفّذ مئات الآلاف من الـ key lookups، بينما يدفع العميل 42 ثمن plan لم يعد seek نظيفاً لثلاثة صفوف. استبدلوا حالة واحدة سيئة بحالة متوسطة السوء بشكل دائم للجميع."
+          },
+          fix: "-- keep the parameter visible to the optimizer, recompile only the skewed statement\nSELECT o.OrderId, o.PlacedAt, o.Status, o.TotalAmount\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = @CustomerId\nORDER  BY o.PlacedAt DESC\nOPTION (RECOMPILE);" },
+        { t: "mistake",
+          title: { en: "OPTION (RECOMPILE) on a query that runs 5,000 times a second", ar: "OPTION (RECOMPILE) على استعلام يُنفَّذ 5,000 مرة في الثانية" },
+          body: {
+            en: "RECOMPILE worked so well on the reporting procedure that the team added it to the lookup used by every page load. Each execution now compiles a plan first. Compilation takes CPU, and on some builds concurrent compilations queue behind each other on internal engine locks. CPU on the instance went from 30% to 95% with no change in query count, and the slow query was not slow — the server was simply spending its time optimizing. RECOMPILE is right for expensive, infrequent, skew-prone queries and wrong for cheap frequent ones.",
+            ar: "نجح RECOMPILE جيداً على procedure التقارير فأضافه الفريق إلى استعلام البحث المستخدم في كل تحميل صفحة. صار كل تنفيذ يجمّع plan أولاً. التجميع يستهلك CPU، وفي بعض الإصدارات تصطف عمليات التجميع المتزامنة خلف بعضها على أقفال داخلية في المحرك. ارتفع CPU على الـ instance من 30% إلى 95% دون أي تغيّر في عدد الاستعلامات، ولم يكن الاستعلام البطيء بطيئاً — الخادم ببساطة كان يقضي وقته في الـ optimization. الـ RECOMPILE مناسب للاستعلامات المكلفة نادرة التنفيذ والمعرّضة للـ skew، وغير مناسب للاستعلامات الرخيصة عالية التكرار."
+          } },
+        { t: "mistake",
+          title: { en: "Rebuilding indexes nightly as the cure", ar: "إعادة بناء الـ indexes ليلياً كعلاج" },
+          body: {
+            en: "A slow procedure got fast right after an index rebuild, so a nightly rebuild job was added and declared a fix. It works for a reason nobody checked: rebuilding an index updates statistics, which invalidates the cached plan, so the next morning's first caller re-sniffs. The team was not fixing fragmentation, they were shuffling the lottery. It failed the first time a large customer logged in at 6:01 a.m., and it burned hours of I/O every night for nothing.",
+            ar: "صارت procedure بطيئة سريعة مباشرة بعد index rebuild، فأُضيفت مهمة rebuild ليلية واعتُبرت حلاً. تعمل لسبب لم يتحقق منه أحد: إعادة بناء الـ index تُحدّث الـ statistics، مما يُبطل الـ plan المخزَّن، فيعيد أول مستدعٍ في الصباح عملية الـ sniffing. الفريق لم يكن يعالج الـ fragmentation، بل كان يعيد خلط اليانصيب. فشل الحل أول مرة سجّل فيها عميل كبير الدخول عند 6:01 صباحاً، واستهلك ساعات من الـ I/O كل ليلة بلا فائدة."
+          } },
+        { t: "mistake",
+          title: { en: "Turning parameter sniffing off for the whole database", ar: "إيقاف الـ parameter sniffing لقاعدة البيانات كلها" },
+          body: {
+            en: "After a bad week someone ran ALTER DATABASE SCOPED CONFIGURATION SET PARAMETER_SNIFFING = OFF. That makes every query in the database use the density-vector average instead of real values — the local-variable behaviour, applied globally. The one problem procedure improved. Forty other procedures that relied on accurate estimates for correct join order got worse, and because the change was invisible in the code, the next team spent a day comparing plans before someone checked the database configuration.",
+            ar: "بعد أسبوع سيّئ نفّذ أحدهم ALTER DATABASE SCOPED CONFIGURATION SET PARAMETER_SNIFFING = OFF. هذا يجعل كل استعلام في قاعدة البيانات يستخدم متوسط الـ density vector بدل القيم الحقيقية — سلوك المتغير المحلي مطبَّقاً عالمياً. تحسّنت الـ procedure المشكِلة الوحيدة. وساءت أربعون procedure أخرى كانت تعتمد على تقديرات دقيقة لترتيب الـ joins الصحيح، ولأن التغيير غير مرئي في الكود، أمضى الفريق التالي يوماً في مقارنة الـ plans قبل أن يتفقّد أحدهم إعدادات قاعدة البيانات."
+          } }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What is parameter sniffing?", ar: "ما هو الـ parameter sniffing؟" },
+          a: {
+            en: "When SQL Server compiles a parameterized query it looks at the actual parameter values of that first execution and uses them to estimate how many rows come back. It builds the plan around that estimate, caches the plan under the query text, and reuses it for every later call whatever values they pass. That is sniffing. It is good when all values behave alike and bad when one value matches three rows and another matches a million.",
+            ar: "عندما يجمّع SQL Server استعلاماً فيه parameters، ينظر إلى القيم الفعلية في أول تنفيذ ويستخدمها لتقدير عدد الصفوف الراجعة. يبني الـ plan حول ذلك التقدير، يخزّنه تحت نص الاستعلام، ويعيد استخدامه لكل استدعاء لاحق مهما كانت قيمه. هذا هو الـ sniffing. مفيد عندما تتصرف كل القيم بشكل متشابه، وسيّئ عندما تطابق قيمة ثلاثة صفوف وتطابق أخرى مليوناً."
+          } },
+        { t: "qa", level: "mid",
+          q: { en: "Why does SQL Server do this instead of compiling every time?", ar: "لماذا يفعل SQL Server هذا بدل التجميع في كل مرة؟" },
+          a: {
+            en: "Because optimizing is expensive. For a query with several joins the optimizer explores many possible orders and access paths, which can take tens of milliseconds of CPU. If a procedure runs fifty thousand times a minute, compiling each time costs far more than executing. Caching one plan turns that into a one-off cost. Sniffing is what makes that single cached plan good rather than generic — it is just tied to whichever values happened to be there.",
+            ar: "لأن الـ optimization مكلف. في استعلام فيه عدة joins يستكشف الـ optimizer ترتيبات ومسارات وصول كثيرة، وقد يستغرق عشرات الميلي ثانية من الـ CPU. لو نُفّذت procedure خمسين ألف مرة في الدقيقة، لكان التجميع في كل مرة أغلى بكثير من التنفيذ. تخزين plan واحد يحوّل ذلك إلى تكلفة تُدفع مرة. والـ sniffing هو ما يجعل ذلك الـ plan الوحيد جيداً بدل أن يكون عاماً — لكنه مرتبط بالقيم التي صادف وجودها."
+          } },
+        { t: "qa", level: "mid",
+          q: { en: "How do you confirm a slow procedure is actually a sniffing problem?", ar: "كيف تتأكد أن procedure بطيئة هي فعلاً مشكلة sniffing؟" },
+          a: {
+            en: "Two checks. First, capture the actual execution plan of a slow run and compare estimated rows against actual rows on the operator reading the table — a sniffing problem shows a huge gap, like an estimate of 3 against 900,000 actual. Second, open the plan XML and read the ParameterList: if ParameterCompiledValue is a different value from ParameterRuntimeValue, you are literally looking at the plan built for someone else. Query Store confirms it from the other side: the same query id with a wide spread between minimum and maximum duration.",
+            ar: "فحصان. أولاً، التقط الـ actual execution plan لتنفيذ بطيء وقارن الصفوف المقدَّرة بالصفوف الفعلية على المُشغِّل الذي يقرأ الجدول — مشكلة الـ sniffing تُظهر فجوة ضخمة، مثل تقدير 3 مقابل 900,000 فعلي. ثانياً، افتح plan XML واقرأ الـ ParameterList: إذا كانت ParameterCompiledValue مختلفة عن ParameterRuntimeValue فأنت تنظر حرفياً إلى plan بُني لشخص آخر. وQuery Store يؤكدها من الجهة الأخرى: نفس query id مع فارق واسع بين أقل وأعلى مدة."
+          } },
+        { t: "qa", level: "senior",
+          q: { en: "What is the difference between OPTION (RECOMPILE) and OPTIMIZE FOR UNKNOWN?", ar: "ما الفرق بين OPTION (RECOMPILE) و OPTIMIZE FOR UNKNOWN؟" },
+          a: {
+            en: "RECOMPILE builds a new plan for this execution using this execution's real values, then throws it away. You always get a plan that fits, and you pay compile CPU on every call. OPTIMIZE FOR UNKNOWN does the opposite: it deliberately ignores the values and estimates from the average rows per distinct value, then caches that one plan. So RECOMPILE is always right and sometimes too expensive; UNKNOWN is cheap and permanently average — it protects you from the worst case by giving up the best case. UNKNOWN only makes sense when the average plan is acceptable for every value, which on skewed data it usually is not.",
+            ar: "الـ RECOMPILE يبني plan جديداً لهذا التنفيذ باستخدام قيمه الحقيقية ثم يتخلّص منه. تحصل دائماً على plan مناسب، وتدفع CPU للتجميع في كل استدعاء. وOPTIMIZE FOR UNKNOWN يفعل العكس: يتجاهل القيم عمداً ويقدّر من متوسط الصفوف لكل قيمة مميزة، ثم يخزّن ذلك الـ plan الواحد. إذاً RECOMPILE صحيح دائماً ومكلف أحياناً؛ وUNKNOWN رخيص ومتوسط بشكل دائم — يحميك من أسوأ حالة مقابل التخلي عن أفضل حالة. وUNKNOWN منطقي فقط عندما يكون الـ plan المتوسط مقبولاً لكل القيم، وهذا غالباً غير صحيح على بيانات skewed."
+          } },
+        { t: "qa", level: "senior",
+          q: { en: "You cannot put RECOMPILE on a hot query. What else do you do?", ar: "لا يمكنك وضع RECOMPILE على استعلام عالي التردد. ماذا تفعل غير ذلك؟" },
+          a: {
+            en: "I separate the cases so each gets its own cached plan. Concretely: branch on a cheap pre-check — count the customer's orders, or read a flag on the customer row — and call one of two procedures, one written for small customers and one for large. Different query text means different cache entries, so each keeps a plan that fits. If branching is not practical I look at whether an index can make the plans converge, for example a covering index that removes the key lookup so the seek is fine at any size. Only then do I consider OPTIMIZE FOR with a value I can justify, and I document why that value was chosen because it will look arbitrary to whoever reads it next.",
+            ar: "أفصل الحالات ليحصل كل منها على plan مخزَّن خاص به. عملياً: أتفرّع بناءً على فحص مسبق رخيص — عدّ طلبات العميل، أو قراءة flag في صف العميل — ثم أستدعي واحدة من procedures اثنتين، واحدة مكتوبة للعملاء الصغار وأخرى للكبار. اختلاف نص الاستعلام يعني مدخلات cache مختلفة، فيحتفظ كل منهما بـ plan مناسب. وإن كان التفرّع غير عملي، أنظر هل يمكن لـ index أن يجعل الـ plans تتقارب، مثل covering index يزيل الـ key lookup فيصبح الـ seek جيداً عند أي حجم. وبعد ذلك فقط أفكّر في OPTIMIZE FOR بقيمة أستطيع تبريرها، وأوثّق سبب اختيارها لأنها ستبدو اعتباطية لمن يقرأ الكود بعدي."
+          } },
+        { t: "qa", level: "staff",
+          q: { en: "How do you stop this class of incident happening again across many teams?", ar: "كيف تمنع تكرار هذا النوع من الحوادث عبر فرق متعددة؟" },
+          a: {
+            en: "I treat plan choice as something the platform observes, not something each team remembers. First, turn Query Store on everywhere with a retention policy, and alert on regression — same query id, new plan, duration up by some factor — so the problem is caught by a signal instead of by a customer. Second, make skew visible: a scheduled report of the most lopsided columns per table, so teams know which parameters are dangerous before they write the query. Third, agree one written rule for mitigations and where each is allowed, so people stop copying the local-variable trick from blogs. Fourth, ban silent global switches like the database-scoped PARAMETER_SNIFFING setting, because an invisible change costs the next team a day of debugging. The goal is that a bad plan produces a page with a link to the plan diff, not a week of guessing.",
+            ar: "أتعامل مع اختيار الـ plan كشيء تراقبه المنصة، لا كشيء يتذكره كل فريق. أولاً، تفعيل Query Store في كل مكان مع سياسة احتفاظ، وتنبيه عند التراجع — نفس query id، وplan جديد، ومدة أعلى بمضاعف معيّن — ليُكتشف الأمر بإشارة لا بشكوى عميل. ثانياً، إظهار الـ skew: تقرير مجدول بأكثر الأعمدة تفاوتاً في كل جدول، ليعرف الفريق أي الـ parameters خطرة قبل كتابة الاستعلام. ثالثاً، الاتفاق على قاعدة مكتوبة واحدة لطرق المعالجة وأين يُسمح بكل منها، حتى يتوقف الناس عن نسخ حيلة المتغير المحلي من المدونات. رابعاً، منع المفاتيح العامة الصامتة مثل إعداد PARAMETER_SNIFFING على مستوى قاعدة البيانات، لأن تغييراً غير مرئي يكلّف الفريق التالي يوماً من التتبّع. الهدف أن ينتج الـ plan السيّئ تنبيهاً فيه رابط لمقارنة الـ plans، لا أسبوعاً من التخمين."
+          } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Local variable used to hide a sniffing problem", ar: "متغير محلي يُستخدم لإخفاء مشكلة sniffing" },
+          bad: "CREATE PROCEDURE dbo.GetOrdersByCustomer\n    @CustomerId int\nAS\n-- \"fixes\" the slow customer, per a blog post\nDECLARE @cid int = @CustomerId;\n\nSELECT o.OrderId, o.PlacedAt, o.Status, o.TotalAmount\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = @cid\nORDER  BY o.PlacedAt DESC;",
+          good: "CREATE PROCEDURE dbo.GetOrdersByCustomer\n    @CustomerId int\nAS\n-- Orders.CustomerId is heavily skewed (3 rows .. 900k rows per customer).\n-- Recompile is affordable here: this proc runs ~200 times/minute, not per page load.\nSELECT o.OrderId, o.PlacedAt, o.Status, o.TotalAmount\nFROM   dbo.Orders AS o\nWHERE  o.CustomerId = @CustomerId\nORDER  BY o.PlacedAt DESC\nOPTION (RECOMPILE);",
+          why: {
+            en: "The local variable does not disable a bad plan, it replaces a value-specific estimate with a flat average — 200 rows for every customer here. Both extremes then get a plan built for a customer who does not exist. It also hides the intent: nothing in the code says why the copy is there, so the next reader deletes it. The good version keeps the parameter visible to the optimizer, gets a correct plan per call, and states in a comment both the skew and the call rate that makes RECOMPILE affordable.",
+            ar: "المتغير المحلي لا يعطّل plan سيّئاً، بل يستبدل تقديراً خاصاً بالقيمة بمتوسط ثابت — 200 صف لكل عميل هنا. فيحصل الطرفان على plan مبني لعميل غير موجود. كما أنه يخفي النية: لا شيء في الكود يقول لماذا وُضع النسخ، فيحذفه القارئ التالي. النسخة الجيدة تُبقي الـ parameter مرئياً للـ optimizer، وتحصل على plan صحيح لكل استدعاء، وتذكر في تعليق كلاً من الـ skew ومعدّل الاستدعاء الذي يجعل RECOMPILE مقبول التكلفة."
+          } },
+        { t: "review", severity: "medium",
+          title: { en: "RECOMPILE added to a query on the request hot path", ar: "RECOMPILE مضاف إلى استعلام في المسار الساخن للطلبات" },
+          bad: "-- called on every page load: ~5,000 executions/second\nSELECT TOP (20) p.ProductId, p.Name, p.Price\nFROM   dbo.Products AS p\nWHERE  p.CategoryId = @CategoryId\nORDER  BY p.Rank\nOPTION (RECOMPILE);",
+          good: "-- Categories are mildly skewed; the 'Electronics' plan is fine for all of them.\n-- Chosen because it is the 90th-percentile category size; revisit if catalogue shape changes.\nSELECT TOP (20) p.ProductId, p.Name, p.Price\nFROM   dbo.Products AS p\nWHERE  p.CategoryId = @CategoryId\nORDER  BY p.Rank\nOPTION (OPTIMIZE FOR (@CategoryId = 17));",
+          why: {
+            en: "At five thousand executions a second, compiling a plan per execution costs more CPU than running the query, and compilation does not scale linearly across cores. The query itself is cheap and the skew is mild, so a single plan chosen for a representative category is good enough for all of them. The comment matters as much as the hint: an OPTIMIZE FOR value with no explanation is unmaintainable, because nobody later knows whether 17 still means anything.",
+            ar: "عند خمسة آلاف تنفيذ في الثانية، تجميع plan لكل تنفيذ يكلّف CPU أكثر من تنفيذ الاستعلام نفسه، والتجميع لا يتوسّع خطياً عبر الأنوية. الاستعلام نفسه رخيص والـ skew بسيط، فplan واحد مختار لفئة ممثِّلة يكفي للجميع. والتعليق لا يقل أهمية عن الـ hint: قيمة OPTIMIZE FOR بلا تفسير غير قابلة للصيانة، لأن لا أحد لاحقاً يعرف هل ما زال الرقم 17 يعني شيئاً."
+          } }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "Parameter sniffing shows up wherever one shared query serves tenants of wildly different sizes. A tenant here means one customer organisation whose rows sit in the same tables as everyone else's. The classic case is multi-tenant software: 5,000 small customers and three enormous ones, all hitting the same procedure with a TenantId. The plan is chosen by whoever calls first after a deploy, so a deploy at 3 a.m. quietly picks the small-tenant plan and the large tenants time out from 9 a.m. onwards. Designing around it means deciding, at design time, whether one code path can serve both sizes.",
+          ar: "يظهر الـ parameter sniffing في كل مكان يخدم فيه استعلام مشترك واحد tenants بأحجام شديدة الاختلاف. والـ tenant هنا يعني مؤسسة عميل واحدة تقع صفوفها في نفس جداول الجميع. الحالة الكلاسيكية هي البرمجيات متعددة الـ tenants: 5,000 عميل صغير وثلاثة ضخمة، وكلهم يستدعون نفس الـ procedure بـ TenantId. يُختار الـ plan حسب من يستدعي أولاً بعد النشر، فنشرٌ عند الثالثة فجراً يختار بهدوء plan العملاء الصغار، وتبدأ الـ tenants الكبيرة في الـ timeout من التاسعة صباحاً." },
+        { t: "ul",
+          en: [
+            "Decide early which columns are skewed — tenant id, customer id, status, country — and treat any query filtering on them as parameter-sensitive by default.",
+            "Give large tenants their own code path, or their own database, so their queries never share a cache entry with small ones.",
+            "Set a per-query timeout on the application side that is shorter than the request timeout, so a bad plan fails one request instead of holding a connection and exhausting the pool.",
+            "Keep reporting endpoints and transactional endpoints in separate procedures even when the SQL looks identical — different shapes of load need different plans.",
+            "Warm the cache deliberately after a deploy or failover by running the representative parameter values, rather than letting the first real caller decide for everyone."
+          ],
+          ar: [
+            "حدّد مبكراً أي الأعمدة skewed — tenant id، customer id، status، country — واعتبر أي استعلام يرشّح عليها حسّاساً للـ parameters افتراضياً.",
+            "امنح الـ tenants الكبيرة مساراً برمجياً خاصاً بها، أو قاعدة بيانات خاصة، حتى لا تشترك استعلاماتها أبداً في مدخل cache مع الصغيرة.",
+            "اضبط timeout لكل استعلام في التطبيق أقصر من timeout الطلب، حتى يُفشل الـ plan السيّئ طلباً واحداً بدل أن يحتجز اتصالاً ويستنزف الـ connection pool.",
+            "أبقِ واجهات التقارير وواجهات المعاملات في procedures منفصلة حتى لو بدا SQL متطابقاً — أشكال الحمل المختلفة تحتاج plans مختلفة.",
+            "سخّن الـ cache عمداً بعد كل نشر أو failover بتنفيذ قيم الـ parameters الممثِّلة، بدل ترك أول مستدعٍ حقيقي يقرر عن الجميع."
+          ] },
+        { t: "callout", kind: "warn",
+          en: "A bad plan does not stay a database problem. A query that normally takes 40 ms and now takes 8 s holds its connection for 200 times longer. The application's connection pool empties, healthy requests queue behind it, and the outage looks like the API is down. Timeouts on the client side are what keeps one bad plan from becoming a full outage.",
+          ar: "الـ plan السيّئ لا يبقى مشكلة قاعدة بيانات. استعلام يستغرق عادةً 40 ms وصار يستغرق 8 s يحتجز اتصاله لمدة أطول 200 مرة. يفرغ الـ connection pool في التطبيق، وتصطف الطلبات السليمة خلفه، ويبدو التعطّل وكأن الـ API متوقفة. الـ timeouts في جهة العميل هي ما يمنع plan سيّئاً واحداً من التحوّل إلى تعطّل كامل." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "CPU", ar: "CPU" },
+            v: { en: "Two opposite risks: a scan plan burns CPU reading rows it does not need, and RECOMPILE everywhere burns CPU optimizing. Watch compilations per second next to batch requests per second — a ratio above roughly 10% means you are compiling too much.", ar: "خطران متعاكسان: plan فيه scan يستهلك CPU في قراءة صفوف لا يحتاجها، وRECOMPILE في كل مكان يستهلك CPU في الـ optimization. راقب compilations per second بجانب batch requests per second — نسبة أعلى من 10% تقريباً تعني أنك تجمّع أكثر من اللازم." } },
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "The memory grant is sized from the row estimate at compile time. Over-estimate and every small call reserves RAM it never uses, causing RESOURCE_SEMAPHORE waits. Under-estimate and sorts and hash joins spill to tempdb, which turns a memory operation into disk I/O.", ar: "حجم الـ memory grant يُشتق من تقدير الصفوف وقت التجميع. التقدير الزائد يجعل كل استدعاء صغير يحجز RAM لا يستخدمها، مسبباً انتظارات RESOURCE_SEMAPHORE. والتقدير الناقص يجعل الـ sorts والـ hash joins تعمل spill إلى tempdb، فتتحول عملية ذاكرة إلى I/O على القرص." } },
+          { k: { en: "Database I/O", ar: "Database I/O" },
+            v: { en: "The clearest metric is logical reads per execution for the same query. A 3-row call doing 400,000 logical reads is a wrong plan, not a slow disk. Compare the same query id across executions rather than looking at one number.", ar: "أوضح مقياس هو logical reads لكل تنفيذ لنفس الاستعلام. استدعاء يعيد 3 صفوف وينفّذ 400,000 logical read هو plan خاطئ لا قرص بطيء. قارن نفس query id عبر التنفيذات بدل النظر إلى رقم واحد." } },
+          { k: { en: "Latency", ar: "Latency" },
+            v: { en: "Parameter sniffing is a tail-latency problem: the average barely moves because most callers are small, while p99 explodes. If you only chart averages you will not see it at all.", ar: "الـ parameter sniffing مشكلة tail latency: المتوسط بالكاد يتحرك لأن معظم المستدعين صغار، بينما ينفجر p99. إذا كنت ترسم المتوسطات فقط فلن تراها إطلاقاً." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "It scales the wrong way: the bigger a tenant grows, the more the shared plan misfits it, so the largest and most valuable customers hit the problem first and hardest.", ar: "يتوسّع في الاتجاه الخاطئ: كلما كبر الـ tenant زاد عدم ملاءمة الـ plan المشترك له، فيصطدم أكبر العملاء وأكثرهم قيمة بالمشكلة أولاً وأشدّها." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "Query Store, Regressed Queries view: pick the query, see its plans side by side. You are looking for one query id with two plan ids and a step change in average duration at a specific time.",
+            "sys.dm_exec_query_stats joined to sys.dm_exec_sql_text and sys.dm_exec_query_plan: compare min_elapsed_time with max_elapsed_time for the same plan handle. A ratio of 1000x on one plan is the signature.",
+            "The actual execution plan of a slow call: hover the operator reading the table and compare 'Estimated Number of Rows' with 'Actual Number of Rows'. A gap of more than about 10x explains the plan choice.",
+            "The plan XML ParameterList element: ParameterCompiledValue versus ParameterRuntimeValue. Different values there is direct proof the plan was built for someone else's parameters.",
+            "sys.dm_exec_query_memory_grants during the incident, plus any yellow spill warnings on the plan operators. Requested versus used grant tells you which direction the estimate went wrong."
+          ],
+          ar: [
+            "Query Store، عرض Regressed Queries: اختر الاستعلام وشاهد plans جنباً إلى جنب. تبحث عن query id واحد بـ plan ids اثنين وقفزة في متوسط المدة عند وقت محدد.",
+            "sys.dm_exec_query_stats مع sys.dm_exec_sql_text و sys.dm_exec_query_plan: قارن min_elapsed_time بـ max_elapsed_time لنفس plan handle. نسبة 1000 ضعف على plan واحد هي البصمة المميزة.",
+            "الـ actual execution plan لاستدعاء بطيء: مرّر المؤشر على المُشغِّل الذي يقرأ الجدول وقارن Estimated Number of Rows بـ Actual Number of Rows. فجوة أكبر من 10 أضعاف تقريباً تفسّر اختيار الـ plan.",
+            "عنصر ParameterList في plan XML: ParameterCompiledValue مقابل ParameterRuntimeValue. اختلاف القيمتين دليل مباشر أن الـ plan بُني لـ parameters شخص آخر.",
+            "sys.dm_exec_query_memory_grants أثناء الحادثة، مع أي تحذيرات spill صفراء على مُشغِّلات الـ plan. المقارنة بين الحجم المطلوب والمستخدَم تخبرك في أي اتجاه أخطأ التقدير."
+          ] },
+        { t: "callout", kind: "tip",
+          en: "Save the bad plan before you do anything else. Clearing the cache, rebuilding an index or restarting the service makes the symptom vanish and destroys the evidence, and you will not be able to prove what happened. Export the plan XML from Query Store or sys.dm_exec_query_plan first, then fix.",
+          ar: "احفظ الـ plan السيّئ قبل أي شيء آخر. مسح الـ cache أو إعادة بناء index أو إعادة تشغيل الخدمة يُخفي العَرَض ويتلف الدليل، ولن تستطيع إثبات ما حدث. صدّر plan XML من Query Store أو من sys.dm_exec_query_plan أولاً، ثم عالج المشكلة."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "The pattern repeats in any system where a filter column has a few very heavy values and a long tail of light ones. Nobody notices during development, because test data is evenly generated and every value looks the same size. It appears months into production, on the day the first large account starts using the product seriously, and it usually arrives as an intermittent timeout rather than an obvious database error.",
+          ar: "يتكرر النمط في أي نظام يحتوي فيه عمود الترشيح على قيم قليلة ثقيلة جداً وذيل طويل من القيم الخفيفة. لا يلاحظه أحد أثناء التطوير، لأن بيانات الاختبار مولَّدة بالتساوي وكل قيمة تبدو بنفس الحجم. يظهر بعد أشهر في الإنتاج، في اليوم الذي يبدأ فيه أول حساب كبير باستخدام المنتج بجدية، ويصل عادةً على شكل timeout متقطّع لا كخطأ قاعدة بيانات واضح." },
+        { t: "ul",
+          en: [
+            "Multi-tenant SaaS: one shared schema where a handful of enterprise tenants hold most of the rows, so a TenantId filter is the most parameter-sensitive predicate in the product.",
+            "E-commerce order history: most shoppers have a few orders and marketplace sellers have hundreds of thousands, all served by the same customer-orders endpoint.",
+            "Ticketing and support systems: filtering by status, where 'Open' matches a few thousand rows and 'Closed' matches ten million, and the same query serves both dashboards.",
+            "Reporting endpoints layered on the transactional database: a date-range parameter where 'today' and 'last three years' share one cached plan and need completely different ones."
+          ],
+          ar: [
+            "SaaS متعدد الـ tenants: schema مشترك تملك فيه حفنة من الـ tenants المؤسسية معظم الصفوف، فيصبح الترشيح بـ TenantId أكثر الشروط حساسية للـ parameters في المنتج.",
+            "سجل الطلبات في التجارة الإلكترونية: معظم المشترين لديهم طلبات قليلة والبائعون لديهم مئات الآلاف، والجميع يُخدَّم من نفس واجهة طلبات العميل.",
+            "أنظمة التذاكر والدعم: الترشيح بـ status، حيث تطابق «Open» بضعة آلاف صف وتطابق «Closed» عشرة ملايين، ونفس الاستعلام يخدم اللوحتين.",
+            "واجهات التقارير المبنية فوق قاعدة بيانات المعاملات: parameter لمدى تاريخي، حيث تتشارك «اليوم» و«آخر ثلاث سنوات» plan واحداً مخزَّناً بينما تحتاجان plans مختلفة تماماً."
+          ] }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Build a table of 2 million rows where one CustomerId owns 1.5 million of them and 50,000 other customers share the rest. Write a procedure filtering on CustomerId. Run it first for a small customer, then for the big one, capturing actual plans for both. You are done when you can point at the plan XML and read ParameterCompiledValue and ParameterRuntimeValue holding different values.",
+          ar: "ابنِ جدولاً فيه مليونا صف، يملك CustomerId واحد 1.5 مليون منها ويتقاسم 50,000 عميل آخر الباقي. اكتب procedure ترشّح على CustomerId. نفّذها أولاً لعميل صغير ثم للكبير، مع التقاط الـ actual plans للاثنين. تنتهي عندما تستطيع الإشارة إلى plan XML وقراءة ParameterCompiledValue و ParameterRuntimeValue بقيمتين مختلفتين." },
+        { t: "ex", diff: "medium",
+          en: "Using the same table, clear the plan cache and run the big customer first, then the small one. Record the duration, logical reads and requested memory grant for the small customer under each of the two plans. You are done when you have a small table of four numbers showing that the same call is fast or slow purely depending on which value compiled the plan.",
+          ar: "باستخدام نفس الجدول، امسح الـ plan cache ونفّذ العميل الكبير أولاً ثم الصغير. سجّل المدة وlogical reads وحجم الـ memory grant المطلوب للعميل الصغير تحت كل من الـ plan اثنين. تنتهي عندما يكون لديك جدول صغير من أربعة أرقام يُظهر أن نفس الاستدعاء يكون سريعاً أو بطيئاً فقط حسب القيمة التي جمّعت الـ plan." },
+        { t: "ex", diff: "hard",
+          en: "Fix the same procedure three different ways: OPTION (RECOMPILE), OPTIMIZE FOR UNKNOWN, and splitting into two procedures chosen by a cheap pre-check. Measure all three under a load of 95% small customers and 5% large ones. You are done when you can state, with numbers, which one gives the best p99 and which one costs the most CPU, and explain why they are not the same option.",
+          ar: "عالج نفس الـ procedure بثلاث طرق: OPTION (RECOMPILE)، وOPTIMIZE FOR UNKNOWN، والتقسيم إلى procedures اثنتين يُختار بينهما بفحص مسبق رخيص. قِس الثلاثة تحت حمل مكوّن من 95% عملاء صغار و5% كبار. تنتهي عندما تستطيع أن تذكر بالأرقام أيها يعطي أفضل p99 وأيها يكلّف أكثر CPU، وتشرح لماذا ليسا نفس الخيار." },
+        { t: "ex", diff: "senior",
+          en: "Enable Query Store on the test database and write a query against its views that lists, for the last day, every query whose maximum duration is more than 20 times its minimum duration and which has more than one plan. Turn that into an alert definition with a threshold you can defend. You are done when your alert fires on the seeded problem and stays silent for a day of normal mixed traffic.",
+          ar: "فعّل Query Store على قاعدة بيانات الاختبار واكتب استعلاماً على عروضها يسرد، لآخر يوم، كل استعلام تتجاوز مدته القصوى عشرين ضعف مدته الدنيا ولديه أكثر من plan واحد. حوّل ذلك إلى تعريف تنبيه بعتبة تستطيع الدفاع عنها. تنتهي عندما يُطلق تنبيهك على المشكلة المزروعة ويبقى صامتاً ليوم كامل من حركة مرور عادية مختلطة." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref",
+          label: { en: "Query Processing Architecture Guide — compilation, plan caching and parameter sensitivity", ar: "دليل معمارية معالجة الاستعلامات — التجميع وتخزين الـ plans وحساسية الـ parameters" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/query-processing-architecture-guide",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref",
+          label: { en: "Query hints (Transact-SQL) — RECOMPILE, OPTIMIZE FOR, OPTIMIZE FOR UNKNOWN", ar: "Query hints في Transact-SQL — RECOMPILE و OPTIMIZE FOR و OPTIMIZE FOR UNKNOWN" },
+          url: "https://learn.microsoft.com/en-us/sql/t-sql/queries/hints-transact-sql-query",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref",
+          label: { en: "Parameter Sensitive Plan optimization (SQL Server 2022)", ar: "Parameter Sensitive Plan optimization في SQL Server 2022" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/parameter-sensitive-plan-optimization",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref",
+          label: { en: "Monitoring performance by using the Query Store", ar: "مراقبة الأداء باستخدام Query Store" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/monitoring-performance-by-using-the-query-store",
+          meta: { en: "Docs", ar: "توثيق" } }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "What exactly does SQL Server use the sniffed parameter value for?", ar: "ما الذي يستخدم SQL Server قيمة الـ parameter المسحوبة من أجله بالضبط؟" },
+      options: [
+        { en: "To decide whether the query is allowed to run", ar: "ليقرر هل يُسمح للاستعلام بالتنفيذ" },
+        { en: "To estimate how many rows the query will return, which then drives every plan choice", ar: "ليقدّر عدد الصفوف التي سيعيدها الاستعلام، وهذا التقدير يقود كل قرارات الـ plan" },
+        { en: "To build the plan cache key so each value gets its own plan", ar: "ليبني مفتاح الـ plan cache بحيث تحصل كل قيمة على plan خاص بها" },
+        { en: "To decide the transaction isolation level", ar: "ليقرر مستوى عزل الـ transaction" }
+      ],
+      correct: 1,
+      why: { en: "The value is looked up in the column's histogram to produce a row estimate. Everything else — seek or scan, join order, memory grant — follows from that number. The cache key is the query text plus SET options, not the value.", ar: "يُبحث عن القيمة في الـ histogram الخاص بالعمود لإنتاج تقدير للصفوف. وكل ما عداه — seek أو scan، ترتيب الـ joins، الـ memory grant — يتبع ذلك الرقم. ومفتاح الـ cache هو نص الاستعلام مع SET options لا القيمة." }
+    },
+    {
+      q: { en: "A procedure was fine for months and became slow one morning with no code or data change. What is the most likely trigger?", ar: "procedure كانت سليمة لأشهر وصارت بطيئة صباح يوم دون تغيير في الكود أو البيانات. ما السبب الأرجح؟" },
+      options: [
+        { en: "The cached plan was evicted overnight and the first caller that morning compiled a plan that suits only their values", ar: "طُرد الـ plan المخزَّن ليلاً، وأول مستدعٍ في الصباح جمّع plan يناسب قيمه هو فقط" },
+        { en: "The clustered index became fragmented past 30%", ar: "تجزّأ الـ clustered index بما يتجاوز 30%" },
+        { en: "The connection pool was exhausted", ar: "استُنزف الـ connection pool" },
+        { en: "The database switched isolation level automatically", ar: "غيّرت قاعدة البيانات مستوى العزل تلقائياً" }
+      ],
+      correct: 0,
+      why: { en: "Restarts, failovers, memory pressure, automatic statistics updates and index rebuilds all evict plans. Whoever calls first afterwards decides the plan for everyone, which is why the change appears to come from nowhere.", ar: "إعادة التشغيل والـ failover وضغط الذاكرة وتحديث الـ statistics التلقائي وإعادة بناء الـ indexes كلها تطرد الـ plans. ومن يستدعي أولاً بعدها يقرر الـ plan للجميع، ولهذا يبدو التغيير وكأنه جاء من العدم." }
+    },
+    {
+      q: { en: "What does copying a parameter into a local variable actually change?", ar: "ما الذي يغيّره فعلياً نسخ الـ parameter إلى متغير محلي؟" },
+      options: [
+        { en: "It forces a recompile on every execution", ar: "يفرض إعادة تجميع في كل تنفيذ" },
+        { en: "It makes the optimizer use the average rows per distinct value instead of a value-specific estimate", ar: "يجعل الـ optimizer يستخدم متوسط الصفوف لكل قيمة مميزة بدل تقدير خاص بالقيمة" },
+        { en: "It stops the query from being cached at all", ar: "يمنع تخزين الاستعلام في الـ cache نهائياً" },
+        { en: "It makes SQL Server keep one plan per distinct value", ar: "يجعل SQL Server يحتفظ بـ plan لكل قيمة مميزة" }
+      ],
+      correct: 1,
+      why: { en: "The assignment happens at run time, so no value is visible at compile time and the optimizer falls back to the density vector — total rows divided by distinct values. That is the same behaviour as OPTIMIZE FOR UNKNOWN: a permanently average guess, not a fix.", ar: "الإسناد يحدث وقت التنفيذ، فلا تكون أي قيمة مرئية وقت التجميع ويرجع الـ optimizer إلى الـ density vector — إجمالي الصفوف مقسوماً على القيم المميزة. وهو نفس سلوك OPTIMIZE FOR UNKNOWN: تخمين متوسط بشكل دائم لا حل." }
+    },
+    {
+      q: { en: "Which single piece of evidence proves a plan was compiled for different parameter values than the ones it just ran with?", ar: "أي دليل واحد يُثبت أن الـ plan جُمّع لقيم parameters مختلفة عن التي نُفّذ بها للتو؟" },
+      options: [
+        { en: "A high fragmentation percentage in sys.dm_db_index_physical_stats", ar: "نسبة fragmentation عالية في sys.dm_db_index_physical_stats" },
+        { en: "ParameterCompiledValue differing from ParameterRuntimeValue in the actual plan XML", ar: "اختلاف ParameterCompiledValue عن ParameterRuntimeValue في XML الخاص بالـ actual plan" },
+        { en: "A high number of batch requests per second", ar: "عدد عالٍ من batch requests في الثانية" },
+        { en: "The presence of a clustered index scan operator", ar: "وجود مُشغِّل clustered index scan" }
+      ],
+      correct: 1,
+      why: { en: "The plan XML records both values. When they differ you are looking directly at a plan built for another value. A scan operator alone proves nothing — a scan is the right choice for a large result.", ar: "يسجّل plan XML كلتا القيمتين. وعند اختلافهما تكون تنظر مباشرةً إلى plan بُني لقيمة أخرى. ووجود مُشغِّل scan وحده لا يُثبت شيئاً — فالـ scan خيار صحيح لنتيجة كبيرة." }
+    },
+    {
+      q: { en: "When is OPTION (RECOMPILE) the wrong mitigation?", ar: "متى يكون OPTION (RECOMPILE) معالجة خاطئة؟" },
+      options: [
+        { en: "On an expensive reporting query run a few times an hour", ar: "على استعلام تقارير مكلف يُنفَّذ بضع مرات في الساعة" },
+        { en: "On a cheap query executed thousands of times a second, where compile CPU exceeds execution cost", ar: "على استعلام رخيص يُنفَّذ آلاف المرات في الثانية، حيث تتجاوز تكلفة التجميع تكلفة التنفيذ" },
+        { en: "Any time the filter column is skewed", ar: "في أي وقت يكون فيه عمود الترشيح skewed" },
+        { en: "Whenever Query Store is enabled", ar: "كلما كان Query Store مفعّلاً" }
+      ],
+      correct: 1,
+      why: { en: "RECOMPILE always produces a fitting plan but charges compile CPU per execution. On a hot, cheap query that cost dominates and can push the instance to full CPU. There, prefer splitting the code path, a covering index, or a justified OPTIMIZE FOR value.", ar: "الـ RECOMPILE ينتج دائماً plan مناسباً لكنه يفرض تكلفة CPU للتجميع في كل تنفيذ. وعلى استعلام رخيص عالي التردد تسيطر هذه التكلفة وقد ترفع الـ instance إلى CPU كامل. هناك يُفضَّل تقسيم المسار البرمجي، أو covering index، أو قيمة OPTIMIZE FOR مبرَّرة." }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: isolation levels
+
+const isolationLevelsLesson = {
+  id: "isolation-levels",
+  moduleId: "sql",
+  title: { en: "Isolation levels", ar: "مستويات العزل" },
+  summary: {
+    en: "How much one transaction is allowed to see of another transaction's unfinished work — and what you pay in blocking to see less.",
+    ar: "كم يُسمح لـ transaction أن يرى من عمل transaction آخر لم ينتهِ بعد — وما الذي تدفعه من blocking لترى أقل."
+  },
+  mins: 18,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "A database usually runs many transactions at the same time. An isolation level is the rule that decides how much of another transaction's half-finished work your transaction is allowed to see. Pick a strict level and you see a cleaner picture but wait more; pick a loose level and you wait less but can read data that is wrong or about to change.",
+        ar: "قاعدة البيانات تنفّذ عادة عدة transactions في نفس الوقت. مستوى العزل (isolation level) هو القاعدة التي تحدد كم يُسمح لك أن ترى من عمل transaction آخر لم ينتهِ. المستوى الصارم يعطيك صورة أنظف لكنك تنتظر أكثر؛ والمستوى المتساهل ينتظر أقل لكنه قد يقرأ بيانات خاطئة أو على وشك التغيّر." },
+
+      { t: "kv", rows: [
+        { k: { en: "Transaction", ar: "Transaction" },
+          v: { en: "A group of reads and writes that the database treats as one unit: all of it commits, or all of it is rolled back.", ar: "مجموعة من عمليات القراءة والكتابة تعاملها قاعدة البيانات كوحدة واحدة: إما تُثبَّت كلها (commit) أو تُلغى كلها (rollback)." } },
+        { k: { en: "Commit / rollback", ar: "Commit / rollback" },
+          v: { en: "Commit makes the transaction's changes permanent and visible. Rollback throws them away as if they never happened.", ar: "الـ commit يجعل تغييرات الـ transaction دائمة ومرئية. والـ rollback يرميها كأنها لم تحدث." } },
+        { k: { en: "Lock", ar: "Lock" },
+          v: { en: "A marker the database puts on a row or a page so another transaction that wants a conflicting access has to wait.", ar: "علامة تضعها قاعدة البيانات على row أو page، فيضطر أي transaction آخر يريد وصولاً متعارضاً إلى الانتظار." } },
+        { k: { en: "Blocking", ar: "Blocking" },
+          v: { en: "One transaction waiting on a lock another transaction holds. It is normal and short-lived; it becomes a problem when it is long.", ar: "انتظار transaction لـ lock يحمله transaction آخر. هذا طبيعي وقصير عادةً، ويصبح مشكلة عندما يطول." } },
+        { k: { en: "Read anomaly", ar: "Read anomaly" },
+          v: { en: "A specific wrong result a read can return because of concurrency: dirty read, non-repeatable read, or phantom read.", ar: "نتيجة خاطئة محددة قد ترجعها القراءة بسبب التزامن: dirty read أو non-repeatable read أو phantom read." } },
+        { k: { en: "Row version", ar: "Row version" },
+          v: { en: "A saved copy of a row as it looked before the current change, so readers can see the old value instead of waiting.", ar: "نسخة محفوظة من الـ row كما كان قبل التغيير الحالي، حتى يرى القارئ القيمة القديمة بدل الانتظار." } }
+      ]},
+
+      { t: "p",
+        en: "The running example for this lesson is a seat-booking API for a concert. One table, Seats, with columns SeatId, EventId and BookedBy. Two things run against it constantly: a booking request that checks a seat is free and then marks it taken, and an availability request that counts the free seats for the event. On a popular event both run hundreds of times a second, at the same time, on overlapping rows.",
+        ar: "المثال الذي سنستخدمه طوال الدرس هو API لحجز مقاعد حفلة. جدول واحد اسمه Seats بأعمدة SeatId و EventId و BookedBy. شيئان ينفَّذان عليه باستمرار: طلب حجز يتحقق أن المقعد شاغر ثم يعلّمه محجوزاً، وطلب توفّر يحسب عدد المقاعد الشاغرة للحفلة. في حفلة مطلوبة يعملان مئات المرات في الثانية، في نفس الوقت، على rows متداخلة." },
+
+      { t: "p",
+        en: "Think of a shared whiteboard in a meeting room. Someone is halfway through rewriting the schedule: half the old times are erased, the new ones are not written yet. Isolation level is the rule about who may look at the board during that. \"Read the board any time\" is fast but you may copy a half-erased schedule. \"Nobody looks until the pen is down\" is correct but everyone stands and waits. \"Keep a photo of the board from before the edit and read that\" is the third option — nobody waits, and everyone reads a consistent, slightly older schedule. Those three rules map to READ UNCOMMITTED, SERIALIZABLE, and snapshot-based isolation, which the rest of the lesson explains one by one.",
+        ar: "تخيّل whiteboard مشترك في غرفة اجتماعات. شخص في منتصف إعادة كتابة الجدول: نصف الأوقات القديمة مُسحت والجديدة لم تُكتب بعد. مستوى العزل هو القاعدة التي تحدد من يحق له النظر إلى اللوح في تلك اللحظة. «انظر متى شئت» سريع لكنك قد تنسخ جدولاً نصف ممسوح. «لا أحد ينظر حتى يُرفع القلم» صحيح لكن الجميع يقف وينتظر. «احتفظ بصورة للّوح قبل التعديل واقرأ منها» هو الخيار الثالث: لا أحد ينتظر، والجميع يقرأ جدولاً متسقاً لكنه أقدم قليلاً. هذه القواعد الثلاث تقابل READ UNCOMMITTED و SERIALIZABLE والعزل المبني على snapshot، وهو ما يشرحه باقي الدرس واحداً واحداً." },
+
+      { t: "callout", kind: "note",
+        en: "SQL Server's default for a plain connection is READ COMMITTED using locks. Entity Framework Core does not change that: if you never write BeginTransaction, every SaveChanges is its own READ COMMITTED transaction. So you are already using an isolation level today, whether or not you chose it.",
+        ar: "الوضع الافتراضي في SQL Server لأي connection عادي هو READ COMMITTED باستخدام locks. و Entity Framework Core لا يغيّر ذلك: إن لم تكتب BeginTransaction أبداً، فكل SaveChanges هو transaction مستقل بمستوى READ COMMITTED. أي أنك تستخدم مستوى عزل اليوم بالفعل، اخترته أو لم تخترْه." }
+    ]},
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "The booking endpoint originally ran two statements in one transaction: a SELECT to check the seat is free, then an UPDATE to set BookedBy. At the default level, READ COMMITTED with locks, the SELECT releases its lock the moment it finishes reading. It does not hold it until the transaction ends. So two requests for seat 12 can both read \"free\" a millisecond apart, and both then run the UPDATE. One overwrites the other. In one hour of load testing at 200 bookings per second, 41 seats came out double-booked — about 1 in every 17,000 bookings. Rare enough to pass code review, frequent enough to be a support ticket every day.",
+        ar: "endpoint الحجز كان ينفّذ جملتين داخل transaction واحد: SELECT للتحقق أن المقعد شاغر، ثم UPDATE لتعيين BookedBy. في المستوى الافتراضي، READ COMMITTED بالـ locks، يحرّر الـ SELECT قفله فور انتهائه من القراءة ولا يحتفظ به حتى نهاية الـ transaction. لذلك يمكن لطلبين على المقعد 12 أن يقرآ «شاغر» بفارق ميلي ثانية، ثم ينفّذ كلاهما الـ UPDATE، فيكتب أحدهما فوق الآخر. في ساعة اختبار حِمل بمعدل 200 حجز في الثانية خرج 41 مقعداً محجوزاً مرتين — أي واحد من كل 17,000 حجز تقريباً. نادر بما يكفي ليمرّ من مراجعة الكود، ومتكرر بما يكفي ليصبح تذكرة دعم يومية." },
+
+      { t: "p",
+        en: "The availability endpoint had the mirror-image problem. It ran two counts in one transaction — total seats, then booked seats — and returned the difference. Between the two counts, other bookings committed. The page showed 40 free out of 500 while the real number was 37. Worse, the count query took a shared lock on every row it scanned, so during peak the booking UPDATEs queued behind it. Average booking latency was 120 ms, but p99 was 8 s — meaning the slowest 1 in 100 bookings took 8 seconds, almost all of it spent waiting for the counting query to let go.",
+        ar: "endpoint التوفّر كان يعاني من المشكلة المعاكسة. كان ينفّذ عدّتين داخل transaction واحد — إجمالي المقاعد ثم المقاعد المحجوزة — ويرجع الفرق. وبين العدّتين تُثبَّت حجوزات أخرى، فتعرض الصفحة 40 مقعداً شاغراً من 500 بينما الرقم الحقيقي 37. والأسوأ أن استعلام العدّ كان يأخذ shared lock على كل row يمرّ عليه، فتصطف UPDATE الحجوزات خلفه وقت الذروة. متوسط زمن الحجز كان 120 ms لكن p99 كان 8 s — أي أن أبطأ حجز من كل 100 استغرق 8 ثوانٍ، معظمها انتظار حتى يفرج استعلام العدّ عن أقفاله." },
+
+      { t: "kv", rows: [
+        { k: { en: "Dirty read", ar: "Dirty read" },
+          v: { en: "You read a value another transaction wrote but has not committed. If it rolls back, you acted on a number that never existed.", ar: "تقرأ قيمة كتبها transaction آخر ولم يُثبّتها بعد. فإن عمل rollback تكون قد تصرّفت بناءً على رقم لم يوجد أصلاً." } },
+        { k: { en: "Non-repeatable read", ar: "Non-repeatable read" },
+          v: { en: "You read the same row twice in one transaction and get two different values, because someone updated it in between.", ar: "تقرأ نفس الـ row مرتين داخل transaction واحد فتحصل على قيمتين مختلفتين، لأن أحدهم عدّله بينهما." } },
+        { k: { en: "Phantom read", ar: "Phantom read" },
+          v: { en: "You run the same WHERE twice and get a different number of rows, because someone inserted or deleted rows that match it.", ar: "تنفّذ نفس شرط الـ WHERE مرتين فتحصل على عدد rows مختلف، لأن أحدهم أدخل أو حذف rows تطابقه." } },
+        { k: { en: "Lost update", ar: "Lost update" },
+          v: { en: "Two transactions read the same value, both compute a new one from it, and the second write silently erases the first. This is the double-booking above.", ar: "transactionان يقرآن نفس القيمة، ويحسب كل منهما قيمة جديدة منها، فتمحو الكتابة الثانية الأولى بصمت. وهذا هو الحجز المزدوج أعلاه." } }
+      ]},
+
+      { t: "p",
+        en: "These four names are the whole vocabulary. Every isolation level is just a statement of which of them it prevents and which it allows. Nothing more mysterious than that.",
+        ar: "هذه الأسماء الأربعة هي كل المفردات المطلوبة. كل مستوى عزل ليس إلا إعلاناً عن أي منها يمنع وأيها يسمح به. لا شيء أغمض من ذلك." }
+    ]},
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "SQL Server has two completely different machines for isolation, and knowing which one is running explains almost every surprise. The first is locking: readers and writers take locks and wait for each other. The second is row versioning: writers keep the old copy of each row they change, and readers read that old copy without waiting at all. Four of the levels use locks. Two use versions. The level you pick is really a choice of machine plus a choice of how long locks are held.",
+        ar: "لدى SQL Server آليتان مختلفتان تماماً للعزل، ومعرفة أيهما تعمل يفسّر تقريباً كل مفاجأة. الأولى هي الـ locking: القارئون والكاتبون يأخذون locks وينتظر بعضهم بعضاً. والثانية هي row versioning: الكاتب يحتفظ بالنسخة القديمة من كل row يغيّره، فيقرأ القارئ تلك النسخة القديمة دون أي انتظار. أربعة مستويات تستخدم الـ locks، ومستويان يستخدمان النسخ. اختيارك لمستوى العزل هو في الحقيقة اختيار للآلية، بالإضافة إلى اختيار مدة الاحتفاظ بالـ locks." },
+
+      { t: "kv", rows: [
+        { k: { en: "Shared lock (S)", ar: "Shared lock (S)" },
+          v: { en: "Taken by a reader. Many readers can hold it on the same row together. A writer cannot take its lock while any S lock is there.", ar: "يأخذه القارئ. يمكن لعدة قرّاء حمله على نفس الـ row معاً، ولا يستطيع الكاتب أخذ قفله ما دام هناك S lock." } },
+        { k: { en: "Exclusive lock (X)", ar: "Exclusive lock (X)" },
+          v: { en: "Taken by a writer on any row it changes. Only one at a time, and it is always held until commit or rollback — at every isolation level.", ar: "يأخذه الكاتب على كل row يغيّره. واحد فقط في المرة، ويُحتفظ به دائماً حتى الـ commit أو الـ rollback — في كل مستويات العزل." } },
+        { k: { en: "Range lock", ar: "Range lock" },
+          v: { en: "A lock on the gap between index keys, not just on existing rows. It blocks inserts that would fall in that gap. Only SERIALIZABLE takes these.", ar: "قفل على الفراغ بين مفاتيح الـ index وليس على الـ rows الموجودة فقط. يمنع أي insert يقع داخل ذلك الفراغ. و SERIALIZABLE وحده يأخذه." } },
+        { k: { en: "Version store", ar: "Version store" },
+          v: { en: "An area where SQL Server keeps the previous copies of changed rows so readers can read the old value. It lives in tempdb, the scratch database the server uses for temporary work.", ar: "منطقة يحتفظ فيها SQL Server بالنسخ السابقة من الـ rows المتغيّرة ليقرأ القارئ القيمة القديمة. وتوجد داخل tempdb، وهي قاعدة البيانات المؤقتة التي يستخدمها الخادم للعمل العابر." } },
+        { k: { en: "RCSI", ar: "RCSI" },
+          v: { en: "Read Committed Snapshot Isolation — a database setting that makes READ COMMITTED use versions instead of shared locks. Statement-level: each statement sees a fresh snapshot.", ar: "Read Committed Snapshot Isolation — إعداد على مستوى قاعدة البيانات يجعل READ COMMITTED يستخدم النسخ بدل الـ shared locks. يعمل على مستوى الجملة: كل جملة ترى snapshot جديداً." } },
+        { k: { en: "SNAPSHOT", ar: "SNAPSHOT" },
+          v: { en: "A separate isolation level where the whole transaction sees the database exactly as it was at the moment the transaction started.", ar: "مستوى عزل منفصل يرى فيه الـ transaction كله قاعدة البيانات كما كانت تماماً لحظة بدء الـ transaction." } }
+      ]},
+
+      { t: "p",
+        en: "Trace one booking through the lock machine. The transaction begins. The SELECT on seat 12 takes a shared lock on that row. Under READ UNCOMMITTED it takes no lock at all. Under READ COMMITTED it takes the shared lock, reads, and drops it immediately. That early release is the single most important detail in this lesson. It is what lets a second reader slip in. Under REPEATABLE READ it holds that shared lock until commit, so nobody can change seat 12 underneath you, but somebody can still insert a new seat row. Under SERIALIZABLE it holds a range lock over the whole EventId = 90 range in the index, so inserts in that range wait too. Then the UPDATE takes an exclusive lock on seat 12, and that one is held until commit no matter which level you chose.",
+        ar: "تتبّع حجزاً واحداً عبر آلية الـ locks. يبدأ الـ transaction. الـ SELECT على المقعد 12 يأخذ shared lock على ذلك الـ row. في READ UNCOMMITTED لا يأخذ أي قفل إطلاقاً. في READ COMMITTED يأخذ الـ shared lock ويقرأ ثم يتركه فوراً. وهذا التحرير المبكر هو أهم تفصيل في الدرس كله. فهو ما يسمح لقارئ ثانٍ بالتسلل. في REPEATABLE READ يحتفظ بذلك الـ shared lock حتى الـ commit، فلا يستطيع أحد تغيير المقعد 12 من تحتك، لكن يستطيع أحدهم إدخال row مقعد جديد. وفي SERIALIZABLE يحتفظ بـ range lock على مدى EventId = 90 كاملاً داخل الـ index، فينتظر الـ insert في ذلك المدى أيضاً. ثم يأخذ الـ UPDATE قفل exclusive على المقعد 12، وهذا يُحتفظ به حتى الـ commit مهما كان المستوى الذي اخترته." },
+
+      { t: "code", lang: "sql",
+        label: { en: "The same booking at three levels", ar: "نفس الحجز في ثلاثة مستويات" },
+        code: "-- 1) Default READ COMMITTED: the check and the write are not one atomic step.\nBEGIN TRAN;\n  SELECT BookedBy FROM Seats WHERE SeatId = 12;   -- S lock taken, then released\n  -- another session can read 'free' right here\n  UPDATE Seats SET BookedBy = @user WHERE SeatId = 12;\nCOMMIT;\n\n-- 2) Same shape, but the read takes the write lock up front.\n-- UPDLOCK = take the lock you will need for the UPDATE now.\n-- HOLDLOCK = keep it until commit.\nBEGIN TRAN;\n  SELECT BookedBy FROM Seats WITH (UPDLOCK, HOLDLOCK)\n  WHERE SeatId = 12;\n  UPDATE Seats SET BookedBy = @user WHERE SeatId = 12;\nCOMMIT;\n\n-- 3) No transaction at all: let one statement do the check and the write.\n-- Rows affected = 0 means somebody else got the seat first.\nUPDATE Seats\n   SET BookedBy = @user\n WHERE SeatId = 12 AND BookedBy IS NULL;" },
+
+      { t: "p",
+        en: "Now trace the same booking through the version machine. You turn it on with ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON. Before the UPDATE changes seat 12, SQL Server copies the row's old contents into the version store. It then stamps the live row with a pointer to that copy and a transaction sequence number. A reader arriving mid-update does not queue behind the exclusive lock. It follows the pointer, finds the version that was committed before its own statement started, and returns it. Readers never block writers and writers never block readers. The cost just moves. Tempdb now holds every old version until the last transaction that might need it finishes. And 14 extra bytes are added to every row that has ever been versioned.",
+        ar: "الآن تتبّع نفس الحجز عبر آلية النسخ. تفعّلها بـ ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON. قبل أن يغيّر الـ UPDATE المقعد 12، ينسخ SQL Server المحتوى القديم للـ row إلى الـ version store. ثم يضع على الـ row الحي مؤشراً إلى تلك النسخة ورقماً تسلسلياً للـ transaction. القارئ الذي يصل أثناء التعديل لا يقف خلف الـ exclusive lock، بل يتبع المؤشر ويجد النسخة التي كانت مثبَّتة قبل بدء جملته ويرجعها. فلا يعطّل القرّاءُ الكتّابَ ولا العكس. لكن التكلفة تنتقل فقط. صار tempdb يحمل كل نسخة قديمة حتى ينتهي آخر transaction قد يحتاجها. وتُضاف 14 بايت لكل row سبق أن أُنشئت له نسخة." },
+
+      { t: "p",
+        en: "There is one trap in the version machine. Because readers never wait, two transactions can both read the old value and both decide to write. Under RCSI the second UPDATE still blocks on the exclusive lock and then re-reads the current row, so a plain UPDATE ... WHERE BookedBy IS NULL is still safe. Under SNAPSHOT it is different: the second transaction is aborted at commit with error 3960, an update conflict, because the row it based its decision on changed after its snapshot was taken. That means any code using SNAPSHOT must be ready to catch 3960 and retry the whole transaction.",
+        ar: "هناك فخ واحد في آلية النسخ. لأن القرّاء لا ينتظرون، يمكن لـ transactionين أن يقرآ القيمة القديمة ويقرّرا الكتابة معاً. في RCSI يبقى الـ UPDATE الثاني محجوزاً على الـ exclusive lock ثم يعيد قراءة الـ row الحالي، لذا يبقى UPDATE ... WHERE BookedBy IS NULL آمناً. أما في SNAPSHOT فالوضع مختلف: يُلغى الـ transaction الثاني عند الـ commit بالخطأ 3960، وهو update conflict، لأن الـ row الذي بنى عليه قراره تغيّر بعد أخذ الـ snapshot. أي أن أي كود يستخدم SNAPSHOT يجب أن يكون مستعداً لالتقاط 3960 وإعادة تنفيذ الـ transaction كاملاً." },
+
+      { t: "kv", rows: [
+        { k: { en: "READ UNCOMMITTED", ar: "READ UNCOMMITTED" },
+          v: { en: "Takes no shared locks. Allows dirty, non-repeatable and phantom reads. Same thing as the NOLOCK hint.", ar: "لا يأخذ shared locks. يسمح بـ dirty و non-repeatable و phantom reads. وهو نفسه تلميح NOLOCK." } },
+        { k: { en: "READ COMMITTED (locking)", ar: "READ COMMITTED (locking)" },
+          v: { en: "Shared lock taken and released per row read. No dirty reads. Non-repeatable and phantom reads still possible. The default.", ar: "يأخذ shared lock ويحرّره مع كل row يُقرأ. لا dirty reads، لكن non-repeatable و phantom ما زالا ممكنين. وهو الافتراضي." } },
+        { k: { en: "READ COMMITTED (RCSI)", ar: "READ COMMITTED (RCSI)" },
+          v: { en: "Same guarantees, no shared locks at all. Each statement reads a snapshot as of when that statement began.", ar: "نفس الضمانات لكن بلا shared locks إطلاقاً. كل جملة تقرأ snapshot كما كان عند بدء تلك الجملة." } },
+        { k: { en: "REPEATABLE READ", ar: "REPEATABLE READ" },
+          v: { en: "Holds shared locks until commit. Rows you read cannot change. New matching rows can still appear.", ar: "يحتفظ بالـ shared locks حتى الـ commit. لا تتغير الـ rows التي قرأتها، لكن قد تظهر rows جديدة مطابقة." } },
+        { k: { en: "SERIALIZABLE", ar: "SERIALIZABLE" },
+          v: { en: "Adds range locks so no new matching rows can appear. Prevents all three read anomalies. Highest blocking and deadlock risk.", ar: "يضيف range locks فلا تظهر rows جديدة مطابقة. يمنع الأنواع الثلاثة من الشذوذ، وهو الأعلى في الـ blocking وخطر الـ deadlock." } },
+        { k: { en: "SNAPSHOT", ar: "SNAPSHOT" },
+          v: { en: "Whole transaction reads one snapshot from its start. No read anomalies, no read blocking, but writes can fail with error 3960.", ar: "الـ transaction كله يقرأ snapshot واحداً من لحظة بدايته. لا شذوذ في القراءة ولا انتظار عند القراءة، لكن الكتابة قد تفشل بالخطأ 3960." } }
+      ]}
+    ]},
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "Switching READ COMMITTED to RCSI removes reader-writer blocking entirely, usually with no code change.",
+            "Snapshot reads give a report a single consistent picture without freezing the tables it reads.",
+            "Higher lock-based levels genuinely prevent lost updates without any extra application logic.",
+            "The level is set per transaction, so one slow report does not force the whole app to change."
+          ],
+          ar: [
+            "تحويل READ COMMITTED إلى RCSI يزيل تعطيل القارئ للكاتب تماماً، وغالباً بلا أي تغيير في الكود.",
+            "قراءات الـ snapshot تعطي التقرير صورة متسقة واحدة دون تجميد الجداول التي يقرأها.",
+            "المستويات الأعلى المبنية على الـ locks تمنع فعلاً الـ lost update بلا أي منطق إضافي في التطبيق.",
+            "المستوى يُضبط لكل transaction، فلا يجبر تقرير بطيء واحد التطبيق كله على التغيّر."
+          ]
+        },
+        cons: {
+          en: [
+            "REPEATABLE READ and SERIALIZABLE hold locks longer, so blocking and deadlocks both go up.",
+            "Row versioning pushes load onto tempdb; a long-open transaction makes the version store grow without bound.",
+            "SNAPSHOT can abort your transaction with error 3960, so every writer needs retry logic.",
+            "READ UNCOMMITTED can return rows twice, skip rows, or return values that were rolled back."
+          ],
+          ar: [
+            "REPEATABLE READ و SERIALIZABLE يحتفظان بالـ locks مدة أطول، فيزيد الـ blocking والـ deadlocks معاً.",
+            "الـ row versioning ينقل الحمل إلى tempdb، و transaction مفتوح لوقت طويل يجعل الـ version store ينمو بلا حد.",
+            "SNAPSHOT قد يُلغي الـ transaction بالخطأ 3960، فكل كاتب يحتاج منطق إعادة محاولة.",
+            "READ UNCOMMITTED قد يرجع rows مكررة أو يتخطى rows أو يرجع قيماً جرى التراجع عنها."
+          ]
+        },
+        limits: {
+          en: [
+            "No isolation level protects data you read in one request and write back in a later request.",
+            "SERIALIZABLE only blocks inserts in ranges it can lock; without a usable index it locks far more than you meant.",
+            "Turning RCSI on requires exclusive access to the database for a moment, so it is not a free live change.",
+            "Isolation says nothing about durability or about work that happens outside the database."
+          ],
+          ar: [
+            "لا يوجد مستوى عزل يحمي بيانات قرأتها في طلب وكتبتها في طلب لاحق.",
+            "SERIALIZABLE يمنع الـ insert فقط في المدى الذي يستطيع قفله؛ وبلا index مناسب يقفل أكثر بكثير مما قصدت.",
+            "تفعيل RCSI يحتاج وصولاً حصرياً لقاعدة البيانات للحظة، فهو ليس تغييراً مجانياً أثناء التشغيل.",
+            "العزل لا يقول شيئاً عن الـ durability ولا عن العمل الذي يحدث خارج قاعدة البيانات."
+          ]
+        },
+        alts: {
+          en: [
+            "One atomic UPDATE ... WHERE that both checks and writes, then look at rows affected.",
+            "Optimistic concurrency: a rowversion column, which SQL Server bumps on every change, compared in the WHERE clause; retry on zero rows.",
+            "A unique constraint or filtered index that makes the bad state impossible to store at all.",
+            "Application-level locks (sp_getapplock) when the thing you must serialize is not a row."
+          ],
+          ar: [
+            "جملة UPDATE ... WHERE ذرّية واحدة تتحقق وتكتب معاً، ثم تفحص عدد الـ rows المتأثرة.",
+            "التزامن التفاؤلي: عمود rowversion يزيده SQL Server مع كل تغيير، يُقارَن داخل الـ WHERE، مع إعادة المحاولة عند صفر rows.",
+            "قيد unique أو filtered index يجعل الحالة الخاطئة مستحيلة التخزين أصلاً.",
+            "أقفال على مستوى التطبيق (sp_getapplock) حين يكون ما تريد ترتيبه ليس row."
+          ]
+        }
+      }
+    ]},
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "NOLOCK sprinkled on every query to \"make it faster\"", ar: "رشّ NOLOCK على كل استعلام «ليصبح أسرع»" },
+        body: {
+          en: "A team added WITH (NOLOCK) to every SELECT in the reporting layer after a blocking incident. NOLOCK means READ UNCOMMITTED for that table. Six weeks later the nightly revenue report was 3% off. Dirty reads were only half the cause. A page is the 8 KB unit SQL Server stores rows in. When a page fills up, SQL Server does a page split: it moves half the rows to a new page. A scan holding no shared lock can be reading while that happens, so it may read a page twice or skip one. The report counted some orders twice and missed others. NOLOCK does not make queries faster; it makes them not wait, which is a different thing.",
+          ar: "فريق أضاف WITH (NOLOCK) إلى كل SELECT في طبقة التقارير بعد حادثة blocking. و NOLOCK يعني READ UNCOMMITTED لذلك الجدول. بعد ستة أسابيع كان تقرير الإيرادات الليلي مخطئاً بنسبة 3%. والـ dirty reads كانت نصف السبب فقط. الـ page هي وحدة الـ 8 KB التي يخزّن SQL Server الـ rows داخلها. وحين تمتلئ page ينفّذ SQL Server عملية page split: ينقل نصف الـ rows إلى page جديدة. والـ scan الذي لا يحمل shared lock قد يكون يقرأ أثناء ذلك، فيقرأ page مرتين أو يتخطى واحدة. فعدّ التقرير بعض الطلبات مرتين وأسقط أخرى. NOLOCK لا يجعل الاستعلام أسرع، بل يجعله لا ينتظر، وهذان أمران مختلفان."
+        },
+        fix: "-- Instead of NOLOCK, remove the blocking at its source:\nALTER DATABASE Booking SET READ_COMMITTED_SNAPSHOT ON;\n-- readers now get a consistent, committed snapshot and never wait" },
+
+      { t: "mistake",
+        title: { en: "Assuming SELECT-then-UPDATE in a transaction is atomic", ar: "افتراض أن SELECT ثم UPDATE داخل transaction عملية ذرّية" },
+        body: {
+          en: "This is the double-booking bug from the start of the lesson. The developer reasoned: it is all inside BeginTransaction, so nothing can get between the two statements. But a transaction is a unit of commit, not a unit of exclusion. At READ COMMITTED the shared lock from the SELECT is gone the instant the read finishes, so a second session reads the same free seat. The transaction boundary did not create any protection here.",
+          ar: "هذا هو خطأ الحجز المزدوج من بداية الدرس. فكّر المطوّر: كل شيء داخل BeginTransaction، إذن لا شيء يمكنه الدخول بين الجملتين. لكن الـ transaction وحدة تثبيت وليس وحدة إقصاء. في READ COMMITTED يختفي الـ shared lock الخاص بالـ SELECT فور انتهاء القراءة، فيقرأ session ثانٍ نفس المقعد الشاغر. حدّ الـ transaction لم يوفّر أي حماية هنا."
+        },
+        fix: "UPDATE Seats\n   SET BookedBy = @user\n WHERE SeatId = @seatId AND BookedBy IS NULL;\n-- @@ROWCOUNT = 0  ->  return 409 Conflict, the seat was taken" },
+
+      { t: "mistake",
+        title: { en: "Setting SERIALIZABLE globally to be safe", ar: "ضبط SERIALIZABLE على مستوى النظام «احتياطاً»" },
+        body: {
+          en: "After the double-booking incident someone set the isolation level to SERIALIZABLE in a connection interceptor so it applied to every query. Bookings became correct. Everything else got worse: deadlocks went from about 2 a day to 400 a day. The reason is range locks. The availability count runs WHERE EventId = 90, and at SERIALIZABLE that takes a range lock covering every seat of the event, so every booking for that event waits behind every count. Correctness for one endpoint was bought with contention on all of them.",
+          ar: "بعد حادثة الحجز المزدوج ضبط أحدهم مستوى العزل على SERIALIZABLE داخل connection interceptor فطُبِّق على كل استعلام. صارت الحجوزات صحيحة، وساء كل شيء آخر: ارتفعت الـ deadlocks من نحو 2 يومياً إلى 400 يومياً. والسبب هو الـ range locks. استعلام التوفّر ينفّذ WHERE EventId = 90، وفي SERIALIZABLE يأخذ ذلك range lock يغطي كل مقاعد الحفلة، فينتظر كل حجز خلف كل عملية عدّ. اشتُريت صحة endpoint واحد بثمن تنافس على كل الباقي."
+        } },
+
+      { t: "mistake",
+        title: { en: "A long transaction opened before the work starts", ar: "transaction طويل يُفتح قبل أن يبدأ العمل" },
+        body: {
+          en: "The booking handler called BeginTransaction, then called the payment provider over HTTP, then wrote the seat. The HTTP call takes 400 ms on a good day and 30 s when the provider is slow. During all that time the transaction holds its locks, and under RCSI it also pins every row version created since it started, so tempdb grew by 60 GB during one provider outage. The rule that follows: open the transaction as late as possible, do no network calls inside it, and commit as soon as the writes are done.",
+          ar: "معالج الحجز كان ينادي BeginTransaction، ثم ينادي مزوّد الدفع عبر HTTP، ثم يكتب المقعد. نداء الـ HTTP يستغرق 400 ms في اليوم الجيد و 30 s حين يبطئ المزوّد. وطوال ذلك الوقت يحتفظ الـ transaction بأقفاله، وفي RCSI يثبّت أيضاً كل row version أُنشئت منذ بدايته، فنما tempdb بمقدار 60 GB أثناء انقطاع واحد عند المزوّد. والقاعدة الناتجة: افتح الـ transaction في أقصى وقت متأخر ممكن، ولا تنفّذ نداءات شبكة داخله، وثبّته فور انتهاء الكتابة."
+        } }
+    ]},
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What is a dirty read?", ar: "ما هو الـ dirty read؟" },
+        a: {
+          en: "It is reading a value that another transaction has written but not committed yet. If that transaction rolls back, the value you read never really existed, and anything you decided from it is wrong. Only READ UNCOMMITTED allows it, and that is the same thing as putting NOLOCK on a query. Every other level stops it.",
+          ar: "هو أن تقرأ قيمة كتبها transaction آخر ولم يثبّتها بعد. فإن عمل rollback تكون القيمة التي قرأتها لم توجد أصلاً، وأي قرار بنيته عليها خاطئ. المستوى الوحيد الذي يسمح به هو READ UNCOMMITTED، وهو نفسه وضع NOLOCK على الاستعلام. وكل المستويات الأخرى تمنعه."
+        } },
+
+      { t: "qa", level: "mid",
+        q: { en: "What is the default isolation level in SQL Server and what does it actually guarantee?", ar: "ما مستوى العزل الافتراضي في SQL Server وما الذي يضمنه فعلياً؟" },
+        a: {
+          en: "READ COMMITTED, using locks. It guarantees one thing: every value you read was committed at the moment you read it. That is all. It does not promise the value will still be there a millisecond later, and it does not promise a second run of the same query returns the same rows. Practically, that means a SELECT followed by an UPDATE in the same transaction is not protected — someone can change the row in between.",
+          ar: "هو READ COMMITTED باستخدام الـ locks. ويضمن شيئاً واحداً: أن كل قيمة تقرأها كانت مثبَّتة لحظة قراءتك لها. هذا كل شيء. لا يعد بأن القيمة ستبقى بعد ميلي ثانية، ولا بأن إعادة نفس الاستعلام ترجع نفس الـ rows. عملياً هذا يعني أن SELECT يتبعه UPDATE داخل نفس الـ transaction غير محمي، فقد يغيّر أحدهم الـ row بينهما."
+        } },
+
+      { t: "qa", level: "mid",
+        q: { en: "Difference between a non-repeatable read and a phantom read?", ar: "ما الفرق بين non-repeatable read و phantom read؟" },
+        a: {
+          en: "Both mean you read twice and got different answers, but the cause is different. Non-repeatable read is about a row that already existed and whose value changed — you read seat 12 as free, then read it again and it is booked. Phantom read is about the set of rows matching your filter changing — you count 40 free seats, someone inserts a new seat row, you count again and get 41. REPEATABLE READ stops the first because it keeps its shared locks. Only SERIALIZABLE stops the second, because you need a lock on the gap where the new row would go, not just on rows that exist.",
+          ar: "كلاهما يعني أنك قرأت مرتين وحصلت على إجابتين مختلفتين، لكن السبب مختلف. الـ non-repeatable read يخصّ row كان موجوداً وتغيّرت قيمته — قرأت المقعد 12 شاغراً ثم قرأته فوجدته محجوزاً. والـ phantom read يخصّ تغيّر مجموعة الـ rows المطابقة للفلتر — عددت 40 مقعداً شاغراً فأدخل أحدهم row مقعد جديد فعددت مرة أخرى فحصلت على 41. REPEATABLE READ يمنع الأول لأنه يحتفظ بالـ shared locks. و SERIALIZABLE وحده يمنع الثاني، لأنك تحتاج قفلاً على الفراغ الذي سيدخل فيه الـ row الجديد لا على الـ rows الموجودة فقط."
+        } },
+
+      { t: "qa", level: "senior",
+        q: { en: "You have a reporting query blocking writes for seconds at a time. Walk me through your options.", ar: "لديك استعلام تقارير يعطّل الكتابة لثوانٍ في كل مرة. اشرح خياراتك." },
+        a: {
+          en: "First I confirm it really is lock waiting and not slow disk. I check the wait type on the blocked sessions; anything starting with LCK_M_ is a lock wait. If it is locks, the cheap and correct fix is RCSI. Turn on READ_COMMITTED_SNAPSHOT and the report reads row versions instead of taking shared locks. It stops blocking writers with no query changes at all. The cost is tempdb space and 14 bytes per versioned row, so I'd size tempdb and watch the version store before flipping it. If I cannot change database settings, the second option is to make the report cheaper so it holds locks for less time. Usually a covering index — one that already contains every column the query needs — turns a full table scan into a targeted seek. NOLOCK is the option I would not take. A scan without shared locks can double-count or skip rows while pages are being split, and a wrong report is worse than a slow one.",
+          ar: "أولاً أتأكد أنه انتظار locks فعلاً وليس قرصاً بطيئاً. أفحص نوع الانتظار للـ sessions المعطَّلة؛ وكل ما يبدأ بـ LCK_M_ هو انتظار قفل. إن كانت locks فالحل الرخيص والصحيح هو RCSI. أفعّل READ_COMMITTED_SNAPSHOT فيقرأ التقرير row versions بدل أخذ shared locks. فيتوقف عن تعطيل الكتّاب دون تغيير أي استعلام إطلاقاً. والتكلفة مساحة في tempdb و 14 بايت لكل row له نسخة، لذلك أحدّد حجم tempdb وأراقب الـ version store قبل التفعيل. وإن لم أستطع تغيير إعدادات قاعدة البيانات، فالخيار الثاني أن أجعل التقرير أرخص ليحتفظ بالأقفال وقتاً أقل. وغالباً يحوّل covering index — وهو index يحتوي أصلاً كل عمود يحتاجه الاستعلام — الـ scan الكامل للجدول إلى seek محدد. أما NOLOCK فهو الخيار الذي لن آخذه. فالـ scan بلا shared locks قد يعدّ rows مرتين أو يتخطاها أثناء تقسيم الـ pages، وتقرير خاطئ أسوأ من تقرير بطيء."
+        } },
+
+      { t: "qa", level: "senior",
+        q: { en: "When would you use SNAPSHOT instead of RCSI?", ar: "متى تستخدم SNAPSHOT بدل RCSI؟" },
+        a: {
+          en: "When one transaction runs several statements and they all have to see the same picture. RCSI gives each statement its own fresh snapshot, so a transaction that counts total seats and then counts booked seats can still see them from two different moments. SNAPSHOT fixes the whole transaction to the instant it began, so both counts agree. The price is on the write side. If another transaction changed a row after your snapshot was taken, your commit fails with error 3960. So I only use SNAPSHOT where I can retry the whole transaction cleanly. In practice that means read-mostly work like a report or an export.",
+          ar: "حين ينفّذ transaction واحد عدة جمل ويجب أن ترى كلها نفس الصورة. RCSI يعطي كل جملة snapshot جديداً خاصاً بها، فقد يرى transaction يعدّ إجمالي المقاعد ثم يعدّ المحجوزة رقمين من لحظتين مختلفتين. أما SNAPSHOT فيثبّت الـ transaction كله على لحظة بدايته، فتتفق العدّتان. والثمن يقع على جانب الكتابة. فإذا غيّر transaction آخر row بعد أخذ الـ snapshot، يفشل الـ commit بالخطأ 3960. لذلك أستخدم SNAPSHOT فقط حيث أستطيع إعادة تنفيذ الـ transaction كاملاً بنظافة. وعملياً هذا يعني عمل قراءة في معظمه مثل تقرير أو تصدير."
+        } },
+
+      { t: "qa", level: "staff",
+        q: { en: "Concurrency bugs keep reaching production in your org. What do you change structurally?", ar: "أخطاء التزامن تصل إلى الإنتاج باستمرار في مؤسستك. ما الذي تغيّره هيكلياً؟" },
+        a: {
+          en: "I stop treating it as a knowledge problem, because these bugs never show up in a single-user test. Three changes. First, correctness moves into the schema wherever possible — a unique index on the booked seat means the database rejects the double booking no matter what any service does. Second, the load test suite gets a concurrency job that runs the critical write paths at real parallelism and asserts invariants afterwards; that is what turns a 1-in-17,000 race into a red build. Third, isolation level becomes an explicit, reviewed decision. One shared data-access helper requires the caller to name both the level and the retry policy. Then nobody sets SERIALIZABLE globally in an interceptor, and nobody discovers the default by accident. Finally I make sure someone owns tempdb and version-store monitoring, since that is the new failure mode once RCSI is on.",
+          ar: "أتوقف عن التعامل معها كمشكلة معرفة، لأن هذه الأخطاء لا تظهر أبداً في اختبار بمستخدم واحد. ثلاثة تغييرات. أولاً، تنتقل الصحة إلى الـ schema كلما أمكن — unique index على المقعد المحجوز يجعل قاعدة البيانات ترفض الحجز المزدوج مهما فعلت أي خدمة. ثانياً، تحصل مجموعة اختبارات الحِمل على مهمة تزامن تشغّل مسارات الكتابة الحرجة بتوازٍ حقيقي ثم تتحقق من الثوابت؛ هذا ما يحوّل حالة واحدة من 17,000 إلى build أحمر. ثالثاً، يصبح مستوى العزل قراراً صريحاً تجري مراجعته. helper واحد مشترك للوصول إلى البيانات يُلزم المنادي بتسمية المستوى وسياسة إعادة المحاولة معاً. عندها لا يضبط أحد SERIALIZABLE عالمياً داخل interceptor، ولا يكتشف أحد الافتراضي بالصدفة. وأخيراً أضمن أن هناك من يملك مراقبة tempdb والـ version store، لأنه وضع الفشل الجديد بعد تفعيل RCSI."
+        } }
+    ]},
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "Check-then-write across two statements", ar: "تحقّق ثم اكتب عبر جملتين" },
+        bad: "using var tx = await db.Database.BeginTransactionAsync();\n\nvar seat = await db.Seats.FirstAsync(s => s.SeatId == seatId);\nif (seat.BookedBy is not null)\n    return Conflict();\n\nseat.BookedBy = userId;\nawait db.SaveChangesAsync();\nawait tx.CommitAsync();",
+        good: "// One statement decides and writes. No window in between.\nvar rows = await db.Database.ExecuteSqlInterpolatedAsync($@\"\n    UPDATE Seats\n       SET BookedBy = {userId}\n     WHERE SeatId = {seatId} AND BookedBy IS NULL\");\n\nreturn rows == 0 ? Conflict() : Ok();",
+        why: {
+          en: "The transaction does not make the read and the write one step. At READ COMMITTED the read's shared lock is released as soon as the row is read, so two requests can both see BookedBy = null and both write. The rewrite moves the condition into the UPDATE itself, which holds an exclusive lock while it evaluates, so only one request can match. Rows affected of 0 is the signal that someone else won, and it maps cleanly to 409 Conflict.",
+          ar: "الـ transaction لا يجعل القراءة والكتابة خطوة واحدة. في READ COMMITTED يُحرَّر الـ shared lock الخاص بالقراءة فور قراءة الـ row، فيمكن لطلبين أن يريا BookedBy = null وأن يكتبا معاً. إعادة الكتابة تنقل الشرط إلى داخل الـ UPDATE نفسه، وهو يحمل exclusive lock أثناء التقييم، فلا يطابق إلا طلب واحد. وعدد الـ rows المتأثرة صفر هو الإشارة إلى أن غيرك فاز، ويقابل 409 Conflict مباشرة."
+        } },
+
+      { t: "review", severity: "medium",
+        title: { en: "SNAPSHOT transaction with no retry", ar: "transaction بمستوى SNAPSHOT بلا إعادة محاولة" },
+        bad: "using var tx = await db.Database.BeginTransactionAsync(\n    IsolationLevel.Snapshot);\n\nawait ApplySeatChangesAsync(db, changes);\nawait db.SaveChangesAsync();\nawait tx.CommitAsync();   // can throw SqlException 3960",
+        good: "var policy = Policy\n    .Handle<SqlException>(e => e.Number == 3960)\n    .WaitAndRetryAsync(3, a => TimeSpan.FromMilliseconds(50 * a));\n\nawait policy.ExecuteAsync(async () =>\n{\n    // A fresh DbContext each attempt: the old one still holds\n    // the entities loaded under the stale snapshot.\n    using var db = factory.CreateDbContext();\n    using var tx = await db.Database.BeginTransactionAsync(\n        IsolationLevel.Snapshot);\n\n    await ApplySeatChangesAsync(db, changes);\n    await db.SaveChangesAsync();\n    await tx.CommitAsync();\n});",
+        why: {
+          en: "SNAPSHOT trades waiting for failing. If another transaction changed a row you based your write on after your snapshot was taken, SQL Server raises error 3960 instead of blocking. Without a retry that becomes a 500 for the user under load, and the failures cluster exactly when the system is busiest. The retry also has to build a new DbContext, because the old one is still tracking entities read from the stale snapshot and would send the same doomed write again.",
+          ar: "SNAPSHOT يستبدل الانتظار بالفشل. فإذا غيّر transaction آخر row بنيت كتابتك عليه بعد أخذ الـ snapshot، يرفع SQL Server الخطأ 3960 بدل التعطيل. وبلا إعادة محاولة يتحول ذلك إلى 500 للمستخدم تحت الحِمل، وتتجمّع الأعطال تحديداً حين يكون النظام في أشدّ انشغاله. كما يجب أن تبني إعادة المحاولة DbContext جديداً، لأن القديم ما زال يتتبّع entities قُرئت من snapshot قديم وسيرسل نفس الكتابة الفاشلة مرة أخرى."
+        } }
+    ]},
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a system design discussion, isolation level is where you answer \"what happens when two users do this at the same time?\". For the booking service the answer has three layers, and the interviewer is checking whether you know they are separate. The database has a unique filtered index — an index over only the rows matching a condition, which refuses duplicates among them. Two rows can then never claim the same seat. That is the last line of defence and no code can bypass it. The write path uses a single conditional UPDATE so the normal case never needs a high isolation level at all. The read path runs under RCSI so the availability page and the reports never block a booking.",
+        ar: "في نقاش تصميم النظام، مستوى العزل هو المكان الذي تجيب فيه على سؤال «ماذا يحدث حين ينفّذ مستخدمان هذا في نفس الوقت؟». في خدمة الحجز تتكون الإجابة من ثلاث طبقات، والممتحِن يتحقق إن كنت تعرف أنها منفصلة. قاعدة البيانات فيها unique filtered index — وهو index على الـ rows المطابقة لشرط معيّن فقط، ويرفض التكرار بينها. عندها لا يمكن أن يدّعي rowان نفس المقعد. وهذا خط الدفاع الأخير ولا يستطيع أي كود تجاوزه. ومسار الكتابة يستخدم UPDATE شرطياً واحداً فلا تحتاج الحالة العادية مستوى عزل عالياً إطلاقاً. ومسار القراءة يعمل تحت RCSI فلا تعطّل صفحة التوفّر ولا التقارير أي حجز." },
+
+      { t: "ul",
+        en: [
+          "Draw the read path and the write path separately: they almost always want different isolation levels and different indexes.",
+          "Say which invariant the database enforces itself. \"Two people cannot book one seat\" should be a constraint, not a code comment.",
+          "Isolation stops at the database boundary. If a booking also calls a payment API, you need an idempotency key (an id that makes a repeated call a no-op) and an outbox, not a higher isolation level.",
+          "In a read-replica setup, the replica lags. A user who books and is redirected to a page reading from the replica may not see the booking — route read-after-write to the primary.",
+          "Name the retry policy at the same time as the isolation level. SNAPSHOT without retry and SERIALIZABLE without deadlock retry are both incomplete designs."
+        ],
+        ar: [
+          "ارسم مسار القراءة ومسار الكتابة منفصلين: كل منهما يريد عادةً مستوى عزل مختلفاً و indexes مختلفة.",
+          "حدّد أي ثابت تفرضه قاعدة البيانات بنفسها. «لا يمكن لشخصين حجز مقعد واحد» يجب أن يكون constraint لا تعليقاً في الكود.",
+          "العزل يتوقف عند حدود قاعدة البيانات. فإن كان الحجز ينادي أيضاً API دفع، فأنت تحتاج idempotency key (معرّف يجعل النداء المكرر بلا أثر) و outbox، لا مستوى عزل أعلى.",
+          "في إعداد فيه read replica هناك تأخر. فالمستخدم الذي يحجز ثم يُحوَّل إلى صفحة تقرأ من الـ replica قد لا يرى حجزه — وجّه القراءة بعد الكتابة إلى الـ primary.",
+          "سمِّ سياسة إعادة المحاولة مع تسمية مستوى العزل. فـ SNAPSHOT بلا retry و SERIALIZABLE بلا retry للـ deadlock كلاهما تصميم ناقص."
+        ] },
+
+      { t: "callout", kind: "tip",
+        en: "A useful sentence in a design review: \"the isolation level protects a transaction, the constraint protects the data\". Isolation is about what one connection sees while it works. A unique index is about what the table will ever be allowed to hold. You want the second one for anything that must never be true.",
+        ar: "جملة مفيدة في مراجعة التصميم: «مستوى العزل يحمي transaction، والـ constraint يحمي البيانات». العزل يتعلق بما يراه connection واحد أثناء عمله. أما الـ unique index فيتعلق بما يُسمح للجدول بحمله أصلاً. وأنت تريد الثاني لأي شيء يجب ألا يكون صحيحاً أبداً." }
+    ]},
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Latency", ar: "Latency" },
+          v: { en: "Lock waiting shows up in the tail, not the average. The booking p99 of 8 s came almost entirely from waiting behind a reporting scan; after RCSI it fell to 180 ms while p50 barely moved.", ar: "انتظار الـ locks يظهر في الذيل لا في المتوسط. زمن p99 للحجز البالغ 8 s كان كله تقريباً انتظاراً خلف scan تقارير؛ وبعد RCSI نزل إلى 180 ms بينما لم يتحرك p50 تقريباً." } },
+        { k: { en: "Database", ar: "Database" },
+          v: { en: "Higher lock-based levels multiply deadlocks, because holding more locks for longer creates more chances for two sessions to want each other's locks in opposite order.", ar: "المستويات الأعلى المبنية على الـ locks تضاعف الـ deadlocks، لأن حمل أقفال أكثر لوقت أطول يخلق فرصاً أكثر لأن يريد sessionان أقفال بعضهما بترتيب معاكس." } },
+        { k: { en: "Memory", ar: "Memory" },
+          v: { en: "Row versioning adds 14 bytes to every row it touches and keeps old versions in tempdb. A single transaction left open for an hour can hold gigabytes of versions alive.", ar: "الـ row versioning يضيف 14 بايت لكل row يلمسه ويحتفظ بالنسخ القديمة في tempdb. و transaction واحد يُترك مفتوحاً ساعة قد يبقي gigabytes من النسخ حيّة." } },
+        { k: { en: "CPU", ar: "CPU" },
+          v: { en: "Reading a versioned row costs a pointer hop per version in the chain. Rows updated many times in a short window get long chains and measurably slower reads.", ar: "قراءة row له نسخ تكلّف قفزة مؤشر لكل نسخة في السلسلة. والـ rows التي تُعدَّل مرات كثيرة في فترة قصيرة تكوّن سلاسل طويلة وقراءات أبطأ بشكل ملموس." } },
+        { k: { en: "Scalability", ar: "Scalability" },
+          v: { en: "Lock contention gets worse as you add application servers, since more concurrent transactions want the same rows. Snapshot reads scale with hardware instead.", ar: "التنافس على الأقفال يسوء كلما أضفت خوادم تطبيق، لأن transactions متزامنة أكثر تريد نفس الـ rows. أما قراءات الـ snapshot فتتوسّع مع العتاد بدلاً من ذلك." } }
+      ]}
+    ]},
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "sys.dm_exec_requests joined to sys.dm_exec_sql_text: look at blocking_session_id to find who is waiting on whom, and wait_type starting with LCK_M_ to confirm it is a lock wait and not slow disk.",
+          "sys.dm_tran_locks: shows every lock currently held, with resource_type and request_mode. RangeS-S in request_mode means someone is running at SERIALIZABLE.",
+          "DBCC USEROPTIONS on the live connection: prints the isolation level that connection is actually using, which is how you catch an interceptor or a TransactionScope changing it behind your back.",
+          "sys.databases: read is_read_committed_snapshot_on and snapshot_isolation_state to know which machine — locks or versions — is really running before you theorise.",
+          "sys.dm_tran_version_store_space_usage plus sys.dm_tran_active_snapshot_database_transactions: if tempdb is growing, the second view names the oldest open transaction that is pinning the versions."
+        ],
+        ar: [
+          "sys.dm_exec_requests مع sys.dm_exec_sql_text: انظر إلى blocking_session_id لتعرف من ينتظر من، وإلى wait_type الذي يبدأ بـ LCK_M_ لتؤكد أنه انتظار قفل لا قرص بطيء.",
+          "sys.dm_tran_locks: يعرض كل قفل محمول حالياً مع resource_type و request_mode. ووجود RangeS-S في request_mode يعني أن أحدهم يعمل بمستوى SERIALIZABLE.",
+          "DBCC USEROPTIONS على الـ connection الحي: يطبع مستوى العزل الذي يستخدمه ذلك الـ connection فعلاً، وبه تكتشف interceptor أو TransactionScope يغيّره من خلف ظهرك.",
+          "sys.databases: اقرأ is_read_committed_snapshot_on و snapshot_isolation_state لتعرف أي آلية — الأقفال أم النسخ — تعمل فعلاً قبل أن تضع أي فرضية.",
+          "sys.dm_tran_version_store_space_usage مع sys.dm_tran_active_snapshot_database_transactions: إن كان tempdb ينمو، فالـ view الثاني يسمّي أقدم transaction مفتوح يثبّت النسخ."
+        ] },
+
+      { t: "callout", kind: "tip",
+        en: "To reproduce a concurrency bug on purpose, open two query windows and step through them by hand. In window one run BEGIN TRAN and the SELECT, and stop. In window two run the same SELECT, then the UPDATE. Then go back and finish window one. If both windows think they got the seat, you have proved the race in ten seconds — no load test needed. Always finish with ROLLBACK in both windows so you do not leave locks held.",
+        ar: "لإعادة إنتاج خطأ تزامن عمداً، افتح نافذتي استعلام ونفّذهما خطوة بخطوة يدوياً. في النافذة الأولى نفّذ BEGIN TRAN ثم الـ SELECT وتوقف. وفي الثانية نفّذ نفس الـ SELECT ثم الـ UPDATE. ثم عد وأكمل النافذة الأولى. فإن ظنّت النافذتان أن كلاً منهما حصل على المقعد، تكون قد أثبتّ التسابق في عشر ثوانٍ بلا اختبار حِمل. وأنهِ دائماً بـ ROLLBACK في النافذتين حتى لا تترك أقفالاً محمولة." }
+    ]},
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "The pattern repeats anywhere a limited resource is claimed by many people at once. The details change but the shape does not: read the current state, decide, write. Every industry below has its own version of the double-booked seat. Each one ends up choosing between a stricter isolation level, a single conditional write, and a constraint that makes the bad state unstorable.",
+        ar: "يتكرر النمط في كل مكان يطلب فيه كثيرون مورداً محدوداً في نفس الوقت. تتغير التفاصيل ولا يتغير الشكل: اقرأ الحالة الحالية، قرّر، اكتب. كل قطاع أدناه له نسخته من المقعد المحجوز مرتين. وكل واحد منها ينتهي إلى الاختيار بين مستوى عزل أصرم، أو كتابة شرطية واحدة، أو constraint يجعل الحالة الخاطئة غير قابلة للتخزين." },
+
+      { t: "ul",
+        en: [
+          "Ticketing and travel booking: the same seat or room claimed twice. Usually solved with a conditional UPDATE plus a unique index, never with SERIALIZABLE, because contention on a popular event would be extreme.",
+          "Payment and ledger systems: a balance read, checked, then debited. These often do use SERIALIZABLE or explicit UPDLOCK on the account row, because a wrong balance is worse than a slow one, and the contention per account is low.",
+          "E-commerce inventory: the last unit sold to two buyers. Many shops deliberately accept the risk at the cart stage and only enforce at checkout, because holding stock strictly hurts conversion more than a rare oversell costs.",
+          "Analytics and reporting on the operational database: long-running reads that used to block writes. This is the classic reason a team turns RCSI on, and the reason NOLOCK spread through so many codebases before that."
+        ],
+        ar: [
+          "التذاكر وحجوزات السفر: نفس المقعد أو الغرفة يُطلب مرتين. يُحل عادةً بـ UPDATE شرطي مع unique index، ولا يُحل بـ SERIALIZABLE، لأن التنافس على حفلة مطلوبة سيكون شديداً.",
+          "أنظمة الدفع والدفاتر المحاسبية: رصيد يُقرأ ويُفحص ثم يُخصم منه. هذه كثيراً ما تستخدم فعلاً SERIALIZABLE أو UPDLOCK صريحاً على row الحساب، لأن رصيداً خاطئاً أسوأ من رصيد بطيء، والتنافس على الحساب الواحد منخفض.",
+          "مخزون التجارة الإلكترونية: آخر قطعة تُباع لمشتريين. كثير من المتاجر يقبل الخطر عمداً في مرحلة السلة ويفرض الشرط عند الدفع فقط، لأن حجز المخزون بصرامة يضرّ التحويل أكثر مما يكلّف بيع زائد نادر.",
+          "التحليلات والتقارير على قاعدة البيانات التشغيلية: قراءات طويلة كانت تعطّل الكتابة. وهذا السبب الكلاسيكي لتفعيل الفريق لـ RCSI، وهو نفسه سبب انتشار NOLOCK في كثير من الأكواد قبل ذلك."
+        ] }
+    ]},
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Create a Seats table and reproduce a non-repeatable read by hand with two query windows. In window one, BEGIN TRAN and SELECT seat 12. In window two, UPDATE seat 12 and COMMIT. Back in window one, SELECT seat 12 again. You have got it right when the two SELECTs in the same transaction return different values. Then repeat the whole thing at REPEATABLE READ and confirm window two now waits instead.",
+        ar: "أنشئ جدول Seats وأعد إنتاج non-repeatable read يدوياً بنافذتي استعلام. في النافذة الأولى نفّذ BEGIN TRAN ثم SELECT للمقعد 12. وفي الثانية نفّذ UPDATE للمقعد 12 ثم COMMIT. ثم عد إلى الأولى ونفّذ SELECT للمقعد 12 مرة أخرى. تكون قد نجحت حين يرجع الـ SELECTان داخل نفس الـ transaction قيمتين مختلفتين. ثم كرّر كل ذلك بمستوى REPEATABLE READ وتأكد أن النافذة الثانية صارت تنتظر بدلاً من ذلك." },
+
+      { t: "ex", diff: "medium",
+        en: "Write a small console app that fires 200 concurrent booking attempts at the same seat, first with the SELECT-then-UPDATE version and then with the single conditional UPDATE. Count how many attempts believed they succeeded. You have got it right when the first version reports more than one winner at least sometimes, and the second reports exactly one every run.",
+        ar: "اكتب تطبيق console صغيراً يطلق 200 محاولة حجز متزامنة على نفس المقعد، أولاً بنسخة SELECT ثم UPDATE، ثم بنسخة الـ UPDATE الشرطي الواحد. واحسب كم محاولة ظنّت أنها نجحت. تكون قد نجحت حين تُبلّغ النسخة الأولى عن أكثر من فائز في بعض المرات على الأقل، وتُبلّغ الثانية عن فائز واحد بالضبط في كل تشغيل." },
+
+      { t: "ex", diff: "hard",
+        en: "Turn RCSI on in a copy of the database and measure the difference. Run a slow reporting query in a loop while the booking load test runs, and record p50 and p99 booking latency before and after the change. You have got it right when you can show the p99 dropping while p50 stays roughly the same, and can point to the version store size growing in sys.dm_tran_version_store_space_usage as the cost you paid.",
+        ar: "فعّل RCSI في نسخة من قاعدة البيانات وقِس الفرق. شغّل استعلام تقارير بطيئاً في حلقة أثناء تشغيل اختبار حِمل الحجز، وسجّل p50 و p99 لزمن الحجز قبل التغيير وبعده. تكون قد نجحت حين تستطيع إظهار انخفاض p99 مع بقاء p50 كما هو تقريباً، وتستطيع الإشارة إلى نمو حجم الـ version store في sys.dm_tran_version_store_space_usage باعتباره الثمن الذي دفعته." },
+
+      { t: "ex", diff: "senior",
+        en: "Take an existing write path in your own codebase that reads, decides, then writes. Write a one-page note that names the isolation level it runs under today, the exact anomaly it is exposed to, the smallest fix, and what the fix costs. Then add the database constraint that would make the bad state impossible. You have got it right when a colleague who did not write the code can read the note and agree or disagree with a specific reason.",
+        ar: "خذ مسار كتابة موجوداً في كودك يقرأ ثم يقرّر ثم يكتب. اكتب ملاحظة من صفحة واحدة تسمّي مستوى العزل الذي يعمل به اليوم، والشذوذ المحدد المعرّض له، وأصغر إصلاح ممكن، وتكلفة ذلك الإصلاح. ثم أضف الـ constraint في قاعدة البيانات الذي يجعل الحالة الخاطئة مستحيلة. تكون قد نجحت حين يستطيع زميل لم يكتب هذا الكود أن يقرأ الملاحظة ويوافق أو يعترض بسبب محدد." }
+    ]},
+    { key: "refs", blocks: [
+      { t: "ref",
+        label: { en: "SET TRANSACTION ISOLATION LEVEL — the exact guarantees of each level", ar: "SET TRANSACTION ISOLATION LEVEL — الضمانات الدقيقة لكل مستوى" },
+        url: "https://learn.microsoft.com/en-us/sql/t-sql/statements/set-transaction-isolation-level-transact-sql",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref",
+        label: { en: "Transaction locking and row versioning guide — how the two machines work", ar: "دليل الـ locking و row versioning — كيف تعمل الآليتان" },
+        url: "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-transaction-locking-and-row-versioning-guide",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref",
+        label: { en: "A Critique of ANSI SQL Isolation Levels — the paper that named snapshot isolation", ar: "A Critique of ANSI SQL Isolation Levels — الورقة التي سمّت snapshot isolation" },
+        url: "https://www.microsoft.com/en-us/research/publication/a-critique-of-ansi-sql-isolation-levels/",
+        meta: { en: "Paper", ar: "ورقة بحثية" } },
+      { t: "ref",
+        label: { en: "EF Core transactions — setting the isolation level from C#", ar: "transactions في EF Core — ضبط مستوى العزل من C#" },
+        url: "https://learn.microsoft.com/en-us/ef/core/saving/transactions",
+        meta: { en: "Docs", ar: "توثيق" } }
+    ]}
+  ],
+  quiz: [
+    {
+      q: { en: "At the default READ COMMITTED with locks, what happens to the shared lock a SELECT takes?", ar: "في الوضع الافتراضي READ COMMITTED بالـ locks، ماذا يحدث للـ shared lock الذي يأخذه الـ SELECT؟" },
+      options: [
+        { en: "It is held until the transaction commits or rolls back", ar: "يُحتفظ به حتى يُثبَّت الـ transaction أو يُلغى" },
+        { en: "It is released as soon as the row has been read", ar: "يُحرَّر فور قراءة الـ row" },
+        { en: "It is never taken at all", ar: "لا يُؤخذ إطلاقاً" },
+        { en: "It is upgraded to an exclusive lock automatically", ar: "يُرقّى تلقائياً إلى exclusive lock" }
+      ],
+      correct: 1,
+      why: { en: "READ COMMITTED takes the shared lock, reads, and drops it immediately. That early release is exactly why a SELECT-then-UPDATE inside a transaction is not protected: another session can read the same row in the gap. Exclusive locks from writes are the ones held until commit, at every level.", ar: "READ COMMITTED يأخذ الـ shared lock ويقرأ ثم يتركه فوراً. وهذا التحرير المبكر هو تحديداً سبب عدم حماية SELECT ثم UPDATE داخل transaction: يستطيع session آخر قراءة نفس الـ row في تلك الفجوة. أما أقفال الـ exclusive الناتجة عن الكتابة فهي التي يُحتفظ بها حتى الـ commit، في كل المستويات." }
+    },
+    {
+      q: { en: "Which isolation level is the only one that prevents phantom reads using locks?", ar: "أي مستوى عزل هو الوحيد الذي يمنع الـ phantom reads باستخدام الـ locks؟" },
+      options: [
+        { en: "READ COMMITTED", ar: "READ COMMITTED" },
+        { en: "REPEATABLE READ", ar: "REPEATABLE READ" },
+        { en: "SERIALIZABLE", ar: "SERIALIZABLE" },
+        { en: "READ UNCOMMITTED", ar: "READ UNCOMMITTED" }
+      ],
+      correct: 2,
+      why: { en: "A phantom is a new row appearing that matches your WHERE. Stopping it needs a lock on the gap where that row would be inserted, not just on rows that already exist. Only SERIALIZABLE takes those range locks. REPEATABLE READ holds shared locks on rows it read, so values cannot change, but new rows can still appear.", ar: "الـ phantom هو ظهور row جديد يطابق شرط الـ WHERE. ومنعه يحتاج قفلاً على الفراغ الذي سيُدخَل فيه ذلك الـ row لا على الـ rows الموجودة فقط. و SERIALIZABLE وحده يأخذ هذه الـ range locks. أما REPEATABLE READ فيحتفظ بأقفال shared على الـ rows التي قرأها، فلا تتغير القيم، لكن قد تظهر rows جديدة." }
+    },
+    {
+      q: { en: "What is the main difference between RCSI and the SNAPSHOT isolation level?", ar: "ما الفرق الأساسي بين RCSI ومستوى العزل SNAPSHOT؟" },
+      options: [
+        { en: "RCSI gives each statement a fresh snapshot; SNAPSHOT fixes the whole transaction to its start", ar: "RCSI يعطي كل جملة snapshot جديداً، بينما SNAPSHOT يثبّت الـ transaction كله على لحظة بدايته" },
+        { en: "RCSI uses locks while SNAPSHOT uses row versions", ar: "RCSI يستخدم الـ locks بينما SNAPSHOT يستخدم row versions" },
+        { en: "RCSI allows dirty reads while SNAPSHOT does not", ar: "RCSI يسمح بالـ dirty reads بينما SNAPSHOT لا يسمح" },
+        { en: "They are two names for the same setting", ar: "هما اسمان لنفس الإعداد" }
+      ],
+      correct: 0,
+      why: { en: "Both read row versions and neither allows dirty reads. The scope differs: under RCSI two statements in one transaction can see two different moments, so a transaction that counts twice can still get inconsistent numbers. SNAPSHOT pins the whole transaction to one instant, at the cost of possible update conflicts (error 3960) at commit.", ar: "كلاهما يقرأ row versions ولا يسمح أي منهما بالـ dirty reads. الفرق في النطاق: في RCSI قد ترى جملتان داخل transaction واحد لحظتين مختلفتين، فقد يحصل transaction يعدّ مرتين على أرقام غير متسقة. أما SNAPSHOT فيثبّت الـ transaction كله على لحظة واحدة، بثمن احتمال حدوث update conflict (الخطأ 3960) عند الـ commit." }
+    },
+    {
+      q: { en: "Why can a report using WITH (NOLOCK) return a total that is wrong even if nothing was rolled back?", ar: "لماذا قد يرجع تقرير يستخدم WITH (NOLOCK) إجمالياً خاطئاً حتى لو لم يحدث أي rollback؟" },
+      options: [
+        { en: "NOLOCK rounds numeric values to save time", ar: "NOLOCK يقرّب القيم الرقمية لتوفير الوقت" },
+        { en: "A scan with no shared lock can read a page twice or skip one when a page split moves rows", ar: "الـ scan بلا shared lock قد يقرأ page مرتين أو يتخطى واحدة حين يحرّك page split بعض الـ rows" },
+        { en: "NOLOCK reads only committed rows from before the transaction started", ar: "NOLOCK يقرأ فقط الـ rows المثبَّتة قبل بدء الـ transaction" },
+        { en: "NOLOCK silently converts the query to SERIALIZABLE", ar: "NOLOCK يحوّل الاستعلام بصمت إلى SERIALIZABLE" }
+      ],
+      correct: 1,
+      why: { en: "Dirty reads are only half the danger. Because the scan holds no shared lock, concurrent writes can move rows between pages while it is running, so it can count the same row twice or miss it entirely. That produces a wrong total with no rollback anywhere in sight.", ar: "الـ dirty reads نصف الخطر فقط. فلأن الـ scan لا يحمل shared lock، تستطيع الكتابات المتزامنة نقل rows بين الـ pages أثناء عمله، فيعدّ نفس الـ row مرتين أو يفوّته كلياً. وهذا ينتج إجمالياً خاطئاً بلا أي rollback في الصورة." }
+    },
+    {
+      q: { en: "The seat-booking endpoint double-books under load. Which fix removes the race with the least added contention?", ar: "endpoint حجز المقاعد يحجز مرتين تحت الحِمل. أي إصلاح يزيل التسابق بأقل تنافس مضاف؟" },
+      options: [
+        { en: "Set SERIALIZABLE for every connection in the application", ar: "ضبط SERIALIZABLE لكل connection في التطبيق" },
+        { en: "Add WITH (NOLOCK) to the SELECT so it does not conflict", ar: "إضافة WITH (NOLOCK) إلى الـ SELECT حتى لا يتعارض" },
+        { en: "Do the check and the write in one UPDATE ... WHERE BookedBy IS NULL and inspect rows affected", ar: "تنفيذ التحقق والكتابة في UPDATE ... WHERE BookedBy IS NULL واحد وفحص عدد الـ rows المتأثرة" },
+        { en: "Wrap the two statements in a longer transaction with a retry loop", ar: "تغليف الجملتين في transaction أطول مع حلقة إعادة محاولة" }
+      ],
+      correct: 2,
+      why: { en: "A single conditional UPDATE evaluates its WHERE while holding the exclusive lock, so exactly one request can match and the gap between checking and writing disappears. It adds no extra locking beyond the write itself. SERIALIZABLE would also fix it but adds range locks across every query, and NOLOCK makes the race more likely, not less.", ar: "جملة UPDATE شرطية واحدة تقيّم شرط الـ WHERE وهي تحمل الـ exclusive lock، فلا يطابق إلا طلب واحد بالضبط وتختفي الفجوة بين التحقق والكتابة. ولا تضيف أي قفل زائد عن الكتابة نفسها. و SERIALIZABLE يصلح المشكلة أيضاً لكنه يضيف range locks على كل الاستعلامات، أما NOLOCK فيزيد احتمال التسابق لا يقلّله." }
+    }
+  ]
+};
+
+
+// ---------------------------------------------------------------- lesson: deadlocks
+
+const deadlocksLesson = {
+  id: "deadlocks",
+  moduleId: "sql",
+  title: { en: "Deadlocks and how to read the graph", ar: "الـ deadlocks وقراءة الرسم" },
+  summary: {
+    en: "Two transactions each hold a lock the other one needs, so neither can move; SQL Server kills one of them. Here is why it happens and how to stop it.",
+    ar: "كل transaction تمسك lock تحتاجه الأخرى، فلا تتقدّم أي منهما، و SQL Server يقتل واحدة. هنا سبب حدوث ذلك وكيف توقفه."
+  },
+  mins: 16,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "A deadlock happens when two transactions each hold something the other one is waiting for. Neither can finish, and neither will ever give up on its own. SQL Server notices this, picks one of them, and cancels it with error 1205. Your application sees a failed request that would have succeeded if it had run a second earlier or a second later.",
+          ar: "الـ deadlock يحدث عندما تمسك كل transaction شيئاً تنتظره الأخرى. لا تستطيع أي منهما الانتهاء، ولن تتنازل أي منهما من تلقاء نفسها. SQL Server يلاحظ ذلك، يختار واحدة، ويلغيها بالخطأ 1205. تطبيقك يرى request فاشلاً كان سينجح لو نُفّذ قبل ثانية أو بعد ثانية."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Transaction", ar: "Transaction" },
+              v: {
+                en: "A group of database statements that either all take effect or none do. It starts with BEGIN TRAN and ends with COMMIT or ROLLBACK.",
+                ar: "مجموعة من جمل قاعدة البيانات تُطبَّق كلها أو لا يُطبَّق أي منها. تبدأ بـ BEGIN TRAN وتنتهي بـ COMMIT أو ROLLBACK."
+              }
+            },
+            {
+              k: { en: "Lock", ar: "Lock" },
+              v: {
+                en: "A marker SQL Server puts on a row, page or table saying \"I am using this\". Other transactions that need it in a conflicting way must wait.",
+                ar: "علامة يضعها SQL Server على row أو page أو table تقول «أنا أستخدم هذا». أي transaction أخرى تحتاجه بشكل متعارض يجب أن تنتظر."
+              }
+            },
+            {
+              k: { en: "Shared (S) lock", ar: "Shared (S) lock" },
+              v: {
+                en: "Taken when reading. Many readers can hold it on the same row at once. It blocks writers.",
+                ar: "يُؤخذ عند القراءة. عدة قرّاء يمكنهم إمساكه على نفس الـ row في وقت واحد. يمنع الكتّاب."
+              }
+            },
+            {
+              k: { en: "Exclusive (X) lock", ar: "Exclusive (X) lock" },
+              v: {
+                en: "Taken when writing. Only one transaction can hold it on a row, and it blocks everyone else, readers included. It is held until the transaction ends.",
+                ar: "يُؤخذ عند الكتابة. transaction واحدة فقط يمكنها إمساكه على row، ويمنع الجميع بمن فيهم القرّاء. يبقى ممسوكاً حتى تنتهي الـ transaction."
+              }
+            },
+            {
+              k: { en: "Blocking", ar: "Blocking" },
+              v: {
+                en: "One transaction waits for another. This is normal and resolves by itself once the first one commits. A deadlock is different: the waiting is circular, so it never resolves.",
+                ar: "transaction تنتظر أخرى. هذا طبيعي ويُحلّ وحده بمجرد أن تعمل الأولى COMMIT. الـ deadlock مختلف: الانتظار دائري، فلا يُحلّ أبداً."
+              }
+            },
+            {
+              k: { en: "Victim", ar: "Victim" },
+              v: {
+                en: "The transaction SQL Server chooses to cancel to break the cycle. Its work is rolled back and the client gets error 1205.",
+                ar: "الـ transaction التي يختار SQL Server إلغاءها لكسر الدائرة. يُتراجَع عن عملها ويحصل العميل على الخطأ 1205."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "Think of two people cooking in a small kitchen. One picks up the pan and then reaches for the lid. The other picks up the lid and then reaches for the pan. Each is holding exactly what the other needs next, and both are politely waiting. Nobody drops anything, so they stand there forever. That is a deadlock. The pan and the lid are rows in your tables, and \"picking up\" is taking an exclusive lock on a row you just wrote to.",
+          ar: "تخيّل شخصين يطبخان في مطبخ صغير. الأول يأخذ المقلاة ثم يمدّ يده للغطاء. الثاني يأخذ الغطاء ثم يمدّ يده للمقلاة. كل واحد يمسك بالضبط ما يحتاجه الآخر، وكلاهما ينتظر بأدب. لا أحد يترك ما بيده، فيبقيان واقفَين للأبد. هذا هو الـ deadlock. المقلاة والغطاء هما rows في جداولك، و«الأخذ» هو وضع exclusive lock على row كتبت فيه للتو."
+        },
+        {
+          t: "p",
+          en: "The fix in the kitchen is a rule: everyone picks up the pan first, then the lid. Nobody can be stuck holding the lid while waiting for the pan, because the lid is never taken first. The same rule works in a database. Most deadlocks in real systems come from two code paths touching the same two tables in opposite orders, and most of them disappear when you force one order.",
+          ar: "الحل في المطبخ قاعدة: الجميع يأخذ المقلاة أولاً ثم الغطاء. لا يمكن لأحد أن يعلق ممسكاً بالغطاء بينما ينتظر المقلاة، لأن الغطاء لا يُؤخذ أولاً أبداً. نفس القاعدة تعمل في قاعدة البيانات. معظم الـ deadlocks في الأنظمة الحقيقية تأتي من مسارَي كود يلمسان نفس الجدولَين بترتيبَين متعاكسَين، ومعظمها يختفي عندما تفرض ترتيباً واحداً."
+        },
+        {
+          t: "callout",
+          kind: "note",
+          en: "A deadlock is not a corruption or a bug in SQL Server. It is SQL Server protecting you: without detection, both transactions would hang until their connections timed out, holding their locks the whole time and freezing everything behind them.",
+          ar: "الـ deadlock ليس فساداً في البيانات ولا خطأ في SQL Server. هو SQL Server يحميك: بدون الكشف، كانت الـ transaction ستتعلّق حتى انتهاء مهلة الاتصال، ممسكة بالـ locks طوال الوقت ومجمّدة كل ما خلفها."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "Here is the running example for this lesson. An e-commerce backend has two endpoints. POST /orders/{id}/confirm marks an order as confirmed, then decreases the stock count for each product in it. POST /inventory/adjust does a warehouse correction: it changes the stock count for a product, then updates any pending orders for that product. One path writes Orders then Inventory. The other writes Inventory then Orders.",
+          ar: "هذا هو المثال الجاري في هذا الدرس. backend لمتجر إلكتروني فيه endpointان. الأول POST /orders/{id}/confirm يعلّم الـ order كمؤكَّد ثم ينقص كمية المخزون لكل product فيه. والثاني POST /inventory/adjust يصحّح المستودع: يغيّر كمية المخزون لـ product ثم يحدّث أي orders معلّقة لذلك الـ product. مسار يكتب Orders ثم Inventory. والمسار الآخر يكتب Inventory ثم Orders."
+        },
+        {
+          t: "p",
+          en: "For months nothing went wrong, because warehouse corrections were rare. Then the warehouse team started running corrections continuously during business hours. The order confirmation endpoint began failing with \"Transaction (Process ID 71) was deadlocked on lock resources with another process and has been chosen as the deadlock victim\". The failures were not constant: they only happened when the two paths overlapped in time on the same product.",
+          ar: "لشهور لم يحدث شيء، لأن تصحيحات المستودع كانت نادرة. ثم بدأ فريق المستودع يشغّل التصحيحات باستمرار خلال ساعات العمل. وبدأ endpoint تأكيد الطلب يفشل برسالة «Transaction (Process ID 71) was deadlocked on lock resources ... chosen as the deadlock victim». الفشل لم يكن ثابتاً: كان يحدث فقط عندما يتداخل المساران زمنياً على نفس الـ product."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Before the fix", ar: "قبل الإصلاح" },
+              v: {
+                en: "30,000 confirm calls per hour, 180 of them failing with error 1205. That is 0.6% — six out of every thousand customers saw \"something went wrong\" on checkout, at random.",
+                ar: "30,000 استدعاء confirm في الساعة، 180 منها تفشل بالخطأ 1205. أي 0.6% — ستة من كل ألف عميل رأوا «حدث خطأ ما» عند الدفع، بشكل عشوائي."
+              }
+            },
+            {
+              k: { en: "After adding retries only", ar: "بعد إضافة إعادة المحاولة فقط" },
+              v: {
+                en: "Customer-visible failures dropped to about 2 per hour, but the database still did 180 rollbacks per hour and p99 latency on confirm rose from 90 ms to 340 ms — meaning the slowest 1 request in 100 now took 340 ms, because it was really two attempts.",
+                ar: "الفشل الظاهر للعميل نزل إلى نحو 2 في الساعة، لكن قاعدة البيانات ظلّت تنفّذ 180 rollback في الساعة، وارتفع p99 لـ confirm من 90 ms إلى 340 ms — أي أن أبطأ request واحد من كل 100 صار يستغرق 340 ms، لأنه في الحقيقة محاولتان."
+              }
+            },
+            {
+              k: { en: "After fixing lock order", ar: "بعد إصلاح ترتيب الـ locks" },
+              v: {
+                en: "Both endpoints changed to touch Inventory first, then Orders. Deadlocks went to zero over a full week. The retry logic stayed in place as a safety net but almost never fired.",
+                ar: "غُيّر الـ endpointان ليلمسا Inventory أولاً ثم Orders. صارت الـ deadlocks صفراً على مدى أسبوع كامل. بقي منطق إعادة المحاولة كشبكة أمان لكنه لم يعمل تقريباً."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "SQL Server tracks every lock in a structure called the lock manager. When a transaction asks for a lock that conflicts with one already held, it does not fail — it is put on a wait list attached to that lock, and its worker thread goes to sleep. So at any moment the server knows two things: who holds what, and who is waiting for what. Those two facts are enough to draw a graph of \"A is waiting for B\".",
+          ar: "SQL Server يتتبّع كل lock في بنية اسمها lock manager. عندما تطلب transaction قفلاً يتعارض مع قفل ممسوك بالفعل، فهي لا تفشل — توضع في قائمة انتظار مرتبطة بذلك الـ lock، وينام الـ thread الخاص بها. إذن في أي لحظة يعرف الخادم أمرين: من يمسك ماذا، ومن ينتظر ماذا. هاتان الحقيقتان تكفيان لرسم graph من نوع «A ينتظر B»."
+        },
+        {
+          t: "p",
+          en: "A background task called the deadlock monitor walks that graph looking for a cycle — a path that leads back to where it started, like A waits for B and B waits for A. It runs every 5 seconds by default. When a deadlock is detected it switches to running immediately after each one, because deadlocks tend to arrive in bursts. This is why a deadlock is usually reported within a few seconds rather than instantly.",
+          ar: "مهمة خلفية اسمها deadlock monitor تمشي على ذلك الـ graph بحثاً عن دورة — مسار يعود إلى نقطة بدايته، مثل A ينتظر B و B ينتظر A. تعمل كل 5 ثوانٍ افتراضياً. وعند اكتشاف deadlock تنتقل للعمل مباشرة بعد كل واحد، لأن الـ deadlocks تأتي عادة على دفعات. لهذا يُبلَّغ عن الـ deadlock خلال ثوانٍ قليلة لا فوراً."
+        },
+        {
+          t: "code",
+          lang: "sql",
+          label: { en: "The two transactions that collide", ar: "الـ transactionان اللتان تتصادمان" },
+          code: "-- Session A: POST /orders/42/confirm\nBEGIN TRAN;\nUPDATE Orders    SET Status = 'Confirmed' WHERE Id = 42;      -- takes X lock on Orders row 42\n-- ... application does some work here, maybe 20 ms ...\nUPDATE Inventory SET Qty = Qty - 1        WHERE Sku = 'ABC';    -- now WAITS for Inventory row ABC\nCOMMIT;\n\n-- Session B: POST /inventory/adjust  (running at the same moment)\nBEGIN TRAN;\nUPDATE Inventory SET Qty = 500            WHERE Sku = 'ABC';    -- takes X lock on Inventory row ABC\nUPDATE Orders    SET Status = 'OnHold'    WHERE Id = 42;        -- now WAITS for Orders row 42\nCOMMIT;\n\n-- A holds Orders 42 and wants Inventory ABC.\n-- B holds Inventory ABC and wants Orders 42.\n-- Cycle. One of them is killed with error 1205."
+        },
+        {
+          t: "p",
+          en: "Once a cycle is found, SQL Server must break it by cancelling one participant. It picks the transaction that is cheapest to undo, measured by how much transaction log it has written so far. Less work written means less work to roll back. You can override this with SET DEADLOCK_PRIORITY, which tells the server to prefer killing a specific session — useful when a background report should always lose to a customer-facing write.",
+          ar: "بمجرد العثور على الدورة، يجب على SQL Server كسرها بإلغاء أحد المشاركين. يختار الـ transaction الأرخص في التراجع، مقيسة بكمية الـ transaction log التي كتبتها حتى الآن. عمل أقل مكتوب يعني تراجعاً أقل. يمكنك تجاوز ذلك بـ SET DEADLOCK_PRIORITY الذي يخبر الخادم أن يفضّل قتل session معيّنة — مفيد عندما يجب أن يخسر تقرير خلفي دائماً أمام كتابة تخصّ عميلاً."
+        },
+        {
+          t: "p",
+          en: "The victim is rolled back completely and its client receives error 1205. The other transaction wakes up, gets the lock it was waiting for, and finishes normally. Nothing is left half-done: the rollback is a real rollback, so the victim's earlier statements are undone too. This matters for retry logic — you retry the whole transaction, not the statement that failed.",
+          ar: "يُتراجَع عن الـ victim بالكامل ويستلم عميلها الخطأ 1205. أما الأخرى فتستيقظ، تحصل على القفل الذي كانت تنتظره، وتنتهي بشكل طبيعي. لا شيء يبقى نصف منجز: الـ rollback حقيقي، فتُلغى أيضاً الجمل السابقة للـ victim. هذا مهم لمنطق إعادة المحاولة — أنت تعيد الـ transaction كاملة لا الجملة التي فشلت."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Lock manager", ar: "Lock manager" },
+              v: { en: "Keeps the list of held locks and the wait list behind each one.", ar: "يحتفظ بقائمة الـ locks الممسوكة وقائمة الانتظار خلف كل واحد." }
+            },
+            {
+              k: { en: "Wait-for graph", ar: "Wait-for graph" },
+              v: { en: "The picture built from those lists: an arrow from each waiter to the transaction it waits on.", ar: "الصورة المبنية من تلك القوائم: سهم من كل منتظر إلى الـ transaction التي ينتظرها." }
+            },
+            {
+              k: { en: "Deadlock monitor", ar: "Deadlock monitor" },
+              v: { en: "Background task that searches the graph for a cycle, every 5 seconds by default.", ar: "مهمة خلفية تبحث في الـ graph عن دورة، كل 5 ثوانٍ افتراضياً." }
+            },
+            {
+              k: { en: "Victim selection", ar: "اختيار الـ victim" },
+              v: { en: "Lowest rollback cost wins the right to survive; DEADLOCK_PRIORITY overrides it.", ar: "الأقل تكلفة في التراجع يفوز بالبقاء؛ و DEADLOCK_PRIORITY يتجاوز ذلك." }
+            },
+            {
+              k: { en: "Error 1205", ar: "الخطأ 1205" },
+              v: { en: "The number the victim's client receives. In .NET it arrives as SqlException with Number == 1205.", ar: "الرقم الذي يستلمه عميل الـ victim. في .NET يصل كـ SqlException بـ Number == 1205." }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "One more mechanism matters: lock escalation. If a single statement takes more than about 5,000 row locks on one table, SQL Server may swap them all for one lock on the whole table, to save memory. That single table lock conflicts with far more transactions than the row locks did, so a query that was safe at small volumes can start deadlocking once the data grows. Batching large updates into chunks of a few thousand rows avoids crossing that line.",
+          ar: "هناك آلية أخرى مهمة: lock escalation. إذا أخذت جملة واحدة أكثر من نحو 5,000 row lock على جدول واحد، قد يستبدلها SQL Server كلها بقفل واحد على الجدول بأكمله لتوفير الذاكرة. ذلك القفل الواحد يتعارض مع transactions أكثر بكثير مما كانت تفعله row locks، فاستعلام كان آمناً على بيانات صغيرة قد يبدأ في إنتاج deadlocks بعد نمو البيانات. تقسيم التحديثات الكبيرة إلى دفعات من بضعة آلاف row يتجنّب تجاوز ذلك الحد."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "Consistent lock ordering removes whole classes of deadlock permanently, with no runtime cost",
+              "Retry with backoff turns a rare deadlock into an invisible delay for the user",
+              "Shorter transactions reduce the time window in which a cycle can form",
+              "RCSI removes reader/writer deadlocks by letting readers see a previous row version instead of waiting"
+            ],
+            ar: [
+              "ترتيب الـ locks الموحّد يزيل أصنافاً كاملة من الـ deadlock نهائياً وبدون تكلفة وقت تشغيل",
+              "إعادة المحاولة مع backoff تحوّل deadlock نادراً إلى تأخير غير مرئي للمستخدم",
+              "الـ transactions الأقصر تقلّص النافذة الزمنية التي يمكن أن تتشكّل فيها الدورة",
+              "RCSI يزيل deadlocks القارئ/الكاتب بجعل القرّاء يرون نسخة سابقة من الـ row بدل الانتظار"
+            ]
+          },
+          cons: {
+            en: [
+              "Enforcing one lock order across many code paths is a discipline nothing checks for you",
+              "Retries hide the real cause, so the deadlock rate quietly grows until it hurts",
+              "Retrying a transaction with side effects outside the database can duplicate those side effects",
+              "RCSI moves row versions into tempdb, which grows and can become its own bottleneck"
+            ],
+            ar: [
+              "فرض ترتيب واحد للـ locks عبر مسارات كود كثيرة انضباط لا يتحقّق منه شيء تلقائياً",
+              "إعادة المحاولة تخفي السبب الحقيقي، فينمو معدّل الـ deadlock بهدوء حتى يؤلم",
+              "إعادة transaction لها آثار جانبية خارج قاعدة البيانات قد تكرّر تلك الآثار",
+              "RCSI ينقل نسخ الـ rows إلى tempdb الذي ينمو وقد يصير عنق زجاجة بحد ذاته"
+            ]
+          },
+          limits: {
+            en: [
+              "Detection takes up to 5 seconds, so one participant is stuck waiting that long",
+              "You cannot choose the victim without DEADLOCK_PRIORITY, and even then only relatively",
+              "Deadlocks that involve parallel workers inside one query are not fixed by lock ordering",
+              "Retrying is only correct if the transaction is idempotent"
+            ],
+            ar: [
+              "الكشف قد يستغرق حتى 5 ثوانٍ، فيبقى أحد المشاركين منتظراً تلك المدة",
+              "لا يمكنك اختيار الـ victim بدون DEADLOCK_PRIORITY، وحتى معه الاختيار نسبي فقط",
+              "الـ deadlocks التي تشمل parallel workers داخل استعلام واحد لا يصلحها ترتيب الـ locks",
+              "إعادة المحاولة صحيحة فقط إذا كانت الـ transaction idempotent"
+            ]
+          },
+          alts: {
+            en: [
+              "Serialize the conflicting work through a queue so only one writer touches the rows at a time",
+              "Take an application lock (sp_getapplock) on a business key before starting the writes",
+              "Use an index so the writer locks only the rows it needs instead of scanning and locking extra ones",
+              "Move the second write out of the transaction entirely using the outbox pattern"
+            ],
+            ar: [
+              "تسلسل العمل المتعارض عبر queue بحيث يلمس كاتب واحد فقط الـ rows في كل مرة",
+              "أخذ application lock عبر sp_getapplock على مفتاح أعمال قبل بدء الكتابات",
+              "استخدام index ليقفل الكاتب الـ rows التي يحتاجها فقط بدل مسح وقفل rows إضافية",
+              "إخراج الكتابة الثانية من الـ transaction تماماً باستخدام نمط outbox"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Catching the deadlock and retrying only the failed statement", ar: "التقاط الـ deadlock وإعادة الجملة الفاشلة فقط" },
+          body: {
+            en: "A developer wrapped the second UPDATE in a try/catch and re-ran just that UPDATE on error 1205. But the deadlock rolled back the whole transaction, including the first UPDATE that set the order to Confirmed. The retry ran outside any transaction and succeeded, so inventory dropped by one for an order that was never confirmed. Stock counts drifted below reality by a few units a day for two months before anyone noticed.",
+            ar: "غلّف مطوّر جملة UPDATE الثانية بـ try/catch وأعاد تلك الجملة وحدها عند الخطأ 1205. لكن الـ deadlock تراجع عن الـ transaction كاملة بما فيها UPDATE الأولى التي جعلت الـ order مؤكَّداً. أُعيدت الجملة خارج أي transaction ونجحت، فنقص المخزون واحداً لـ order لم يُؤكَّد أبداً. انحرفت أعداد المخزون تحت الواقع ببضع وحدات يومياً لشهرين قبل أن ينتبه أحد."
+          },
+          fix: "// Retry the whole unit of work, never one statement.\nawait retryPolicy.ExecuteAsync(async () =>\n{\n    await using var tx = await conn.BeginTransactionAsync(ct);\n    await ConfirmOrderAsync(conn, tx, orderId, ct);\n    await DecrementStockAsync(conn, tx, sku, ct);\n    await tx.CommitAsync(ct);\n});"
+        },
+        {
+          t: "mistake",
+          title: { en: "Calling an external API inside the transaction", ar: "استدعاء API خارجي داخل الـ transaction" },
+          body: {
+            en: "The confirm endpoint called the payment provider between the two UPDATE statements, while holding the exclusive lock on the order row. The provider normally answered in 80 ms but occasionally took 3 seconds. During those 3 seconds every other transaction that needed that order row queued up behind it, which made a deadlock far more likely and turned a rare event into a daily one. Locks are held until COMMIT, so any slow call inside a transaction multiplies the collision window.",
+            ar: "كان endpoint التأكيد يستدعي مزوّد الدفع بين جملتَي UPDATE، وهو ممسك بـ exclusive lock على row الـ order. المزوّد كان يجيب عادة خلال 80 ms لكنه أحياناً يستغرق 3 ثوانٍ. خلال تلك الثواني كانت كل transaction أخرى تحتاج ذلك الـ row تصطف خلفه، ما رفع احتمال الـ deadlock كثيراً وحوّل حدثاً نادراً إلى حدث يومي. الـ locks تبقى حتى COMMIT، فأي استدعاء بطيء داخل transaction يضاعف نافذة التصادم."
+          }
+        },
+        {
+          t: "mistake",
+          title: { en: "Reading with UPDLOCK missing, then writing", ar: "القراءة بدون UPDLOCK ثم الكتابة" },
+          body: {
+            en: "Two sessions both ran SELECT Qty FROM Inventory WHERE Sku = 'ABC' and each took a shared lock, which they are allowed to hold at the same time. Then both tried to UPDATE the same row, and each needed to upgrade its shared lock to exclusive. Neither could, because the other's shared lock was in the way. This is a conversion deadlock, and it happens on a single row in a single table, so lock ordering does not help. Reading with UPDLOCK takes an update lock up front, which two sessions cannot both hold.",
+            ar: "شغّلت جلستان SELECT Qty FROM Inventory WHERE Sku = 'ABC' وأخذت كل منهما shared lock، وهذا مسموح في نفس الوقت. ثم حاولت كل منهما UPDATE لنفس الـ row، واحتاجت كل واحدة ترقية قفلها من shared إلى exclusive. لم تستطع أي منهما، لأن shared lock الأخرى في الطريق. هذا conversion deadlock، ويحدث على row واحد في جدول واحد، فترتيب الـ locks لا يساعد. القراءة بـ UPDLOCK تأخذ update lock مقدماً، ولا يمكن لجلستين إمساكه معاً."
+          },
+          fix: "SELECT Qty FROM Inventory WITH (UPDLOCK, ROWLOCK)\nWHERE Sku = 'ABC';\n-- then UPDATE the same row in the same transaction"
+        },
+        {
+          t: "mistake",
+          title: { en: "Assuming an index change cannot cause deadlocks", ar: "افتراض أن تغيير الـ index لا يسبّب deadlocks" },
+          body: {
+            en: "Someone dropped a non-clustered index on Inventory.Sku because it looked unused in a monthly report. Without it, the UPDATE ... WHERE Sku = 'ABC' could no longer jump straight to one row; it scanned the table and briefly locked every row it touched on the way. Deadlock rate went from about 3 a day to 400 a day within an hour of the deploy. The lock order had not changed at all — only the set of rows being locked had grown.",
+            ar: "حذف أحدهم non-clustered index على Inventory.Sku لأنه بدا غير مستخدَم في تقرير شهري. بدونه لم تعد UPDATE ... WHERE Sku = 'ABC' تقفز مباشرة إلى row واحد؛ صارت تمسح الجدول وتقفل مؤقتاً كل row تمرّ به. ارتفع معدّل الـ deadlock من نحو 3 يومياً إلى 400 يومياً خلال ساعة من النشر. ترتيب الـ locks لم يتغيّر إطلاقاً — ما تغيّر هو اتساع مجموعة الـ rows المقفولة."
+          }
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "What is the difference between blocking and a deadlock?", ar: "ما الفرق بين الـ blocking والـ deadlock؟" },
+          a: {
+            en: "Blocking is one transaction waiting for another to finish. It is normal, and it clears by itself the moment the first one commits. A deadlock is when that waiting forms a circle: A waits for B and B waits for A, so nothing will ever clear it. SQL Server detects the circle and cancels one of them with error 1205 so the other can continue.",
+            ar: "الـ blocking هو انتظار transaction لأخرى حتى تنتهي. هذا طبيعي ويزول وحده لحظة عمل الأولى COMMIT. أما الـ deadlock فهو أن يصير الانتظار دائرة: A ينتظر B و B ينتظر A، فلا شيء سيزيله أبداً. SQL Server يكتشف الدائرة ويلغي واحدة بالخطأ 1205 لتكمل الأخرى."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "How does SQL Server choose which transaction to kill?", ar: "كيف يختار SQL Server أي transaction يقتل؟" },
+          a: {
+            en: "By rollback cost — roughly how much transaction log each one has written. The cheaper one to undo becomes the victim. You can influence it with SET DEADLOCK_PRIORITY: give a background job LOW priority and it will be chosen over a customer-facing transaction. That does not reduce the number of deadlocks, it just decides who pays for them.",
+            ar: "حسب تكلفة الـ rollback — تقريباً كمية الـ transaction log التي كتبتها كل واحدة. الأرخص في التراجع تصير الـ victim. يمكنك التأثير على ذلك بـ SET DEADLOCK_PRIORITY: أعطِ مهمة خلفية أولوية LOW فتُختار قبل transaction تخصّ عميلاً. هذا لا يقلّل عدد الـ deadlocks، بل يقرّر فقط من يدفع ثمنها."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Is it enough to just retry on error 1205?", ar: "هل تكفي إعادة المحاولة عند الخطأ 1205؟" },
+          a: {
+            en: "It is a necessary safety net but not a fix. Retry is only correct if you retry the whole transaction and the work is idempotent — if the transaction also sent an email or charged a card, the retry duplicates that. And retries hide the trend: the deadlock rate can climb from three a day to hundreds and you will only see it as rising latency. I treat retries as the seatbelt and lock ordering as the brakes.",
+            ar: "هي شبكة أمان ضرورية لكنها ليست إصلاحاً. إعادة المحاولة صحيحة فقط إذا أعدت الـ transaction كاملة وكان العمل idempotent — فإذا كانت الـ transaction ترسل بريداً أو تسحب من بطاقة، فستكرّر الإعادة ذلك. كما أن الإعادة تخفي الاتجاه: قد يرتفع معدّل الـ deadlock من ثلاثة يومياً إلى مئات ولن تراه إلا كارتفاع في الـ latency. أعتبر إعادة المحاولة حزام الأمان وترتيب الـ locks الفرامل."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "You have a deadlock between two sessions on a single row of one table. Lock ordering cannot help. What is happening?", ar: "لديك deadlock بين جلستين على row واحد في جدول واحد. ترتيب الـ locks لا يساعد. ما الذي يحدث؟" },
+          a: {
+            en: "That is almost always a conversion deadlock. Both sessions read the row first and took a shared lock, which they are allowed to hold together. Then both tried to write, and each needed to convert its shared lock into an exclusive one, which the other's shared lock blocks. The fix is to take the stronger lock at read time with WITH (UPDLOCK) so only one session can be in that position, or to skip the read and write conditionally in one statement.",
+            ar: "هذا غالباً conversion deadlock. قرأت الجلستان الـ row أولاً وأخذت كل منهما shared lock، وهذا مسموح معاً. ثم حاولت كل منهما الكتابة، فاحتاجت تحويل قفلها من shared إلى exclusive، وهو ما يمنعه shared lock الأخرى. الحل أخذ القفل الأقوى وقت القراءة بـ WITH (UPDLOCK) بحيث تكون جلسة واحدة فقط في ذلك الموقع، أو تجاوز القراءة والكتابة بشرط داخل جملة واحدة."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Would turning on read committed snapshot isolation solve your deadlocks?", ar: "هل تفعيل read committed snapshot isolation سيحلّ الـ deadlocks لديك؟" },
+          a: {
+            en: "It solves one specific family: deadlocks where a reader and a writer block each other. Under RCSI a reader does not take shared locks at all — it reads the last committed version of the row from tempdb, so it never waits and never appears in a wait-for graph. It does nothing for writer-versus-writer deadlocks, which is what the classic opposite-lock-order case is. And it shifts load onto tempdb, so you size and watch tempdb before turning it on.",
+            ar: "يحلّ عائلة واحدة محدّدة: الـ deadlocks التي يمنع فيها قارئ وكاتب بعضهما. تحت RCSI لا يأخذ القارئ shared locks إطلاقاً — يقرأ آخر نسخة مؤكَّدة من الـ row من tempdb، فلا ينتظر ولا يظهر في wait-for graph. لكنه لا يفعل شيئاً لـ deadlocks بين كاتب وكاتب، وهي حالة الترتيب المتعاكس الكلاسيكية. كما ينقل الحمل إلى tempdb، فتقيس حجمه وتراقبه قبل التفعيل."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "Deadlocks keep coming back in your codebase even after each one is fixed. What do you change structurally?", ar: "الـ deadlocks تعود باستمرار في قاعدة الكود حتى بعد إصلاح كل واحدة. ما الذي تغيّره هيكلياً؟" },
+          a: {
+            en: "Fixing them one at a time means the rule lives in people's heads. I make it visible and enforced. First, write down a single global lock order for the write-heavy tables and put it in the repository next to the data access code. Second, funnel every multi-table write through a small number of reviewed functions instead of letting any handler open a transaction. Third, make deadlocks a monitored metric with an alert, not a log line, so a regression is caught in hours. Fourth, add a load test that runs the two conflicting endpoints concurrently, so a wrong order fails CI instead of production. The goal is that the next person cannot accidentally write the reversed order.",
+            ar: "إصلاحها واحدة واحدة يعني أن القاعدة تعيش في رؤوس الناس. أنا أجعلها مرئية ومفروضة. أولاً، أكتب ترتيب locks عالمياً واحداً للجداول كثيرة الكتابة وأضعه في المستودع بجانب كود الوصول للبيانات. ثانياً، أمرّر كل كتابة متعدّدة الجداول عبر عدد صغير من الدوال المراجَعة بدل ترك أي handler يفتح transaction. ثالثاً، أجعل الـ deadlocks مقياساً مراقَباً مع تنبيه لا مجرد سطر log، ليُلتقط أي تراجع خلال ساعات. رابعاً، أضيف اختبار حمل يشغّل الـ endpointين المتعارضين معاً، ليفشل الترتيب الخاطئ في CI بدل الإنتاج. الهدف أن يصبح من المستحيل على الشخص التالي أن يكتب الترتيب المعكوس بالخطأ."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "Two tables written in opposite orders in two handlers", ar: "جدولان يُكتَبان بترتيبَين متعاكسَين في handlerين" },
+          bad: "// OrderService.cs\nawait _db.Orders.Where(o => o.Id == id)\n    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, \"Confirmed\"), ct);\nawait _db.Inventory.Where(i => i.Sku == sku)\n    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Qty, i => i.Qty - 1), ct);\n\n// InventoryService.cs\nawait _db.Inventory.Where(i => i.Sku == sku)\n    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Qty, newQty), ct);\nawait _db.Orders.Where(o => o.Sku == sku && o.Status == \"Pending\")\n    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, \"OnHold\"), ct);",
+          good: "// Documented rule: Inventory is always locked before Orders.\n// OrderService.cs\nawait _db.Inventory.Where(i => i.Sku == sku)\n    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Qty, i => i.Qty - 1), ct);\nawait _db.Orders.Where(o => o.Id == id)\n    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, \"Confirmed\"), ct);\n\n// InventoryService.cs keeps the same order: Inventory, then Orders.",
+          why: {
+            en: "Each file reads fine alone, which is why this survives review. Run them at the same moment on the same SKU and you get the exact cycle from the internals section. Picking one order — here Inventory first — and writing that rule down next to the code removes the cycle completely, with no runtime cost.",
+            ar: "كل ملف يبدو سليماً وحده، ولهذا ينجو من المراجعة. شغّلهما في نفس اللحظة على نفس الـ SKU وتحصل على نفس الدورة الموجودة في قسم internals. اختيار ترتيب واحد — هنا Inventory أولاً — وكتابة تلك القاعدة بجانب الكود يزيل الدورة تماماً وبدون تكلفة وقت تشغيل."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "Retry policy that also retries non-deadlock errors", ar: "سياسة إعادة محاولة تعيد أيضاً أخطاء غير الـ deadlock" },
+          bad: "var policy = Policy\n    .Handle<SqlException>()               // every SQL error, including constraint violations\n    .RetryAsync(5);                        // no delay at all\n\nawait policy.ExecuteAsync(() => ConfirmOrderAsync(orderId, ct));",
+          good: "var policy = Policy\n    .Handle<SqlException>(ex => ex.Number == 1205)   // deadlock victim only\n    .WaitAndRetryAsync(3, attempt =>\n        TimeSpan.FromMilliseconds(\n            Math.Pow(2, attempt) * 50 + Random.Shared.Next(0, 50)));\n\nawait policy.ExecuteAsync(() => ConfirmOrderAsync(orderId, ct));",
+          why: {
+            en: "Retrying every SqlException means a duplicate-key or foreign-key violation is retried five times, turning one clear error into five identical failures and five wasted round trips. Retrying instantly also makes deadlocks worse: both victims come back at the same moment and collide again. Filtering on error number 1205 and adding a growing delay with a small random amount added spreads the retries apart.",
+            ar: "إعادة كل SqlException تعني أن خطأ duplicate-key أو foreign-key سيُعاد خمس مرات، فيتحوّل خطأ واحد واضح إلى خمسة إخفاقات متطابقة وخمس رحلات ضائعة. كما أن الإعادة الفورية تزيد الـ deadlocks سوءاً: يعود الـ victims في نفس اللحظة ويتصادمون مجدداً. الفلترة على رقم الخطأ 1205 وإضافة تأخير متزايد مع مقدار عشوائي صغير يباعد بين المحاولات."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a system design discussion, deadlocks show up the moment you have more than one write path over the same set of tables. The usual shape is an inventory or balance table that several features decrement, plus a second table each feature updates alongside it. The design question is not \"how do we retry\" but \"who is allowed to write these tables, and in what order\".",
+          ar: "في نقاش تصميم النظام، تظهر الـ deadlocks لحظة وجود أكثر من مسار كتابة على نفس مجموعة الجداول. الشكل المعتاد جدول مخزون أو رصيد تنقص منه عدة ميزات، مع جدول ثانٍ تحدّثه كل ميزة بجانبه. سؤال التصميم ليس «كيف نعيد المحاولة» بل «من يُسمح له بالكتابة في هذه الجداول، وبأي ترتيب»."
+        },
+        {
+          t: "ul",
+          en: [
+            "Write the global lock order into the design doc, not just the code: Inventory before Orders, Accounts before Ledger.",
+            "Give each hot table one owning service or one owning module, so the number of write paths stays small enough to review.",
+            "For the hottest rows, serialize writes through a queue partitioned by the row's key — all writes for SKU ABC go to the same consumer, so they never overlap.",
+            "Keep the transaction boundary around database work only. Payments, emails and other external calls go before it or after it, never inside it.",
+            "Decide up front whether a failed write is retried by the caller or by a background process, because that decides whether the operation must be idempotent."
+          ],
+          ar: [
+            "اكتب ترتيب الـ locks العالمي في مستند التصميم لا في الكود فقط: Inventory قبل Orders، و Accounts قبل Ledger.",
+            "امنح كل جدول ساخن خدمة مالكة واحدة أو module مالكاً واحداً، ليبقى عدد مسارات الكتابة صغيراً بما يكفي للمراجعة.",
+            "لأكثر الـ rows سخونة، سلسِل الكتابات عبر queue مقسّم بمفتاح الـ row — كل كتابات SKU ABC تذهب لنفس الـ consumer فلا تتداخل أبداً.",
+            "أبقِ حدود الـ transaction حول عمل قاعدة البيانات فقط. المدفوعات والبريد والاستدعاءات الخارجية قبلها أو بعدها، لا داخلها أبداً.",
+            "قرّر مسبقاً هل يعيد الكتابة الفاشلة المستدعي أم عملية خلفية، لأن ذلك يحدّد هل يجب أن تكون العملية idempotent."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "A good interview answer here names the trade-off out loud: a queue per key removes deadlocks entirely but adds a hop, a delay and an ordering guarantee you now have to maintain. Consistent lock ordering is free but relies on people following a rule.",
+          ar: "الإجابة الجيدة في المقابلة تسمّي المقايضة صراحة: queue لكل مفتاح يزيل الـ deadlocks تماماً لكنه يضيف قفزة وتأخيراً وضمان ترتيب صرت مسؤولاً عن صيانته. أما ترتيب الـ locks الموحّد فمجاني لكنه يعتمد على التزام الناس بقاعدة."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Latency", ar: "Latency" },
+              v: {
+                en: "The victim waits up to 5 seconds for detection, then pays a rollback, then the retry runs from scratch. One deadlock can turn a 90 ms request into a multi-second one, which is why deadlocks usually appear first as a p99 spike.",
+                ar: "الـ victim ينتظر حتى 5 ثوانٍ للكشف، ثم يدفع rollback، ثم تعمل إعادة المحاولة من الصفر. deadlock واحد يحوّل request مدته 90 ms إلى عدة ثوانٍ، ولهذا تظهر الـ deadlocks أولاً كارتفاع في p99."
+              }
+            },
+            {
+              k: { en: "Database CPU", ar: "CPU قاعدة البيانات" },
+              v: {
+                en: "Every deadlock is wasted work: the victim's reads, writes and log records are all thrown away and then redone. At a few hundred per hour this is measurable CPU spent producing nothing.",
+                ar: "كل deadlock عمل ضائع: قراءات الـ victim وكتاباته وسجلات الـ log تُرمى كلها ثم تُعاد. عند بضع مئات في الساعة يصير هذا CPU ملموساً يُنفَق بلا ناتج."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "قابلية التوسّع" },
+              v: {
+                en: "Deadlock probability grows faster than traffic, because it depends on two paths overlapping. Doubling concurrency on the same rows can roughly quadruple the deadlock rate, so a system that is fine at 100 requests per second can be unusable at 300.",
+                ar: "احتمال الـ deadlock ينمو أسرع من نمو الحركة، لأنه يعتمد على تداخل مسارين. مضاعفة التزامن على نفس الـ rows قد تضاعف معدّل الـ deadlock أربع مرات تقريباً، فنظام سليم عند 100 request في الثانية قد يصير غير قابل للاستخدام عند 300."
+              }
+            },
+            {
+              k: { en: "Memory (tempdb)", ar: "الذاكرة (tempdb)" },
+              v: {
+                en: "If you fix reader/writer deadlocks by enabling RCSI, every updated row keeps a previous version in tempdb until no transaction needs it. A long-running report can hold versions alive and grow tempdb by gigabytes.",
+                ar: "إذا أصلحت deadlocks القارئ/الكاتب بتفعيل RCSI، فكل row محدَّث يحتفظ بنسخة سابقة في tempdb حتى لا تحتاجها أي transaction. تقرير طويل التشغيل قد يبقي النسخ حيّة ويضخّم tempdb بجيجابايتات."
+              }
+            },
+            {
+              k: { en: "Throughput", ar: "الإنتاجية" },
+              v: {
+                en: "Long transactions hold exclusive locks longer, so the queue behind each hot row gets longer too. Cutting a transaction from 200 ms to 20 ms usually cuts both blocking and deadlocks by roughly the same factor.",
+                ar: "الـ transactions الطويلة تمسك الـ exclusive locks لمدة أطول، فيطول الطابور خلف كل row ساخن. تقليص transaction من 200 ms إلى 20 ms يقلّص عادة الـ blocking والـ deadlocks بنفس النسبة تقريباً."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "system_health Extended Events session — it is on by default and already stores recent deadlock reports; query sys.fn_xe_file_target_read_file for the xml_deadlock_report event and read the graph without changing anything on the server.",
+            "The deadlock graph XML itself — read the <victim-list> to see who was killed, then each <process> node for its inputbuf (the actual SQL text) and each <resource> node for the object and index name that was locked. Those two names tell you the lock order each side used.",
+            "sys.dm_tran_locks joined to sys.dm_exec_requests — run it during live blocking to see which session holds which lock and which is waiting; the wait_type column shows LCK_M_X when a session is waiting for an exclusive lock.",
+            "SET DEADLOCK_PRIORITY LOW in your batch and reporting jobs — not a diagnostic, but it makes the background job the victim, so the deadlock graphs you collect keep pointing at the same pair instead of moving around.",
+            "A concurrency test that runs the two suspect endpoints in a tight loop against a test database — if the deadlock reproduces in 30 seconds locally you can verify the fix instead of guessing from production logs."
+          ],
+          ar: [
+            "جلسة Extended Events المسماة system_health — مفعّلة افتراضياً وتخزّن تقارير الـ deadlock الأخيرة؛ استعلم sys.fn_xe_file_target_read_file عن حدث xml_deadlock_report واقرأ الرسم دون تغيير أي شيء على الخادم.",
+            "ملف الـ deadlock graph بصيغة XML نفسه — اقرأ <victim-list> لترى من قُتل، ثم كل <process> لترى inputbuf (نص الـ SQL الفعلي) وكل <resource> لترى اسم الكائن والـ index المقفول. هذان الاسمان يخبرانك بترتيب الـ locks الذي استخدمه كل طرف.",
+            "sys.dm_tran_locks مع sys.dm_exec_requests — شغّلها أثناء blocking حي لترى أي session تمسك أي lock وأيها تنتظر؛ عمود wait_type يظهر LCK_M_X عندما تنتظر session قفلاً exclusive.",
+            "SET DEADLOCK_PRIORITY LOW في مهام الدفعات والتقارير — ليست أداة تشخيص، لكنها تجعل المهمة الخلفية هي الـ victim، فتظلّ رسوم الـ deadlock التي تجمعها تشير إلى نفس الزوج بدل أن تتنقّل.",
+            "اختبار تزامن يشغّل الـ endpointين المشتبه بهما في حلقة مكثّفة على قاعدة بيانات اختبار — إذا تكرّر الـ deadlock خلال 30 ثانية محلياً تستطيع التحقّق من الإصلاح بدل التخمين من سجلات الإنتاج."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Read the deadlock graph in this order: victim first, then the two inputbuf blocks side by side, then the two resource names. In almost every case the answer is visible in that last step — one side locked table X then table Y, the other did the opposite.",
+          ar: "اقرأ الـ deadlock graph بهذا الترتيب: الـ victim أولاً، ثم كتلتا inputbuf جنباً إلى جنب، ثم اسما الـ resource. في معظم الحالات تكون الإجابة ظاهرة في الخطوة الأخيرة — طرف قفل الجدول X ثم Y، والطرف الآخر فعل العكس."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "Deadlocks concentrate wherever many users compete for the same small set of rows. The row is usually a counter, a balance or a status that everyone must update, and the competition gets worse at exactly the moments the business cares most about — a sale, a payout run, a match kickoff.",
+          ar: "تتركّز الـ deadlocks حيث يتنافس مستخدمون كثيرون على نفس المجموعة الصغيرة من الـ rows. الـ row عادة عدّاد أو رصيد أو حالة يجب أن يحدّثها الجميع، ويشتدّ التنافس في نفس اللحظات التي تهمّ العمل أكثر — تخفيضات، دورة صرف، بداية مباراة."
+        },
+        {
+          t: "ul",
+          en: [
+            "Ticketing and event platforms: thousands of buyers decrement the same seat-availability row in the first minute of a sale, while an admin path adjusts the same rows in a different order.",
+            "Payment and ledger systems: transferring money touches two account rows, and two transfers in opposite directions between the same accounts is the textbook cycle.",
+            "Warehouse and fulfilment systems: picking, receiving and correction jobs all write stock levels and order lines, each written by a different team at a different time.",
+            "Multiplayer game backends: a match-end job writes player stats then leaderboards, while a leaderboard rebuild writes leaderboards then player stats."
+          ],
+          ar: [
+            "منصّات التذاكر والفعاليات: آلاف المشترين ينقصون نفس row توفّر المقاعد في الدقيقة الأولى من البيع، بينما مسار إداري يعدّل نفس الـ rows بترتيب مختلف.",
+            "أنظمة المدفوعات والدفاتر: تحويل المال يلمس row حسابَين، وتحويلان باتجاهين متعاكسين بين نفس الحسابين هما الدورة الكلاسيكية.",
+            "أنظمة المستودعات والتجهيز: مهام السحب والاستلام والتصحيح كلها تكتب مستويات المخزون وسطور الطلب، وكل واحدة كتبها فريق مختلف في وقت مختلف.",
+            "backends ألعاب متعدّدة اللاعبين: مهمة نهاية المباراة تكتب إحصاءات اللاعبين ثم الـ leaderboards، بينما إعادة بناء الـ leaderboard تكتبها أولاً ثم إحصاءات اللاعبين."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Reproduce a deadlock on purpose. Open two query windows, create two small tables A and B with one row each, and in each window run a transaction that updates them in opposite orders with a WAITFOR DELAY '00:00:05' in between. You succeeded when one window returns error 1205 and the other commits.",
+          ar: "أعِد إنتاج deadlock عمداً. افتح نافذتي استعلام، أنشئ جدولين صغيرين A و B فيهما row واحد لكل منهما، وفي كل نافذة شغّل transaction تحدّثهما بترتيبين متعاكسين مع WAITFOR DELAY '00:00:05' بينهما. تنجح عندما تُرجِع نافذة الخطأ 1205 وتنجح الأخرى في الـ COMMIT."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Pull the deadlock you just caused out of the system_health session using sys.fn_xe_file_target_read_file, and from the XML alone write down: which session was the victim, the two SQL statements, and the two locked object names in the order each side took them. You succeeded when you can state the lock order of both sides without looking at your original scripts.",
+          ar: "استخرج الـ deadlock الذي سبّبته من جلسة system_health باستخدام sys.fn_xe_file_target_read_file، ومن الـ XML وحده اكتب: أي session كانت الـ victim، وجملتَي الـ SQL، واسمَي الكائنين المقفولين بترتيب أخذ كل طرف لهما. تنجح عندما تستطيع ذكر ترتيب الـ locks للطرفين دون النظر إلى سكربتاتك الأصلية."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Build the two endpoints from this lesson in ASP.NET Core over a real database, then run them concurrently with 50 parallel callers on the same SKU for two minutes and record the deadlock count. Fix it by lock ordering only — no retries — and run the same load again. You succeeded when the count goes from clearly non-zero to zero with no change to the retry code.",
+          ar: "ابنِ الـ endpointين من هذا الدرس في ASP.NET Core فوق قاعدة بيانات حقيقية، ثم شغّلهما معاً بـ 50 مستدعياً متوازياً على نفس الـ SKU لدقيقتين وسجّل عدد الـ deadlocks. أصلحه بترتيب الـ locks فقط — بدون إعادة محاولة — وأعِد نفس الحمل. تنجح عندما ينتقل العدد من رقم واضح غير صفري إلى صفر دون أي تغيير في كود إعادة المحاولة."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Take the same load test and instead reproduce a conversion deadlock: have both callers SELECT the row and then UPDATE it inside one transaction. Show that lock ordering does not fix it, then fix it with WITH (UPDLOCK) on the SELECT. Write a short note explaining to a teammate why the first fix could not have worked.",
+          ar: "خذ نفس اختبار الحمل وأعِد بدلاً من ذلك إنتاج conversion deadlock: اجعل كلا المستدعيَين ينفّذ SELECT للـ row ثم UPDATE داخل transaction واحدة. أظهِر أن ترتيب الـ locks لا يصلحه، ثم أصلحه بـ WITH (UPDLOCK) على الـ SELECT. اكتب ملاحظة قصيرة تشرح لزميل لماذا لم يكن الإصلاح الأول ليعمل."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "SQL Server deadlocks guide", ar: "دليل الـ deadlocks في SQL Server" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-deadlocks-guide",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Transaction locking and row versioning guide", ar: "دليل الـ locking و row versioning" },
+          url: "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-transaction-locking-and-row-versioning-guide",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Analyze and prevent deadlocks in Azure SQL Database", ar: "تحليل ومنع الـ deadlocks في Azure SQL Database" },
+          url: "https://learn.microsoft.com/en-us/azure/azure-sql/database/analyze-prevent-deadlocks",
+          meta: { en: "Guide", ar: "دليل" }
+        },
+        {
+          t: "ref",
+          label: { en: "EF Core connection resiliency and retry strategies", ar: "مرونة الاتصال واستراتيجيات إعادة المحاولة في EF Core" },
+          url: "https://learn.microsoft.com/en-us/ef/core/miscellaneous/connection-resiliency",
+          meta: { en: "Docs", ar: "توثيق" }
+        }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: {
+        en: "What distinguishes a deadlock from ordinary blocking?",
+        ar: "ما الذي يميّز الـ deadlock عن الـ blocking العادي؟"
+      },
+      options: [
+        { en: "A deadlock only happens on tables without indexes", ar: "الـ deadlock يحدث فقط على جداول بلا indexes" },
+        { en: "The waiting forms a cycle, so it can never resolve on its own", ar: "الانتظار يشكّل دورة، فلا يمكن أن يُحلّ من تلقاء نفسه" },
+        { en: "A deadlock is always caused by a long-running query", ar: "الـ deadlock سببه دائماً استعلام طويل التشغيل" },
+        { en: "Blocking rolls back the transaction, a deadlock does not", ar: "الـ blocking يتراجع عن الـ transaction، والـ deadlock لا" }
+      ],
+      correct: 1,
+      why: {
+        en: "Blocking is one-directional and clears when the holder commits. A deadlock is circular — each side holds what the other needs — so it never clears without someone being killed.",
+        ar: "الـ blocking باتجاه واحد ويزول عندما تعمل الممسكة COMMIT. أما الـ deadlock فدائري — كل طرف يمسك ما يحتاجه الآخر — فلا يزول أبداً دون قتل أحدهما."
+      }
+    },
+    {
+      q: {
+        en: "How does SQL Server decide which transaction becomes the victim?",
+        ar: "كيف يقرّر SQL Server أي transaction تصير الـ victim؟"
+      },
+      options: [
+        { en: "The one that started last", ar: "التي بدأت أخيراً" },
+        { en: "The one holding the most locks", ar: "التي تمسك أكبر عدد من الـ locks" },
+        { en: "The one that is cheapest to roll back, unless DEADLOCK_PRIORITY says otherwise", ar: "الأرخص في التراجع، إلا إذا قال DEADLOCK_PRIORITY غير ذلك" },
+        { en: "The one connected from the slowest client", ar: "التي تتصل من أبطأ عميل" }
+      ],
+      correct: 2,
+      why: {
+        en: "Victim selection is based on rollback cost — roughly the amount of transaction log written. SET DEADLOCK_PRIORITY lets you override the choice, for example so a background job always loses.",
+        ar: "اختيار الـ victim مبني على تكلفة الـ rollback — تقريباً كمية الـ transaction log المكتوبة. و SET DEADLOCK_PRIORITY يسمح بتجاوز الاختيار، مثلاً ليخسر عمل خلفي دائماً."
+      }
+    },
+    {
+      q: {
+        en: "Two sessions each SELECT the same row, then each UPDATE it, and they deadlock. What is this called and what fixes it?",
+        ar: "جلستان تنفّذان SELECT لنفس الـ row ثم UPDATE له، فيحدث deadlock. ما اسم هذا وما الذي يصلحه؟"
+      },
+      options: [
+        { en: "A conversion deadlock; read with WITH (UPDLOCK) so only one session can hold the upgrade path", ar: "conversion deadlock؛ اقرأ بـ WITH (UPDLOCK) ليكون مسار الترقية لجلسة واحدة فقط" },
+        { en: "A lock escalation deadlock; add more memory to the server", ar: "deadlock بسبب lock escalation؛ أضف ذاكرة للخادم" },
+        { en: "An ordering deadlock; swap the order of the two tables", ar: "deadlock ترتيب؛ بدّل ترتيب الجدولين" },
+        { en: "A parallelism deadlock; set MAXDOP to 1", ar: "deadlock توازٍ؛ اضبط MAXDOP على 1" }
+      ],
+      correct: 0,
+      why: {
+        en: "Both sessions hold a shared lock on the same row and each needs to convert it to exclusive, which the other's shared lock blocks. Only one table and one row are involved, so lock ordering cannot help; taking an update lock at read time can.",
+        ar: "كلتا الجلستين تمسك shared lock على نفس الـ row وتحتاج تحويله إلى exclusive، وهو ما يمنعه shared lock الأخرى. جدول واحد و row واحد فقط، فترتيب الـ locks لا يساعد؛ لكن أخذ update lock وقت القراءة يساعد."
+      }
+    },
+    {
+      q: {
+        en: "Why is retrying only the statement that returned error 1205 wrong?",
+        ar: "لماذا تكون إعادة الجملة التي أرجعت الخطأ 1205 وحدها خطأً؟"
+      },
+      options: [
+        { en: "Because error 1205 cannot be caught in .NET", ar: "لأن الخطأ 1205 لا يمكن التقاطه في .NET" },
+        { en: "Because the retry needs a new connection string", ar: "لأن إعادة المحاولة تحتاج connection string جديداً" },
+        { en: "Because the whole transaction was rolled back, so earlier statements are gone and the retry runs on partial state", ar: "لأن الـ transaction كاملة تراجعت، فالجمل السابقة اختفت وتعمل الإعادة على حالة ناقصة" },
+        { en: "Because SQL Server blocks the session for 5 seconds after a deadlock", ar: "لأن SQL Server يمنع الـ session لخمس ثوانٍ بعد الـ deadlock" }
+      ],
+      correct: 2,
+      why: {
+        en: "A deadlock rolls the victim back completely. Re-running one statement leaves the earlier work undone, which is how the inventory count in the lesson drifted away from reality. Always retry the whole unit of work.",
+        ar: "الـ deadlock يتراجع عن الـ victim بالكامل. إعادة جملة واحدة تترك العمل السابق ملغى، وهكذا انحرف عدّاد المخزون في الدرس عن الواقع. أعِد دائماً وحدة العمل كاملة."
+      }
+    },
+    {
+      q: {
+        en: "Which deadlocks does enabling read committed snapshot isolation (RCSI) remove?",
+        ar: "أي deadlocks يزيلها تفعيل read committed snapshot isolation (RCSI)؟"
+      },
+      options: [
+        { en: "All of them, because readers and writers stop taking locks", ar: "كلها، لأن القرّاء والكتّاب يتوقّفون عن أخذ locks" },
+        { en: "Only those where a reader and a writer block each other, since readers stop taking shared locks", ar: "فقط تلك التي يمنع فيها قارئ وكاتب بعضهما، لأن القرّاء يتوقّفون عن أخذ shared locks" },
+        { en: "Only conversion deadlocks on a single row", ar: "فقط conversion deadlocks على row واحد" },
+        { en: "None; RCSI is only about performance of large scans", ar: "لا شيء؛ RCSI يخصّ أداء المسوحات الكبيرة فقط" }
+      ],
+      correct: 1,
+      why: {
+        en: "Under RCSI a reader reads the last committed version of a row from tempdb instead of waiting for a lock, so reader/writer cycles disappear. Writer-versus-writer deadlocks, including the opposite-lock-order case, are unaffected.",
+        ar: "تحت RCSI يقرأ القارئ آخر نسخة مؤكَّدة من الـ row من tempdb بدل انتظار قفل، فتختفي دورات القارئ/الكاتب. أما الـ deadlocks بين كاتب وكاتب، ومنها حالة الترتيب المتعاكس، فلا تتأثّر."
+      }
+    }
+  ]
+};
+
+
+
+// ---------------------------------------------------------------- lesson: retries
+
+const retriesLesson = {
+  id: "retries",
+  moduleId: "distributed",
+  title: { en: "Retries, backoff and jitter", ar: "إعادة المحاولة والتراجع والـ jitter" },
+  summary: {
+    en: "How to retry a failed network call so it helps your users instead of finishing off an already struggling service.",
+    ar: "كيف تعيد محاولة call فاشل عبر الشبكة بحيث يساعد المستخدمين بدل أن يجهز على service متعب أصلاً."
+  },
+  mins: 15,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "A retry means: the call failed, so send it again. Over a network, many failures are temporary — a dropped packet, a server restarting, a brief overload. Sending the same request a second time often works. Retrying is the cheapest way to turn a temporary failure into a success the user never sees.",
+        ar: "الـ retry تعني: الـ call فشل، فأرسله مرة أخرى. عبر الشبكة، كثير من حالات الفشل مؤقتة — packet ضاعت، أو server يعيد التشغيل، أو ضغط قصير. إرسال نفس الـ request مرة ثانية ينجح غالباً. إعادة المحاولة هي أرخص طريقة لتحويل فشل مؤقت إلى نجاح لا يراه المستخدم أبداً." },
+
+      { t: "kv", rows: [
+        { k: { en: "Transient failure", ar: "Transient failure" },
+          v: { en: "A failure that goes away on its own within seconds — a timeout, a 503, a reset connection. The opposite is a permanent failure like 400 Bad Request, which will fail identically forever.", ar: "فشل يزول من تلقاء نفسه خلال ثوانٍ — timeout أو 503 أو connection مقطوع. عكسه الفشل الدائم مثل 400 Bad Request الذي سيفشل بنفس الشكل دائماً." } },
+        { k: { en: "Backoff", ar: "Backoff" },
+          v: { en: "Waiting before you retry, and waiting longer before each further retry. It gives the other side time to recover.", ar: "الانتظار قبل إعادة المحاولة، ثم انتظار أطول قبل كل محاولة تالية. يعطي الطرف الآخر وقتاً ليتعافى." } },
+        { k: { en: "Exponential backoff", ar: "Exponential backoff" },
+          v: { en: "A backoff where the wait doubles each attempt: 1s, 2s, 4s, 8s. The formula is base × 2^attempt.", ar: "backoff يتضاعف فيه الانتظار كل محاولة: 1s ثم 2s ثم 4s ثم 8s. المعادلة هي base × 2^attempt." } },
+        { k: { en: "Jitter", ar: "Jitter" },
+          v: { en: "A random amount added to or subtracted from the wait, so that many clients do not all retry at the same instant.", ar: "مقدار عشوائي يُضاف إلى الانتظار أو يُطرح منه، حتى لا يعيد كل الـ clients المحاولة في نفس اللحظة." } },
+        { k: { en: "Thundering herd", ar: "Thundering herd" },
+          v: { en: "Thousands of clients all hitting a service at the same moment. Usually happens when they all failed together and all retry on the same schedule.", ar: "آلاف الـ clients تضرب service في نفس اللحظة. يحدث عادة عندما تفشل كلها معاً وتعيد المحاولة على نفس الجدول." } },
+        { k: { en: "Idempotent", ar: "Idempotent" },
+          v: { en: "An operation you can run twice and the end result is the same as running it once. Deleting order 42 is idempotent; charging a card is not.", ar: "عملية يمكنك تنفيذها مرتين وتكون النتيجة النهائية كأنك نفذتها مرة واحدة. حذف الـ order رقم 42 idempotent؛ خصم مبلغ من بطاقة ليس كذلك." } }
+      ]},
+
+      { t: "p",
+        en: "The running example for this whole lesson is a checkout endpoint. Your API receives POST /checkout, and to complete it, it calls a payment provider at POST /v1/charges over the internet. That provider is a separate company, on separate hardware, reached over a network you do not control. Roughly 1 call in 500 fails for reasons that have nothing to do with your request being wrong. Without retries, 1 customer in 500 sees \"payment failed\" and leaves.",
+        ar: "المثال الجاري في هذا الدرس كله هو checkout endpoint. الـ API عندك يستقبل POST /checkout، ولإتمامه ينادي payment provider على POST /v1/charges عبر الإنترنت. هذا الـ provider شركة أخرى، على hardware آخر، تصل إليه عبر شبكة لا تتحكم بها. تقريباً call واحد من كل 500 يفشل لأسباب لا علاقة لها بكون الـ request خاطئاً. بدون retries، زبون من كل 500 يرى «فشل الدفع» ويغادر." },
+
+      { t: "p",
+        en: "The everyday analogy: you call a friend and the line drops mid-sentence. You call again — that is a retry. If the line drops again you wait a bit before trying a third time, because calling instantly five times in a row does not help. And if a whole stadium loses signal at once, everyone redialling at the exact same second keeps the cell tower down. That last part is the thundering herd, and jitter is everyone waiting a slightly different amount of time.",
+        ar: "التشبيه اليومي: تتصل بصديق فينقطع الخط في منتصف الجملة. تتصل مرة أخرى — هذا retry. إذا انقطع الخط ثانية تنتظر قليلاً قبل المحاولة الثالثة، لأن الاتصال خمس مرات متتالية فوراً لا يفيد. وإذا فقد ملعب كامل الإشارة دفعة واحدة، فإعادة الجميع الاتصال في نفس الثانية بالضبط تُبقي برج الاتصال ساقطاً. هذا الجزء الأخير هو الـ thundering herd، والـ jitter هو أن ينتظر كل واحد مدة مختلفة قليلاً." },
+
+      { t: "callout", kind: "warn",
+        en: "A retry is a second copy of your request. If the first copy actually reached the server and only the response was lost, you have now asked it to do the work twice. This is why retries and idempotency always show up together.",
+        ar: "الـ retry هي نسخة ثانية من الـ request. إذا كانت النسخة الأولى وصلت فعلاً إلى الـ server وضاع الـ response فقط، فأنت الآن طلبت منه تنفيذ العمل مرتين. لهذا يظهر الـ retries والـ idempotency معاً دائماً." }
+    ]},
+
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "Start with no retries at all. Your checkout endpoint calls the payment provider once. The provider is healthy 99.8% of the time, so 0.2% of checkouts fail — 2 in every 1000. At 50,000 checkouts a day that is 100 angry customers a day, most of whom would have succeeded if you had simply asked again half a second later.",
+        ar: "ابدأ بلا retries إطلاقاً. الـ checkout endpoint ينادي الـ payment provider مرة واحدة. الـ provider سليم 99.8% من الوقت، إذن 0.2% من عمليات الـ checkout تفشل — 2 من كل 1000. عند 50,000 checkout يومياً هذا يعني 100 زبون غاضب يومياً، معظمهم كان سينجح لو سألت مرة أخرى بعد نصف ثانية." },
+
+      { t: "p",
+        en: "Now add the naive fix that everyone writes first: retry three times immediately, no waiting. On a normal day this works and the failure rate drops to almost zero. Then the provider has a real incident and starts failing every request. Your service, which was sending 200 requests per second, now sends 800 — the original request plus three retries, all within a few milliseconds. You have quadrupled the load on a service that is already on fire. The provider takes longer to recover because of you, and your own threads are all blocked waiting on it, so your unrelated endpoints start timing out too.",
+        ar: "الآن أضف الحل الساذج الذي يكتبه الجميع أولاً: أعد المحاولة ثلاث مرات فوراً بلا انتظار. في يوم عادي ينجح هذا وتنزل نسبة الفشل إلى شبه الصفر. ثم يقع عند الـ provider عطل حقيقي ويبدأ بإفشال كل request. الـ service عندك الذي كان يرسل 200 request في الثانية صار يرسل 800 — الـ request الأصلي وثلاث retries، كلها خلال ميلي ثوانٍ قليلة. لقد ضاعفت الحمل أربع مرات على service مشتعل أصلاً. الـ provider يتأخر في التعافي بسببك، وكل الـ threads عندك محجوزة في انتظاره، فتبدأ endpoints أخرى لا علاقة لها بالموضوع في الـ timeout أيضاً." },
+
+      { t: "kv", rows: [
+        { k: { en: "No retry", ar: "بلا retry" },
+          v: { en: "0.2% of checkouts fail on a good day. On a bad day you fail exactly as much as the provider does — no better, no worse.", ar: "0.2% من عمليات الـ checkout تفشل في يوم جيد. في يوم سيئ تفشل بنفس قدر فشل الـ provider تماماً — لا أفضل ولا أسوأ." } },
+        { k: { en: "Immediate retry ×3", ar: "retry فوري ×3" },
+          v: { en: "Good day: ~0.000008% fail — effectively zero. Bad day: you send 4× the traffic and make the outage longer.", ar: "يوم جيد: يفشل ~0.000008% — صفر عملياً. يوم سيئ: ترسل 4 أضعاف الـ traffic وتُطيل العطل." } },
+        { k: { en: "Exponential backoff + jitter ×3", ar: "Exponential backoff + jitter ×3" },
+          v: { en: "Good day: same near-zero failure rate. Bad day: retries are spread over ~7 seconds and across clients, so the extra load is a trickle, not a spike.", ar: "يوم جيد: نفس نسبة الفشل القريبة من الصفر. يوم سيئ: الـ retries موزعة على ~7 ثوانٍ وعلى الـ clients، فالحمل الإضافي تسريب بطيء لا ذروة." } },
+        { k: { en: "Cost of the good version", ar: "تكلفة النسخة الجيدة" },
+          v: { en: "A checkout that fails twice now takes ~3 s longer than one that succeeds first try. You are trading worst-case latency for a much higher success rate.", ar: "الـ checkout الذي يفشل مرتين صار يستغرق ~3 ثوانٍ أطول من الذي ينجح من أول محاولة. أنت تقايض latency الحالة الأسوأ مقابل نسبة نجاح أعلى بكثير." } }
+      ]},
+
+      { t: "p",
+        en: "So the real problem is not \"should I retry\". It is: retry only the failures that can succeed on a second try, wait between attempts so the other side can breathe, randomise the waits so your clients do not all arrive together, and put a hard ceiling on how much retry traffic you are willing to generate.",
+        ar: "إذن المشكلة الحقيقية ليست «هل أعيد المحاولة». هي: أعد المحاولة فقط على حالات الفشل التي يمكن أن تنجح في محاولة ثانية، وانتظر بين المحاولات ليتنفس الطرف الآخر، وعشوِ الانتظارات حتى لا يصل كل الـ clients معاً، وضع سقفاً صارماً لكمية traffic الـ retry التي تقبل توليدها." }
+    ]},
+
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "A retry policy is a small loop wrapped around your call. Every time through the loop it answers three questions in this order: did the call fail in a way worth retrying, am I still allowed another attempt, and how long should I sleep first. Everything else — Polly, Microsoft.Extensions.Http.Resilience, the AWS SDK's built-in retryer — is that same loop with better defaults.",
+        ar: "الـ retry policy هي loop صغيرة تلتف حول الـ call عندك. في كل دورة تجيب على ثلاثة أسئلة بهذا الترتيب: هل فشل الـ call بطريقة تستحق إعادة المحاولة، وهل ما زال مسموحاً لي بمحاولة أخرى، وكم يجب أن أنام أولاً. كل ما عدا ذلك — Polly أو Microsoft.Extensions.Http.Resilience أو الـ retryer المدمج في AWS SDK — هو نفس هذه الـ loop بإعدادات افتراضية أفضل." },
+
+      { t: "kv", rows: [
+        { k: { en: "Classifier", ar: "Classifier" },
+          v: { en: "The rule that decides retryable vs not. Usually: retry on network errors, request timeouts, HTTP 408, 429, 502, 503, 504. Do not retry 400, 401, 403, 404, 422 — those mean your request itself is wrong.", ar: "القاعدة التي تقرر ما إذا كان الفشل قابلاً لإعادة المحاولة. عادة: أعد المحاولة على أخطاء الشبكة والـ request timeouts و HTTP 408 و429 و502 و503 و504. لا تعد المحاولة على 400 و401 و403 و404 و422 — هذه تعني أن الـ request نفسه خاطئ." } },
+        { k: { en: "Attempt budget", ar: "Attempt budget" },
+          v: { en: "The maximum number of extra tries, typically 2-3. \"3 retries\" means 4 total calls including the first one.", ar: "أقصى عدد محاولات إضافية، عادة 2-3. «3 retries» تعني 4 calls إجمالاً بما فيها الأولى." } },
+        { k: { en: "Per-attempt timeout", ar: "Per-attempt timeout" },
+          v: { en: "How long one single call may hang before you give up on it and count it as a failure.", ar: "كم يجوز لـ call واحد أن يتعلق قبل أن تتخلى عنه وتعتبره فشلاً." } },
+        { k: { en: "Overall deadline", ar: "Overall deadline" },
+          v: { en: "The total time the whole operation — first call plus every retry plus every sleep — is allowed to take. When it expires you stop, even if attempts remain.", ar: "الوقت الكلي المسموح للعملية كلها — الـ call الأول وكل retry وكل نوم بينها. عند انتهائه تتوقف، حتى لو بقيت محاولات." } },
+        { k: { en: "Delay generator", ar: "Delay generator" },
+          v: { en: "The function that turns \"this is attempt number 3\" into \"sleep 4.2 seconds\". This is where backoff and jitter live.", ar: "الدالة التي تحوّل «هذه المحاولة رقم 3» إلى «نم 4.2 ثانية». هنا يعيش الـ backoff والـ jitter." } },
+        { k: { en: "Retry-After", ar: "Retry-After" },
+          v: { en: "A response header the server may send with 429 or 503, saying how many seconds to wait. If it is present, obey it instead of your own formula.", ar: "ترويسة response قد يرسلها الـ server مع 429 أو 503، تقول كم ثانية تنتظر. إذا كانت موجودة فاتبعها بدل معادلتك أنت." } }
+      ]},
+
+      { t: "p",
+        en: "Trace one real checkout. The customer submits, and at t=0 your code calls POST /v1/charges with a 2-second per-attempt timeout and a 10-second overall deadline. The provider is overloaded and the socket produces nothing for 2 seconds, so the timeout fires and the call is cancelled — attempt 1 failed. The classifier sees a cancellation caused by timeout, which is retryable. The delay generator computes a base wait of 1 s and multiplies it by a random number between 0 and 1, giving 0.62 s. At t=2.62 attempt 2 goes out and comes back in 300 ms with HTTP 503 — retryable again. Base wait doubles to 2 s, random factor gives 1.4 s. At t=4.32 attempt 3 goes out and returns 200 OK. The customer waited 4.6 seconds and saw a successful checkout; nobody paged anybody.",
+        ar: "تتبّع عملية checkout حقيقية واحدة. الزبون يضغط الشراء، وعند t=0 ينادي الكود عندك POST /v1/charges بـ per-attempt timeout قدره ثانيتان و overall deadline قدره 10 ثوانٍ. الـ provider محمّل زيادة والـ socket لا ينتج شيئاً لثانيتين، فينطلق الـ timeout ويُلغى الـ call — فشلت المحاولة 1. الـ classifier يرى إلغاءً سببه timeout، وهو قابل لإعادة المحاولة. الـ delay generator يحسب انتظاراً أساسياً قدره 1s ويضربه في رقم عشوائي بين 0 و1، فينتج 0.62s. عند t=2.62 تخرج المحاولة 2 وتعود بعد 300ms بـ HTTP 503 — قابلة لإعادة المحاولة أيضاً. الانتظار الأساسي يتضاعف إلى 2s، والعامل العشوائي يعطي 1.4s. عند t=4.32 تخرج المحاولة 3 وتعود بـ 200 OK. الزبون انتظر 4.6 ثانية ورأى checkout ناجحاً؛ ولم يستدعِ أحد أحداً." },
+
+      { t: "p",
+        en: "The random factor in that trace is called full jitter: sleep a random amount between zero and the exponential value, rather than exactly the exponential value. Here is why it matters. Picture 1000 people whose flights were all cancelled by the same storm, all told to call the airline back in 10 minutes. If they obey exactly, the phone system dies again in 10 minutes. If each is told \"call back sometime in the next 10 minutes\", the calls spread out and the system survives. Full jitter is that second instruction, applied to servers.",
+        ar: "العامل العشوائي في هذا التتبّع اسمه full jitter: نَم مدة عشوائية بين الصفر والقيمة الأسية، بدل القيمة الأسية بالضبط. وإليك سبب أهميته. تخيل 1000 شخص أُلغيت رحلاتهم بسبب نفس العاصفة، وقيل لهم جميعاً عاودوا الاتصال بالشركة بعد 10 دقائق. إذا التزموا بالضبط، يسقط نظام الهاتف مرة أخرى بعد 10 دقائق. أما إذا قيل لكل واحد «عاود الاتصال في أي وقت خلال العشر دقائق القادمة»، فتتوزع المكالمات وينجو النظام. الـ full jitter هو التعليمة الثانية، مطبقة على الـ servers." },
+
+      { t: "code", lang: "csharp",
+        label: { en: "The loop, written out so nothing is hidden", ar: "الـ loop مكتوبة بالكامل حتى لا يختفي شيء" },
+        code: "// This is what a retry library does for you. Written by hand once, so you\n// can see every decision it makes.\nasync Task<HttpResponseMessage> ChargeAsync(ChargeRequest req, CancellationToken ct)\n{\n    const int maxRetries = 3;          // 4 calls total, worst case\n    var baseDelay = TimeSpan.FromSeconds(1);\n\n    // Overall deadline: the whole operation, retries and sleeps included.\n    using var overall = CancellationTokenSource.CreateLinkedTokenSource(ct);\n    overall.CancelAfter(TimeSpan.FromSeconds(10));\n\n    for (var attempt = 0; ; attempt++)\n    {\n        // Per-attempt timeout: this one call may hang for 2s, no more.\n        using var perAttempt = CancellationTokenSource\n            .CreateLinkedTokenSource(overall.Token);\n        perAttempt.CancelAfter(TimeSpan.FromSeconds(2));\n\n        HttpResponseMessage? res = null;\n        try\n        {\n            res = await _http.PostAsJsonAsync(\"/v1/charges\", req, perAttempt.Token);\n            if (!IsRetryable(res.StatusCode)) return res;   // success, or a permanent error\n        }\n        catch (HttpRequestException) { /* connection refused / reset - retryable */ }\n        catch (OperationCanceledException) when (!ct.IsCancellationRequested\n                                              && !overall.IsCancellationRequested)\n        { /* per-attempt timeout - retryable */ }\n\n        // Out of attempts, or the caller/deadline gave up: surface the last result.\n        if (attempt >= maxRetries || overall.IsCancellationRequested)\n            return res ?? throw new TimeoutException(\"charge failed after retries\");\n\n        var delay = ComputeDelay(attempt, baseDelay, res);\n        await Task.Delay(delay, overall.Token);\n        res?.Dispose();\n    }\n}\n\nstatic bool IsRetryable(HttpStatusCode c) =>\n    c == HttpStatusCode.RequestTimeout          // 408\n    || (int)c == 429                            // too many requests\n    || c == HttpStatusCode.BadGateway            // 502\n    || c == HttpStatusCode.ServiceUnavailable    // 503\n    || c == HttpStatusCode.GatewayTimeout;       // 504\n\nstatic TimeSpan ComputeDelay(int attempt, TimeSpan base_, HttpResponseMessage? res)\n{\n    // The server told us how long to wait - always prefer that.\n    var after = res?.Headers.RetryAfter?.Delta;\n    if (after is not null) return after.Value;\n\n    // Full jitter: random between 0 and base * 2^attempt, capped at 20s.\n    var ceiling = Math.Min(base_.TotalMilliseconds * Math.Pow(2, attempt), 20_000);\n    return TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * ceiling);\n}" },
+
+      { t: "p",
+        en: "Two details in that code are easy to miss and both cause outages. First, the per-attempt timeout is a linked token, so cancelling the overall deadline also cancels the in-flight call — without the link, a hung call would ignore your 10-second deadline entirely. Second, the catch for OperationCanceledException checks who did the cancelling. If the user closed the browser or the overall deadline expired, that is not a transient failure and retrying is wrong; only a per-attempt timeout is retryable.",
+        ar: "تفصيلتان في هذا الكود يسهل تفويتهما وكلتاهما تسبب أعطالاً. الأولى: الـ per-attempt timeout هو linked token، فإلغاء الـ overall deadline يلغي أيضاً الـ call الجاري — بدون هذا الربط، سيتجاهل call معلّق مهلتك ذات العشر ثوانٍ تماماً. الثانية: الـ catch الخاص بـ OperationCanceledException يتحقق ممن قام بالإلغاء. إذا أغلق المستخدم المتصفح أو انتهى الـ overall deadline فهذا ليس فشلاً مؤقتاً وإعادة المحاولة خطأ؛ فقط الـ per-attempt timeout قابل لإعادة المحاولة." },
+
+      { t: "code", lang: "csharp",
+        label: { en: "The same policy using the built-in resilience package", ar: "نفس الـ policy باستخدام حزمة الـ resilience المدمجة" },
+        code: "// dotnet add package Microsoft.Extensions.Http.Resilience\nbuilder.Services.AddHttpClient<PaymentClient>(c =>\n{\n    c.BaseAddress = new Uri(\"https://api.payments.example\");\n})\n.AddResilienceHandler(\"payments\", b =>\n{\n    b.AddTimeout(TimeSpan.FromSeconds(10));            // overall deadline (outermost)\n\n    b.AddRetry(new HttpRetryStrategyOptions\n    {\n        MaxRetryAttempts = 3,\n        BackoffType      = DelayBackoffType.Exponential,\n        UseJitter        = true,                       // spreads clients apart\n        Delay            = TimeSpan.FromSeconds(1),\n        ShouldRetryAfterHeader = true                  // obey Retry-After when sent\n    });\n\n    b.AddTimeout(TimeSpan.FromSeconds(2));             // per-attempt (innermost)\n});\n\n// Order matters: the outer timeout wraps all retries, the inner one wraps a\n// single attempt. Swap them and every retry gets the full 10 seconds." }
+    ]},
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "Turns most short-lived network failures into successes the user never notices.",
+            "Cheap: a few lines of configuration, no new infrastructure to run.",
+            "Backoff plus jitter lets a struggling service recover instead of being hammered.",
+            "Retry-After lets the server itself set the pace when it knows best."
+          ],
+          ar: [
+            "تحوّل معظم أعطال الشبكة قصيرة العمر إلى نجاحات لا يلاحظها المستخدم.",
+            "رخيصة: أسطر إعدادات قليلة، بلا infrastructure جديدة تشغّلها.",
+            "الـ backoff مع الـ jitter يسمح لـ service متعب أن يتعافى بدل أن يُضرب بلا توقف.",
+            "الـ Retry-After يجعل الـ server نفسه يحدد الإيقاع عندما يكون هو الأدرى."
+          ]
+        },
+        cons: {
+          en: [
+            "Worst-case latency grows: 3 retries with backoff can add 7+ seconds to one request.",
+            "Duplicate work if the first attempt actually succeeded and only the response was lost.",
+            "Retry traffic multiplies exactly when the system is least able to take it.",
+            "Each waiting attempt holds a connection and a request slot in your own service."
+          ],
+          ar: [
+            "أسوأ latency يكبر: 3 retries مع backoff قد تضيف 7 ثوانٍ أو أكثر لـ request واحد.",
+            "عمل مكرر إذا كانت المحاولة الأولى نجحت فعلاً وضاع الـ response فقط.",
+            "traffic الـ retry يتضاعف بالضبط حين يكون النظام أقل قدرة على تحمّله.",
+            "كل محاولة منتظرة تحجز connection و request slot داخل الـ service عندك."
+          ]
+        },
+        limits: {
+          en: [
+            "Retries cannot fix a permanent error — a 400 will be a 400 forever.",
+            "Retrying a non-idempotent write can double-charge a customer.",
+            "They do not help when the dependency is down for minutes; that needs a circuit breaker.",
+            "Retries inside retries at several layers multiply: 3 × 3 × 3 is 27 calls."
+          ],
+          ar: [
+            "الـ retries لا تصلح خطأ دائماً — الـ 400 سيبقى 400 إلى الأبد.",
+            "إعادة محاولة write غير idempotent قد تخصم من الزبون مرتين.",
+            "لا تفيد عندما يكون الـ dependency ساقطاً لدقائق؛ هذا يحتاج circuit breaker.",
+            "الـ retries المتداخلة عبر عدة طبقات تتضاعف: 3 × 3 × 3 تساوي 27 call."
+          ]
+        },
+        alts: {
+          en: [
+            "Circuit breaker: stop calling a dependency entirely once it is clearly down.",
+            "Queue the work and process it later, instead of retrying while the user waits.",
+            "Hedged request: after a delay, send a second call and take whichever answers first.",
+            "Fail fast and show a clear message, when a slow success is worse than a quick error."
+          ],
+          ar: [
+            "Circuit breaker: توقف عن مناداة الـ dependency كلياً بمجرد أن يتضح أنه ساقط.",
+            "ضع العمل في queue وعالجه لاحقاً، بدل إعادة المحاولة والمستخدم ينتظر.",
+            "Hedged request: بعد تأخير، أرسل call ثانياً وخذ أول من يجيب.",
+            "الفشل السريع مع رسالة واضحة، حين يكون النجاح البطيء أسوأ من خطأ سريع."
+          ]
+        }
+      }
+    ]},
+
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "Retrying an error the server will never accept", ar: "إعادة المحاولة على خطأ لن يقبله الـ server أبداً" },
+        body: {
+          en: "A team wrapped every outgoing call in a policy that retried on any exception. A validation bug started sending an empty currency field, so the provider returned 422 Unprocessable Entity — meaning \"I understood the request and it is invalid\". The policy retried it four times. Traffic to the provider quadrupled, the checkout latency went from 300 ms to 8 seconds because every failure now took four attempts, and the actual bug stayed invisible for a day because the logs were drowning in retry noise. Retry only on transport failures and the 408/429/502/503/504 family.",
+          ar: "فريق لفّ كل call صادر بـ policy تعيد المحاولة على أي exception. ظهر bug في الـ validation فصار يرسل حقل currency فارغاً، فأعاد الـ provider 422 Unprocessable Entity — أي «فهمت الـ request وهو غير صالح». الـ policy أعادت المحاولة أربع مرات. تضاعف الـ traffic نحو الـ provider أربع مرات، وارتفع latency الـ checkout من 300ms إلى 8 ثوانٍ لأن كل فشل صار يستغرق أربع محاولات، وبقي الـ bug الحقيقي غير مرئي ليوم كامل لأن الـ logs غرقت في ضجيج الـ retries. أعد المحاولة فقط على أعطال النقل وعائلة 408/429/502/503/504."
+        },
+        fix: "// Bad: retries a 422 forever\n.Handle<Exception>().RetryAsync(4)\n\n// Good: only transient categories\n.Handle<HttpRequestException>()\n.Or<TimeoutRejectedException>()\n.OrResult<HttpResponseMessage>(r => (int)r.StatusCode is 408 or 429 or 502 or 503 or 504)\n.WaitAndRetryAsync(3, a => Jittered(a));" },
+
+      { t: "mistake",
+        title: { en: "Retries stacked at every layer", ar: "retries متراكمة في كل طبقة" },
+        body: {
+          en: "The mobile app retried 3 times. The API gateway retried 3 times. The service's HttpClient retried 3 times. Each layer looked reasonable on its own, but they multiply: one user tap became up to 3 × 3 × 3 = 27 calls to the payment provider. During a 40-second provider hiccup the provider saw 20× its normal traffic from one customer and rate-limited the whole account. Pick exactly one layer — usually the one closest to the dependency — to own retries, and make every other layer pass the failure straight through.",
+          ar: "تطبيق الموبايل يعيد المحاولة 3 مرات. الـ API gateway يعيد 3 مرات. الـ HttpClient داخل الـ service يعيد 3 مرات. كل طبقة تبدو معقولة وحدها، لكنها تتضاعف: ضغطة واحدة من المستخدم صارت حتى 3 × 3 × 3 = 27 call إلى الـ payment provider. خلال تعثر قدره 40 ثانية عند الـ provider، رأى الـ provider 20 ضعف الـ traffic الطبيعي من عميل واحد فطبّق rate limit على الحساب كله. اختر طبقة واحدة بالضبط — عادة الأقرب إلى الـ dependency — لتملك الـ retries، واجعل كل طبقة أخرى تمرر الفشل كما هو."
+        } },
+
+      { t: "mistake",
+        title: { en: "Exponential backoff with no jitter", ar: "Exponential backoff بلا jitter" },
+        body: {
+          en: "A service had 600 instances, all calling the same inventory API with backoff of 1s, 2s, 4s. The inventory API restarted, so all 600 failed within the same second. All 600 retried at t+1, again at t+3, again at t+7 — three synchronised spikes of 600 requests each landing on a service that was still starting up. It fell over on each spike and never finished starting. Adding jitter spread those same 600 retries over a full second each time and the restart completed on the first try.",
+          ar: "service فيه 600 instance، كلها تنادي نفس الـ inventory API بـ backoff قدره 1s ثم 2s ثم 4s. أعاد الـ inventory API التشغيل، ففشلت الـ 600 كلها خلال نفس الثانية. أعادت الـ 600 كلها المحاولة عند t+1، ثم عند t+3، ثم عند t+7 — ثلاث ذروات متزامنة من 600 request تسقط على service ما زال يقلع. سقط عند كل ذروة ولم يكمل الإقلاع أبداً. إضافة الـ jitter وزّعت نفس الـ 600 retry على ثانية كاملة في كل مرة، فاكتمل إعادة التشغيل من أول محاولة."
+        },
+        fix: "// No jitter: every client wakes at the same millisecond\nvar delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));\n\n// Full jitter: same average, spread across the window\nvar ceiling = Math.Pow(2, attempt) * 1000;\nvar delay = TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * ceiling);" },
+
+      { t: "mistake",
+        title: { en: "Retrying a charge with no idempotency key", ar: "إعادة محاولة خصم بلا idempotency key" },
+        body: {
+          en: "The first POST /v1/charges reached the provider and the card was charged, but the response was lost on the way back and the client hit its 2-second timeout. The retry sent an identical body, the provider saw a brand-new charge request, and the customer was charged twice. The fix is one header: generate a unique key per logical checkout, send the same key on every attempt, and the provider returns the original result instead of charging again. Never retry a write that has no way to recognise a duplicate.",
+          ar: "أول POST /v1/charges وصل إلى الـ provider وتم خصم البطاقة، لكن الـ response ضاع في طريق العودة وبلغ الـ client مهلته البالغة ثانيتين. أرسلت الـ retry نفس الـ body تماماً، فرأى الـ provider طلب خصم جديداً كلياً، وخُصم من الزبون مرتين. الحل ترويسة واحدة: ولّد key فريداً لكل عملية checkout منطقية، وأرسل نفس الـ key في كل محاولة، فيعيد الـ provider النتيجة الأصلية بدل الخصم مرة أخرى. لا تعد أبداً محاولة write لا يملك طريقة للتعرف على النسخة المكررة."
+        },
+        fix: "// Key generated ONCE per checkout, reused by every attempt.\nvar key = checkout.Id.ToString(\"N\");\nreq.Headers.TryAddWithoutValidation(\"Idempotency-Key\", key);\n\n// Wrong: a new key per attempt makes each retry a brand-new charge.\n// req.Headers.Add(\"Idempotency-Key\", Guid.NewGuid().ToString());" }
+    ]},
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What is exponential backoff, and why not just retry immediately?", ar: "ما هو الـ exponential backoff، ولماذا لا نعيد المحاولة فوراً فقط؟" },
+        a: {
+          en: "Exponential backoff means you wait longer before each retry — one second, then two, then four. Retrying immediately usually fails again, because whatever caused the failure has had no time to clear. Worse, if the other service is overloaded, instant retries add load at the exact moment it needs less. Backing off gives it room to recover, and by the time you try again the problem is often gone.",
+          ar: "الـ exponential backoff يعني أن تنتظر أطول قبل كل retry — ثانية، ثم ثانيتان، ثم أربع. إعادة المحاولة فوراً تفشل عادة مرة أخرى، لأن سبب الفشل لم يأخذ وقتاً ليزول. والأسوأ أنه إذا كان الـ service الآخر محمّلاً زيادة، فالـ retries الفورية تضيف حملاً في اللحظة التي يحتاج فيها حملاً أقل. الـ backoff يعطيه مساحة للتعافي، وغالباً تكون المشكلة قد زالت حين تحاول مجدداً."
+        } },
+
+      { t: "qa", level: "mid",
+        q: { en: "Which failures do you retry, and which do you never retry?", ar: "أي حالات فشل تعيد المحاولة عليها، وأيها لا تعيدها أبداً؟" },
+        a: {
+          en: "I retry things that could plausibly succeed on a second try: connection refused or reset, a per-attempt timeout, and the status codes 408, 429, 502, 503 and 504 — those all mean the server is busy, restarting, or unreachable, not that my request is wrong. I never retry 400, 401, 403, 404 or 422, because the request itself is the problem and sending it again will produce the identical answer. The one extra rule is that for a non-idempotent write like a payment, I only retry if I am sending an idempotency key, otherwise a lost response turns into a double charge.",
+          ar: "أعيد المحاولة على ما يمكن منطقياً أن ينجح في محاولة ثانية: connection مرفوض أو مقطوع، أو per-attempt timeout، والأكواد 408 و429 و502 و503 و504 — كلها تعني أن الـ server مشغول أو يعيد التشغيل أو غير قابل للوصول، لا أن الـ request عندي خاطئ. ولا أعيد أبداً على 400 أو 401 أو 403 أو 404 أو 422، لأن الـ request نفسه هو المشكلة وإرساله ثانية سينتج نفس الجواب. القاعدة الإضافية الوحيدة أنه في write غير idempotent مثل الدفع، لا أعيد المحاولة إلا إذا كنت أرسل idempotency key، وإلا تحوّل response ضائع إلى خصم مزدوج."
+        } },
+
+      { t: "qa", level: "mid",
+        q: { en: "What exactly does jitter fix?", ar: "ما الذي يصلحه الـ jitter بالضبط؟" },
+        a: {
+          en: "It fixes synchronisation between clients. If a dependency goes down, every caller fails at roughly the same moment, and if they all use the same backoff formula they all retry at the same moment too. That produces sharp spikes — five hundred requests in one millisecond, then nothing for two seconds. The dependency gets knocked over by each spike, so it never recovers. Jitter adds randomness to each wait, so the same total number of retries arrives spread evenly instead of in bursts. The version I use is full jitter: sleep a random amount between zero and the exponential value.",
+          ar: "يصلح التزامن بين الـ clients. إذا سقط dependency، يفشل كل المنادين في نفس اللحظة تقريباً، وإذا استخدموا كلهم نفس معادلة الـ backoff فسيعيدون المحاولة في نفس اللحظة أيضاً. هذا ينتج ذروات حادة — خمسمئة request في ميلي ثانية واحدة، ثم لا شيء لثانيتين. الـ dependency يسقط مع كل ذروة فلا يتعافى أبداً. الـ jitter يضيف عشوائية لكل انتظار، فيصل نفس العدد الكلي من الـ retries موزعاً بالتساوي بدل الدفعات. النسخة التي أستخدمها هي full jitter: نَم مدة عشوائية بين الصفر والقيمة الأسية."
+        } },
+
+      { t: "qa", level: "senior",
+        q: { en: "How do retries and timeouts interact across a chain of services?", ar: "كيف تتفاعل الـ retries والـ timeouts عبر سلسلة من الـ services؟" },
+        a: {
+          en: "They have to share one budget, decided at the edge. Say the user-facing request has 10 seconds. If service A calls B and B calls C, and each layer sets its own generous timeout and its own three retries, the total work can exceed 10 seconds many times over — and every one of those calls is doing work for a user who already gave up. So I pass a deadline down the chain, each layer gives its downstream call less time than it has left, and only the layer closest to the flaky dependency retries. The rest propagate the failure. If a caller has 800 ms left, there is no point starting a retry that needs 2 seconds.",
+          ar: "يجب أن تتشارك ميزانية واحدة تُقرر عند الحافة. لنقل إن الـ request الذي يواجه المستخدم لديه 10 ثوانٍ. إذا نادى service A الـ B ونادى B الـ C، وكل طبقة تضع timeout سخياً خاصاً بها وثلاث retries خاصة بها، فقد يتجاوز العمل الكلي الـ 10 ثوانٍ أضعافاً — وكل هذه الـ calls تعمل من أجل مستخدم استسلم أصلاً. لذلك أمرر deadline إلى أسفل السلسلة، وكل طبقة تعطي الـ call التالي وقتاً أقل مما تبقى لها، وتعيد المحاولة فقط الطبقة الأقرب إلى الـ dependency المتذبذب. الباقي ينشر الفشل. إذا بقي للمنادي 800ms فلا معنى لبدء retry يحتاج ثانيتين."
+        } },
+
+      { t: "qa", level: "senior",
+        q: { en: "When are retries the wrong tool, and what do you use instead?", ar: "متى تكون الـ retries الأداة الخاطئة، وماذا تستخدم بدلاً منها؟" },
+        a: {
+          en: "Retries assume the failure is short — seconds, not minutes. When a dependency is properly down, retrying just burns your own threads and connections waiting on something that will not answer, and that is how one broken dependency takes down an otherwise healthy service. There I want a circuit breaker: after a certain failure rate, stop calling for a while and fail immediately, then let one probe request through to check if it recovered. Retries are also wrong when the work does not need to happen right now — if it can be queued and processed later, queue it, because a queue retries for free without a user waiting. And if the dependency is rate-limiting me with 429, the answer is to slow down or ask for more quota, not to retry harder.",
+          ar: "الـ retries تفترض أن الفشل قصير — ثوانٍ لا دقائق. عندما يكون الـ dependency ساقطاً فعلاً، إعادة المحاولة تحرق threads و connections عندك في انتظار شيء لن يجيب، وهكذا يُسقط dependency واحد معطّل service سليماً. هنا أريد circuit breaker: بعد نسبة فشل معينة، توقف عن المناداة لفترة وافشل فوراً، ثم اسمح لـ request واحد اختباري بالمرور لترى إن تعافى. الـ retries خاطئة أيضاً حين لا يلزم تنفيذ العمل الآن — إذا أمكن وضعه في queue ومعالجته لاحقاً فضعه، لأن الـ queue تعيد المحاولة مجاناً بلا مستخدم ينتظر. وإذا كان الـ dependency يطبق rate limit ويرد 429، فالجواب أن تبطئ أو تطلب quota أكبر، لا أن تعيد المحاولة بقوة أكبر."
+        } },
+
+      { t: "qa", level: "staff",
+        q: { en: "How do you stop retry policies from drifting apart across twenty teams?", ar: "كيف تمنع تباعد سياسات الـ retry عبر عشرين فريقاً؟" },
+        a: {
+          en: "I would not rely on every team reading a wiki page. I would ship the policy as a shared library or a service template — one named HttpClient configuration with sane defaults for classification, backoff, jitter, deadlines and metrics, so the easy path is also the correct one. Then I would make the multiplication problem visible: agree that retries belong to the layer nearest the dependency, and have the gateway pass a header saying it has already retried so nobody stacks a second policy on top. I would also add a retry budget — cap retries at something like ten percent of successful traffic per dependency and emit a metric when it is hit, because that turns an invisible amplification into an alert. Finally I would exercise it: a regular game-day where we make a dependency fail on purpose in staging and check that latency and retry counts behave the way the design says they should.",
+          ar: "لن أعتمد على قراءة كل فريق لصفحة wiki. سأشحن الـ policy كمكتبة مشتركة أو service template — إعداد HttpClient واحد مسمّى بقيم افتراضية معقولة للتصنيف والـ backoff والـ jitter والـ deadlines والـ metrics، بحيث يكون الطريق السهل هو الصحيح أيضاً. ثم أجعل مشكلة التضاعف مرئية: نتفق أن الـ retries تخص الطبقة الأقرب إلى الـ dependency، ونجعل الـ gateway يمرر ترويسة تقول إنه أعاد المحاولة أصلاً حتى لا يضيف أحد policy ثانية فوقها. وسأضيف أيضاً retry budget — سقف للـ retries عند نحو عشرة بالمئة من الـ traffic الناجح لكل dependency، مع إصدار metric عند بلوغه، لأن هذا يحوّل تضخماً غير مرئي إلى تنبيه. وأخيراً سأختبره عملياً: game-day دوري نُفشل فيه dependency عمداً في بيئة staging ونتحقق أن الـ latency وأعداد الـ retries تتصرف كما يقول التصميم."
+        } }
+    ]},
+
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "Retry loop with no delay, no classification, no deadline", ar: "retry loop بلا تأخير ولا تصنيف ولا deadline" },
+        bad: "for (var i = 0; i < 5; i++)\n{\n    try\n    {\n        return await _http.PostAsJsonAsync(\"/v1/charges\", req);\n    }\n    catch\n    {\n        // try again\n    }\n}\nthrow new Exception(\"charge failed\");",
+        good: "// One policy object, applied by the HttpClient pipeline.\nbuilder.Services.AddHttpClient<PaymentClient>()\n    .AddResilienceHandler(\"payments\", b =>\n    {\n        b.AddTimeout(TimeSpan.FromSeconds(10));   // whole operation\n        b.AddRetry(new HttpRetryStrategyOptions\n        {\n            MaxRetryAttempts = 3,\n            BackoffType      = DelayBackoffType.Exponential,\n            UseJitter        = true,\n            Delay            = TimeSpan.FromSeconds(1),\n            ShouldRetryAfterHeader = true\n        });\n        b.AddTimeout(TimeSpan.FromSeconds(2));    // single attempt\n    });",
+        why: {
+          en: "The bad version retries five times with no wait, so a failing dependency instantly gets six times the traffic. It catches everything, so a 400 caused by our own bug is retried too, and a cancellation from the user is swallowed. There is no overall deadline, so a slow dependency can hold the request open indefinitely. The empty catch also loses the original error, leaving \"charge failed\" as the only clue in the logs.",
+          ar: "النسخة السيئة تعيد المحاولة خمس مرات بلا انتظار، فيحصل dependency فاشل فوراً على ستة أضعاف الـ traffic. وهي تلتقط كل شيء، فيُعاد حتى 400 سببه bug عندنا، ويُبتلع إلغاء صادر من المستخدم. ولا يوجد overall deadline، فيستطيع dependency بطيء إبقاء الـ request مفتوحاً بلا نهاية. كما أن الـ catch الفارغ يفقد الخطأ الأصلي، فلا يبقى في الـ logs سوى «charge failed» كدليل وحيد."
+        } },
+
+      { t: "review", severity: "medium",
+        title: { en: "A fresh idempotency key inside the retry loop", ar: "idempotency key جديد داخل الـ retry loop" },
+        bad: "// Called once per attempt by the retry policy\nasync Task<HttpResponseMessage> SendAsync()\n{\n    var msg = new HttpRequestMessage(HttpMethod.Post, \"/v1/charges\")\n    {\n        Content = JsonContent.Create(req)\n    };\n    msg.Headers.Add(\"Idempotency-Key\", Guid.NewGuid().ToString());\n    return await _http.SendAsync(msg);\n}",
+        good: "// Key belongs to the checkout, not the attempt.\nasync Task<HttpResponseMessage> SendAsync(string idempotencyKey)\n{\n    var msg = new HttpRequestMessage(HttpMethod.Post, \"/v1/charges\")\n    {\n        Content = JsonContent.Create(req)\n    };\n    msg.Headers.Add(\"Idempotency-Key\", idempotencyKey);   // same on every attempt\n    return await _http.SendAsync(msg);\n}\n\n// caller\nvar key = checkout.Id.ToString(\"N\");\nvar res = await _policy.ExecuteAsync(_ => SendAsync(key), CancellationToken.None);",
+        why: {
+          en: "An idempotency key is how the provider recognises \"this is the same logical operation you already asked me about\". Generating a new Guid on each attempt defeats that completely — every retry looks like a brand-new charge. The bug is silent while the network is healthy and only appears the first time a response is lost, which is exactly the case retries exist for.",
+          ar: "الـ idempotency key هو ما يجعل الـ provider يتعرف على أن «هذه نفس العملية المنطقية التي سألتني عنها سابقاً». توليد Guid جديد في كل محاولة يبطل ذلك تماماً — كل retry تبدو خصماً جديداً كلياً. الـ bug صامت ما دامت الشبكة سليمة ولا يظهر إلا أول مرة يضيع فيها response، وهي بالضبط الحالة التي وُجدت الـ retries من أجلها."
+        } }
+    ]},
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a design interview, retries are how you answer \"what happens when this arrow on the whiteboard fails?\". Every arrow between two boxes is a network call, and every network call fails sometimes. The expected answer names three things per arrow: how long one attempt may take, how many retries it gets, and whether the operation is safe to repeat. Draw the checkout flow — browser to API, API to payment provider, API to database, API to an order-events queue — and the four arrows get four different answers.",
+        ar: "في design interview، الـ retries هي جوابك على سؤال «ماذا يحدث حين يفشل هذا السهم على اللوح؟». كل سهم بين صندوقين هو network call، وكل network call يفشل أحياناً. الجواب المتوقع يسمّي ثلاثة أشياء لكل سهم: كم يجوز أن تستغرق محاولة واحدة، وكم retry تحصل عليها، وهل تكرار العملية آمن. ارسم مسار الـ checkout — من المتصفح إلى الـ API، ومن الـ API إلى الـ payment provider، ومن الـ API إلى الـ database، ومن الـ API إلى queue أحداث الطلبات — وستحصل الأسهم الأربعة على أربعة أجوبة مختلفة." },
+
+      { t: "ul",
+        en: [
+          "Browser to API: the user is waiting, so at most one retry and only on a network error — a second POST /checkout with the same cart id, deduplicated on the server.",
+          "API to payment provider: 3 retries, exponential backoff with full jitter, 2 s per attempt, 10 s overall, and an idempotency key so a repeat cannot double-charge.",
+          "API to database: 2 fast retries with short delays for deadlock and connection-reset errors, which SQL Server resolves in milliseconds. EF Core's EnableRetryOnFailure does this for you.",
+          "API to the order-events queue: publish once with a few retries; if it still fails, write the event to an outbox table in the same transaction and let a background worker retry for hours."
+        ],
+        ar: [
+          "من المتصفح إلى الـ API: المستخدم ينتظر، فـ retry واحدة كحد أقصى وعلى خطأ شبكة فقط — POST /checkout ثانٍ بنفس cart id، مع إزالة التكرار على الـ server.",
+          "من الـ API إلى الـ payment provider: 3 retries، exponential backoff مع full jitter، ثانيتان لكل محاولة، 10 ثوانٍ إجمالاً، مع idempotency key حتى لا يسبب التكرار خصماً مزدوجاً.",
+          "من الـ API إلى الـ database: retryان سريعان بتأخير قصير لأخطاء الـ deadlock و connection reset، وهي أخطاء يحلها SQL Server خلال ميلي ثوانٍ. الخيار EnableRetryOnFailure في EF Core يفعل ذلك عنك.",
+          "من الـ API إلى queue أحداث الطلبات: انشر مرة واحدة مع retries قليلة؛ وإن استمر الفشل، اكتب الحدث في جدول outbox داخل نفس الـ transaction ودع background worker يعيد المحاولة لساعات."
+        ] },
+
+      { t: "callout", kind: "note",
+        en: "A useful line in an interview: \"retries handle seconds of failure, queues handle minutes, and circuit breakers protect us in between\". It shows you know retries are one tool in a set, not the answer to every failure.",
+        ar: "جملة مفيدة في المقابلة: «الـ retries تعالج ثوانٍ من الفشل، والـ queues تعالج دقائق، والـ circuit breakers تحمينا بينهما». تُظهر أنك تعرف أن الـ retries أداة ضمن مجموعة، لا الجواب لكل فشل." }
+    ]},
+
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Latency", ar: "Latency" },
+          v: { en: "Retries only affect the slow tail. p50 (the typical request) is unchanged, but p99 — the slowest 1 request in 100 — absorbs the full backoff. With 1s/2s/4s that is up to 7 s of sleeping plus the attempts themselves.", ar: "الـ retries تؤثر على الذيل البطيء فقط. الـ p50 (الـ request النموذجي) لا يتغير، لكن الـ p99 — أبطأ request من كل 100 — يمتص الـ backoff كاملاً. مع 1s/2s/4s يصل ذلك إلى 7 ثوانٍ من النوم زائد المحاولات نفسها." } },
+        { k: { en: "Network", ar: "Network" },
+          v: { en: "In the worst case you send 4× the requests. Under a full dependency outage that is 4× the outbound traffic for zero successful work, which is why a retry budget matters.", ar: "في الحالة الأسوأ ترسل 4 أضعاف الـ requests. وأثناء عطل كامل في الـ dependency يعني ذلك 4 أضعاف الـ traffic الصادر مقابل صفر عمل ناجح، ولهذا تهم الـ retry budget." } },
+        { k: { en: "Memory", ar: "Memory" },
+          v: { en: "Each waiting request keeps its buffers, its request object and any read body alive. 5000 requests sleeping for 4 seconds each is 5000 live object graphs the garbage collector must keep scanning.", ar: "كل request منتظر يبقي buffers الخاصة به وكائن الـ request وأي body مقروء حياً. 5000 request نائم 4 ثوانٍ لكل واحد يعني 5000 object graph حياً يجب على الـ garbage collector الاستمرار في فحصها." } },
+        { k: { en: "Scalability", ar: "Scalability" },
+          v: { en: "Retries consume connections from the HttpClient pool. If the pool holds 100 connections per host and every request is retrying, new requests queue behind them and unrelated endpoints slow down too.", ar: "الـ retries تستهلك connections من pool الـ HttpClient. إذا كان الـ pool يحمل 100 connection لكل host وكل request يعيد المحاولة، فالـ requests الجديدة تصطف خلفها وتبطؤ endpoints أخرى لا علاقة لها بالأمر." } },
+        { k: { en: "CPU", ar: "CPU" },
+          v: { en: "Near zero if you await Task.Delay, which releases the thread. A Thread.Sleep instead blocks a thread pool thread for the whole wait and can starve the pool under load.", ar: "قريب من الصفر إذا استخدمت await Task.Delay، لأنها تحرر الـ thread. أما Thread.Sleep فتحجز thread من الـ thread pool طوال الانتظار وقد تجوّع الـ pool تحت الحمل." } }
+      ]}
+    ]},
+
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "A retry counter metric, tagged by dependency and status code. Watch the ratio of retries to successful calls: above roughly 10% means a dependency is degraded, not merely flaky.",
+          "Distributed tracing (OpenTelemetry). One trace of a slow checkout shows each attempt as its own span, so you can see three 2-second gaps and know instantly it was retries, not one slow call.",
+          "Client-side logs at Warning on each retry, including attempt number, delay, and the status or exception that triggered it. Without the reason logged you cannot tell a 503 storm from a timeout storm.",
+          "dotnet-counters monitor System.Net.Http on the running process. Look at requests-queued and current-requests: a rising queue with flat completions means retries are eating the connection pool.",
+          "The dependency's own rate-limit dashboard or 429 count. If your retries are being rejected as rate-limited, backing off harder is the fix, not more attempts."
+        ],
+        ar: [
+          "metric يعدّ الـ retries، موسوماً بالـ dependency وكود الحالة. راقب نسبة الـ retries إلى الـ calls الناجحة: فوق 10% تقريباً تعني dependency متدهوراً لا مجرد متذبذب.",
+          "التتبع الموزع (OpenTelemetry). trace واحد لعملية checkout بطيئة يُظهر كل محاولة كـ span مستقل، فترى ثلاث فجوات مدة كل منها ثانيتان وتعرف فوراً أنها retries لا call بطيء واحد.",
+          "logs على مستوى Warning عند كل retry في جهة الـ client، تتضمن رقم المحاولة ومدة التأخير والحالة أو الـ exception التي سببتها. بدون تسجيل السبب لا تستطيع تمييز عاصفة 503 من عاصفة timeout.",
+          "الأمر dotnet-counters monitor System.Net.Http على العملية العاملة. انظر إلى requests-queued و current-requests: queue يرتفع مع completions ثابتة يعني أن الـ retries تلتهم الـ connection pool.",
+          "لوحة الـ rate limit عند الـ dependency نفسه أو عدد الـ 429. إذا كانت retries عندك تُرفض بسبب الـ rate limit، فالحل هو backoff أقوى لا محاولات أكثر."
+        ] },
+
+      { t: "callout", kind: "tip",
+        en: "Log the total number of attempts on the final result, not just on failures. A dashboard showing that 3% of checkouts needed a second attempt tells you a dependency is degrading days before it starts failing outright.",
+        ar: "سجّل العدد الكلي للمحاولات على النتيجة النهائية، لا على حالات الفشل فقط. لوحة تُظهر أن 3% من عمليات الـ checkout احتاجت محاولة ثانية تخبرك أن dependency يتدهور قبل أيام من بدء فشله الكامل." }
+    ]},
+
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "Anywhere a system talks to something it does not control, retries are already in the code — usually added after an incident. The pattern is the same across industries: the value of a retry depends entirely on whether repeating the operation is safe, and the shape of the backoff depends on how many clients might fail at once.",
+        ar: "في أي مكان يتحدث فيه نظام إلى شيء لا يتحكم به، تكون الـ retries موجودة في الكود أصلاً — تُضاف عادة بعد حادثة. النمط نفسه عبر القطاعات: قيمة الـ retry تعتمد كلياً على ما إذا كان تكرار العملية آمناً، وشكل الـ backoff يعتمد على عدد الـ clients التي قد تفشل معاً." },
+
+      { t: "ul",
+        en: [
+          "Payment systems: retries always paired with idempotency keys, because a duplicate charge is a customer-visible, money-losing bug and a lost response is common.",
+          "Mobile apps on cellular networks: aggressive backoff with heavy jitter, because a tunnel or a dropped tower makes thousands of devices fail and reconnect at once.",
+          "Data pipelines and batch jobs: many retries over long windows, sometimes hours, because nobody is waiting and a delayed record is far better than a lost one.",
+          "Internal service-to-service calls behind a mesh — a layer that routes traffic between services — usually get one retry with a tight budget, because latency is small and the risk of amplifying an internal outage across dozens of services is high."
+        ],
+        ar: [
+          "أنظمة الدفع: الـ retries مقترنة دائماً بـ idempotency keys، لأن الخصم المكرر bug يراه الزبون ويكلّف مالاً، وضياع الـ response شائع.",
+          "تطبيقات الموبايل على شبكات الجوال: backoff قوي مع jitter كثيف، لأن نفقاً أو برجاً ساقطاً يجعل آلاف الأجهزة تفشل وتعيد الاتصال دفعة واحدة.",
+          "خطوط معالجة البيانات والمهام الدفعية: retries كثيرة على نوافذ طويلة، أحياناً ساعات، لأن لا أحد ينتظر وسجل متأخر أفضل بكثير من سجل ضائع.",
+          "الـ calls الداخلية بين الـ services خلف mesh — طبقة توجّه الـ traffic بين الـ services — تحصل عادة على retry واحدة بميزانية ضيقة، لأن الـ latency صغير وخطر تضخيم عطل داخلي عبر عشرات الـ services مرتفع."
+        ] }
+    ]},
+
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Write a small console app that calls a local endpoint returning 503 three times then 200. Add a retry policy with exponential backoff and no jitter, and log the timestamp of each attempt. You are done when the printed gaps are close to 1 s, 2 s and 4 s and the fourth attempt succeeds.",
+        ar: "اكتب console app صغيراً ينادي endpoint محلياً يرد 503 ثلاث مرات ثم 200. أضف retry policy بـ exponential backoff بلا jitter، وسجّل الوقت عند كل محاولة. تنتهي حين تكون الفجوات المطبوعة قريبة من 1s و2s و4s وتنجح المحاولة الرابعة." },
+
+      { t: "ex", diff: "medium",
+        en: "Add full jitter to that policy, then run 200 clients against the same endpoint at once and record the arrival time of every retry in a histogram with 100 ms buckets. You are done when the no-jitter run shows three tall spikes and the jitter run shows a flat spread over the same window.",
+        ar: "أضف full jitter إلى تلك الـ policy، ثم شغّل 200 client على نفس الـ endpoint دفعة واحدة وسجّل وقت وصول كل retry في histogram بخانات 100ms. تنتهي حين تُظهر التجربة بلا jitter ثلاث ذروات عالية وتُظهر تجربة الـ jitter انتشاراً مستوياً على نفس النافذة." },
+
+      { t: "ex", diff: "hard",
+        en: "Build a fake payment endpoint that records the charge, then sleeps 3 seconds before responding, so every client times out at 2 seconds. Call it through a retry policy and confirm the charge is recorded three times. Then add an Idempotency-Key header plus server-side deduplication and confirm exactly one charge is recorded and all three attempts return the same charge id.",
+        ar: "ابنِ payment endpoint وهمياً يسجل الخصم ثم ينام 3 ثوانٍ قبل الرد، بحيث ينتهي وقت كل client عند ثانيتين. نادِه عبر retry policy وتأكد أن الخصم سُجل ثلاث مرات. ثم أضف ترويسة Idempotency-Key مع إزالة تكرار على الـ server وتأكد أن خصماً واحداً فقط سُجل وأن المحاولات الثلاث كلها تعيد نفس charge id." },
+
+      { t: "ex", diff: "senior",
+        en: "Implement a retry budget: a shared counter per dependency that allows retries only while they are under 10% of successful calls in the last minute, and returns the failure immediately once the budget is exhausted. Prove it with a load test where the dependency fails 100% of the time. You are done when outbound request volume during the outage stays within 1.1× the normal rate instead of 4×, and a metric fires when the budget is hit.",
+        ar: "نفّذ retry budget: عدّاداً مشتركاً لكل dependency يسمح بالـ retries فقط ما دامت تحت 10% من الـ calls الناجحة في الدقيقة الأخيرة، ويعيد الفشل فوراً عند نفاد الميزانية. أثبت ذلك بـ load test يفشل فيه الـ dependency 100% من الوقت. تنتهي حين يبقى حجم الـ requests الصادرة أثناء العطل ضمن 1.1 ضعف المعدل الطبيعي بدل 4 أضعاف، ويصدر metric عند بلوغ الميزانية." }
+    ]},
+
+    { key: "refs", blocks: [
+      { t: "ref",
+        label: { en: "AWS Architecture Blog — Exponential Backoff and Jitter", ar: "AWS Architecture Blog — Exponential Backoff and Jitter" },
+        url: "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+        meta: { en: "Article", ar: "مقال" } },
+      { t: "ref",
+        label: { en: "Polly — resilience strategies and retry", ar: "Polly — استراتيجيات المرونة والـ retry" },
+        url: "https://www.pollydocs.org/strategies/retry.html",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref",
+        label: { en: "Microsoft Learn — Building resilient HTTP apps", ar: "Microsoft Learn — بناء تطبيقات HTTP مرنة" },
+        url: "https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience",
+        meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref",
+        label: { en: "Amazon Builders' Library — Timeouts, retries and backoff with jitter", ar: "Amazon Builders' Library — المهل وإعادة المحاولة والـ backoff مع jitter" },
+        url: "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+        meta: { en: "Article", ar: "مقال" } }
+    ]}
+  ],
+  quiz: [
+    {
+      q: { en: "Which response should a client NOT retry?", ar: "أي response لا يجب على الـ client إعادة المحاولة عليه؟" },
+      options: [
+        { en: "503 Service Unavailable", ar: "503 Service Unavailable" },
+        { en: "422 Unprocessable Entity", ar: "422 Unprocessable Entity" },
+        { en: "504 Gateway Timeout", ar: "504 Gateway Timeout" },
+        { en: "429 Too Many Requests", ar: "429 Too Many Requests" }
+      ],
+      correct: 1,
+      why: {
+        en: "422 means the server understood the request and the request itself is invalid. Sending the identical body again produces the identical answer. The other three all say the server is busy, overloaded or unreachable, which can change within seconds.",
+        ar: "الـ 422 تعني أن الـ server فهم الـ request وأن الـ request نفسه غير صالح. إرسال نفس الـ body مرة أخرى ينتج نفس الجواب. الثلاثة الأخرى كلها تقول إن الـ server مشغول أو محمّل زيادة أو غير قابل للوصول، وهذا قد يتغير خلال ثوانٍ."
+      }
+    },
+    {
+      q: { en: "What problem does jitter solve that exponential backoff alone does not?", ar: "ما المشكلة التي يحلها الـ jitter ولا يحلها الـ exponential backoff وحده؟" },
+      options: [
+        { en: "It shortens the average wait between attempts", ar: "يقصّر متوسط الانتظار بين المحاولات" },
+        { en: "It stops many clients from retrying at the same instant", ar: "يمنع عدداً كبيراً من الـ clients من إعادة المحاولة في نفس اللحظة" },
+        { en: "It makes non-idempotent operations safe to repeat", ar: "يجعل العمليات غير الـ idempotent آمنة للتكرار" },
+        { en: "It guarantees the retry eventually succeeds", ar: "يضمن أن الـ retry ستنجح في النهاية" }
+      ],
+      correct: 1,
+      why: {
+        en: "With a fixed formula, clients that failed together retry together, producing synchronised spikes that keep knocking the dependency down. Jitter randomises each wait so the same retries arrive spread out. It does not change safety or guarantee success.",
+        ar: "بمعادلة ثابتة، الـ clients التي فشلت معاً تعيد المحاولة معاً، فتنتج ذروات متزامنة تستمر في إسقاط الـ dependency. الـ jitter يعشّي كل انتظار فتصل نفس الـ retries موزعة. وهو لا يغير الأمان ولا يضمن النجاح."
+      }
+    },
+    {
+      q: { en: "Your policy has a 2-second per-attempt timeout, 3 retries and a 10-second overall deadline. The dependency hangs forever on every call. What happens?", ar: "الـ policy عندك فيها per-attempt timeout قدره ثانيتان و3 retries و overall deadline قدره 10 ثوانٍ. الـ dependency يتعلق للأبد في كل call. ماذا يحدث؟" },
+      options: [
+        { en: "The caller waits about 8 seconds of attempts plus the backoff sleeps, and is cut off at 10 seconds", ar: "المنادي ينتظر نحو 8 ثوانٍ من المحاولات زائد فترات نوم الـ backoff، ويُقطع عند 10 ثوانٍ" },
+        { en: "The caller waits forever, because the per-attempt timeout only applies to the first call", ar: "المنادي ينتظر للأبد، لأن الـ per-attempt timeout ينطبق على الـ call الأول فقط" },
+        { en: "The caller returns immediately with a 504", ar: "المنادي يعود فوراً بـ 504" },
+        { en: "The overall deadline is ignored because retries reset it", ar: "الـ overall deadline يُتجاهل لأن الـ retries تعيد ضبطه" }
+      ],
+      correct: 0,
+      why: {
+        en: "Each attempt is cut off at 2 seconds, and the backoff sleeps run between them. The overall deadline is the hard ceiling: once 10 seconds have passed the operation stops even if attempts remain, which is exactly why you set it.",
+        ar: "كل محاولة تُقطع عند ثانيتين، وفترات نوم الـ backoff تجري بينها. الـ overall deadline هو السقف الصارم: بمجرد مرور 10 ثوانٍ تتوقف العملية حتى لو بقيت محاولات، وهذا بالضبط سبب ضبطه."
+      }
+    },
+    {
+      q: { en: "A checkout is charged twice. The client sent one request, timed out at 2 s, and retried. What most likely went wrong?", ar: "عملية checkout خُصمت مرتين. الـ client أرسل request واحداً، انتهت مهلته عند ثانيتين، فأعاد المحاولة. ما الخطأ الأرجح؟" },
+      options: [
+        { en: "The backoff was too short", ar: "الـ backoff كان قصيراً جداً" },
+        { en: "The provider returned 503 on the first call", ar: "الـ provider أعاد 503 في الـ call الأول" },
+        { en: "The first request succeeded but its response was lost, and there was no idempotency key", ar: "الـ request الأول نجح لكن الـ response ضاع، ولم يكن هناك idempotency key" },
+        { en: "The retry count was set to 3 instead of 1", ar: "عدد الـ retries ضُبط على 3 بدل 1" }
+      ],
+      correct: 2,
+      why: {
+        en: "A timeout tells you nothing about whether the server did the work — only that you did not hear back. Without a key that lets the provider recognise the retry as the same logical charge, it treats the second request as a new one.",
+        ar: "الـ timeout لا يخبرك شيئاً عمّا إذا كان الـ server نفّذ العمل — فقط أنك لم تسمع رداً. وبدون key يسمح للـ provider بالتعرف على الـ retry كخصم منطقي واحد، يعامل الـ request الثاني كطلب جديد."
+      }
+    },
+    {
+      q: { en: "Three layers each retry 3 times on the same call chain. What is the worst-case number of calls reaching the dependency for one user action?", ar: "ثلاث طبقات كل منها تعيد المحاولة 3 مرات على نفس سلسلة الـ calls. ما أسوأ عدد calls يصل إلى الـ dependency من فعل مستخدم واحد؟" },
+      options: [
+        { en: "9", ar: "9" },
+        { en: "27", ar: "27" },
+        { en: "64", ar: "64" },
+        { en: "12", ar: "12" }
+      ],
+      correct: 2,
+      why: {
+        en: "\"3 retries\" means 4 attempts including the first, and the layers multiply: 4 × 4 × 4 = 64. This multiplication is why retries should be owned by exactly one layer, normally the one closest to the dependency.",
+        ar: "«3 retries» تعني 4 محاولات بما فيها الأولى، والطبقات تتضاعف: 4 × 4 × 4 = 64. هذا التضاعف هو سبب وجوب امتلاك طبقة واحدة بالضبط للـ retries، عادة الأقرب إلى الـ dependency."
+      }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: idempotency keys
+
+const idempotencyLesson = {
+  id: "idempotency",
+  moduleId: "distributed",
+  title: { en: "Idempotency keys", ar: "مفاتيح الـ idempotency" },
+  summary: {
+    en: "How a client can safely retry a request that creates something, without creating it twice.",
+    ar: "كيف يعيد الـ client محاولة request ينشئ شيئاً، من غير أن ينشئه مرتين."
+  },
+  mins: 14,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "An idempotency key is a unique string the client attaches to a request so the server can recognise a repeat of that exact request and answer it without doing the work a second time. It exists because a client that never hears back from the server cannot tell whether the work happened or not, and retrying is the only thing it can do.",
+          ar: "الـ idempotency key هو نص فريد يرسله الـ client مع الـ request حتى يستطيع الـ server أن يتعرّف على تكرار نفس الـ request ويرد عليه من دون تنفيذ العمل مرة ثانية. سبب وجوده أن الـ client الذي لا يصله رد لا يعرف هل تم العمل أم لا، وإعادة المحاولة هي الشيء الوحيد الذي يملكه."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Idempotent", ar: "Idempotent" },
+              v: {
+                en: "Doing the operation once and doing it five times leave the system in the same state. Deleting order 8842 is idempotent; adding 250 to a balance is not.",
+                ar: "تنفيذ العملية مرة واحدة وتنفيذها خمس مرات يتركان النظام في نفس الحالة. حذف order رقم 8842 هو idempotent؛ إضافة 250 إلى رصيد ليست كذلك."
+              }
+            },
+            {
+              k: { en: "Idempotency key", ar: "Idempotency key" },
+              v: {
+                en: "A random string, usually a UUID (a 128-bit random identifier such as 7f3c1a9e-...), that the client generates once per business action and sends in the Idempotency-Key header.",
+                ar: "نص عشوائي، غالباً UUID (معرّف عشوائي بطول 128 bit مثل 7f3c1a9e-...)، ينشئه الـ client مرة واحدة لكل عملية أعمال ويرسله في الـ header باسم Idempotency-Key."
+              }
+            },
+            {
+              k: { en: "At-least-once delivery", ar: "At-least-once delivery" },
+              v: {
+                en: "The guarantee you actually get on a network: a message arrives one or more times. Never exactly once, because the sender must retry when it hears nothing.",
+                ar: "الضمان الحقيقي على الشبكة: الرسالة تصل مرة أو أكثر. لا توجد مرة واحدة بالضبط، لأن المرسل مضطر لإعادة المحاولة عندما لا يصله رد."
+              }
+            },
+            {
+              k: { en: "Dedup store", ar: "Dedup store" },
+              v: {
+                en: "The table or cache where the server remembers 'I have already seen this key, and here is the response I gave'. Short for deduplication store.",
+                ar: "الجدول أو الـ cache الذي يتذكر فيه الـ server أنه رأى هذا المفتاح من قبل، مع الرد الذي أعطاه. اختصار لـ deduplication store."
+              }
+            },
+            {
+              k: { en: "Request fingerprint", ar: "Request fingerprint" },
+              v: {
+                en: "A hash of the request body, stored next to the key, so the server can tell a genuine retry apart from a different request that reused the same key by mistake.",
+                ar: "hash لجسم الـ request يُخزَّن بجانب المفتاح، حتى يفرّق الـ server بين إعادة محاولة حقيقية و request مختلف أعاد استخدام نفس المفتاح بالخطأ."
+              }
+            },
+            {
+              k: { en: "Effectively-once", ar: "Effectively-once" },
+              v: {
+                en: "At-least-once delivery plus server-side deduplication. The message may arrive many times, but its effect happens once. This is what people mean when they say 'exactly-once'.",
+                ar: "at-least-once delivery مع إزالة التكرار في الـ server. الرسالة قد تصل مرات كثيرة، لكن أثرها يحدث مرة واحدة. هذا ما يقصده الناس عندما يقولون exactly-once."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "Here is the situation that forces this. A mobile app calls POST /payments to charge 250 SAR for order 8842. The server charges the card, then the response is lost — the phone switched from Wi-Fi to mobile data mid-request. The app waited 30 seconds, saw nothing, and retried. The card is now charged twice. Nobody wrote a bug; the network simply dropped one reply.",
+          ar: "هذا هو الموقف الذي يفرض الفكرة. تطبيق موبايل يستدعي POST /payments لخصم 250 ريال لطلب رقم 8842. الـ server يخصم من البطاقة، ثم يضيع الرد — الجوال انتقل من Wi-Fi إلى بيانات الجوال في منتصف الـ request. التطبيق انتظر 30 ثانية، لم يصله شيء، فأعاد المحاولة. البطاقة الآن مخصومة مرتين. لا أحد كتب bug؛ الشبكة فقط أسقطت رداً واحداً."
+        },
+        {
+          t: "p",
+          en: "Think of ordering coffee and paying with cash. If you hand over the money and the cashier turns away before giving you a receipt, you do not know if the order was entered. You could pay again and risk two coffees. What fixes it is a ticket number: you say 'ticket 41' and the cashier checks the board — already made, here it is, no second charge. The idempotency key is that ticket number, and the dedup store is the board the cashier checks.",
+          ar: "تخيّل أنك تطلب قهوة وتدفع نقداً. أعطيت النقود ثم انصرف الكاشير قبل أن يعطيك إيصالاً، فأنت لا تعرف هل سُجّل الطلب. قد تدفع مرة أخرى وتحصل على قهوتين. الحل هو رقم تذكرة: تقول «تذكرة 41» فينظر الكاشير في اللوحة — الطلب جاهز، تفضل، بلا خصم ثانٍ. الـ idempotency key هو رقم التذكرة، والـ dedup store هو اللوحة التي ينظر فيها الكاشير."
+        },
+        {
+          t: "callout",
+          kind: "note",
+          en: "Some methods are idempotent by their own definition: GET, PUT and DELETE are supposed to be repeatable without extra effect. POST is not, and POST is where money and orders get created. That is why idempotency keys are mostly a POST problem.",
+          ar: "بعض الـ methods تكون idempotent بحكم تعريفها: GET و PUT و DELETE يفترض أن تتكرر بلا أثر إضافي. أما POST فليست كذلك، وهي المكان الذي تُنشأ فيه المدفوعات والطلبات. لهذا فمشكلة الـ idempotency keys غالباً مشكلة POST."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "The concrete failure is a double charge, and it is more common than it feels. On a payments API doing 40,000 charges a day, roughly 0.4% of requests timed out at the client — meaning about 160 requests a day got no answer even though most of them had already succeeded on the server. The app retried every one of them. That produced around 150 duplicate charges a day, each one a refund, a support ticket and a card-network dispute fee.",
+          ar: "الفشل الملموس هو خصم مزدوج، وهو أكثر شيوعاً مما يبدو. في payments API ينفّذ 40,000 عملية خصم يومياً، حوالي 0.4% من الـ requests انتهت مهلتها عند الـ client — أي حوالي 160 request يومياً لم يصلها رد رغم أن أغلبها نجح فعلاً في الـ server. التطبيق أعاد المحاولة في كلها. النتيجة حوالي 150 خصماً مكرراً يومياً، كل واحد منها استرداد مبلغ وتذكرة دعم ورسوم نزاع من شبكة البطاقات."
+        },
+        {
+          t: "p",
+          en: "The naive fix is to check first: 'does a payment already exist for order 8842?' then insert if not. Under a retry this fails, because the two requests can run at the same moment. Both read the table, both see nothing, both insert. The check and the insert are two separate steps, and anything can happen between them. This gap is called a race condition — two operations racing, and the result depends on which one gets there first.",
+          ar: "الحل الساذج هو الفحص أولاً: «هل يوجد payment لطلب 8842؟» ثم الإدراج إن لم يوجد. هذا يفشل مع إعادة المحاولة، لأن الـ requestين قد ينفذان في نفس اللحظة. كلاهما يقرأ الجدول، كلاهما لا يجد شيئاً، كلاهما يُدرج. الفحص والإدراج خطوتان منفصلتان، وأي شيء قد يحدث بينهما. هذه الفجوة تُسمى race condition — عمليتان تتسابقان، والنتيجة تعتمد على من يصل أولاً."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Before: retry with no key", ar: "قبل: إعادة محاولة بلا مفتاح" },
+              v: {
+                en: "Two charges of 250 SAR on the same card, two rows in payments, two entries on the customer's statement. The customer notices before you do.",
+                ar: "خصمان بقيمة 250 ريال على نفس البطاقة، صفّان في جدول payments، بندان في كشف حساب العميل. العميل يلاحظ قبلك."
+              }
+            },
+            {
+              k: { en: "After: retry with a key", ar: "بعد: إعادة محاولة مع مفتاح" },
+              v: {
+                en: "One charge. The second request finds the key, returns the stored 201 response with the same payment id, and the app shows the same success screen it would have shown the first time.",
+                ar: "خصم واحد. الـ request الثاني يجد المفتاح، ويعيد رد 201 المخزَّن بنفس معرّف الـ payment، ويعرض التطبيق نفس شاشة النجاح التي كان سيعرضها في المرة الأولى."
+              }
+            },
+            {
+              k: { en: "Cost of the fix", ar: "تكلفة الحل" },
+              v: {
+                en: "One extra row written per request and one extra index lookup — about 1-2 ms added to a request that already takes 300 ms talking to the card network. Under 1% slower.",
+                ar: "صف إضافي واحد يُكتب لكل request وبحث إضافي واحد في الـ index — حوالي 1-2 ms تُضاف إلى request يستغرق أصلاً 300 ms في التخاطب مع شبكة البطاقات. أقل من 1% أبطأ."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "One more thing the naive check misses: the key must be created by the client, not the server. If the server generates it, the retry is a brand new request with a brand new key and the server has no way to link the two. The client is the only party that knows 'this is the same button press as before'.",
+          ar: "شيء آخر يغفله الفحص الساذج: المفتاح يجب أن ينشئه الـ client لا الـ server. إذا أنشأه الـ server، فإعادة المحاولة تصبح request جديداً بمفتاح جديد ولا يستطيع الـ server ربط الاثنين. الـ client هو الطرف الوحيد الذي يعرف أن هذه نفس الضغطة السابقة على الزر."
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "The trick that makes this correct is to insert the key first and let the database refuse the duplicate. A unique constraint is a rule on a column that makes the database reject a second row with the same value. Instead of asking 'has this key been used?' and then acting, you try to claim the key with an INSERT. Exactly one of the racing requests wins the insert; every other one gets a duplicate-key error and knows it is the retry.",
+          ar: "الحيلة التي تجعل هذا صحيحاً هي إدراج المفتاح أولاً وترك الـ database يرفض التكرار. الـ unique constraint هو قيد على عمود يجعل الـ database يرفض صفاً ثانياً بنفس القيمة. بدل أن تسأل «هل استُخدم هذا المفتاح؟» ثم تتصرف، تحاول حجز المفتاح عبر INSERT. واحد فقط من الـ requests المتسابقة ينجح في الإدراج؛ وكل ما عداه يحصل على خطأ تكرار مفتاح ويعرف أنه إعادة محاولة."
+        },
+        {
+          t: "p",
+          en: "Think of a hotel front desk with one physical key per room. Two people ask for room 12. The clerk does not consult a list and then decide; the clerk reaches for the key. One hand comes back with it, the other comes back empty. The empty hand is the duplicate-key error, and it is reliable because there was only ever one key. The unique constraint is that single physical key, and the database is the front desk that hands it out.",
+          ar: "تخيّل استقبال فندق فيه مفتاح واحد فقط لكل غرفة. شخصان يطلبان غرفة 12. الموظف لا يراجع قائمة ثم يقرّر؛ الموظف يمد يده إلى المفتاح. يد تعود به ويد تعود فارغة. اليد الفارغة هي خطأ تكرار المفتاح، وهي موثوقة لأن المفتاح كان واحداً من الأساس. الـ unique constraint هو ذلك المفتاح الوحيد، والـ database هو موظف الاستقبال الذي يسلّمه."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "idempotency_keys table", ar: "جدول idempotency_keys" },
+              v: {
+                en: "Columns: key (unique), user_id, endpoint, request_hash, status, response_code, response_body, created_at. One row per business action.",
+                ar: "الأعمدة: key (فريد)، user_id، endpoint، request_hash، status، response_code، response_body، created_at. صف واحد لكل عملية أعمال."
+              }
+            },
+            {
+              k: { en: "status column", ar: "عمود status" },
+              v: {
+                en: "Either 'in_progress' (someone is working on it right now) or 'completed' (the response is stored and can be replayed).",
+                ar: "إمّا in_progress (شخص ما ينفّذها الآن) أو completed (الرد مخزَّن ويمكن إعادة إرساله)."
+              }
+            },
+            {
+              k: { en: "request_hash", ar: "request_hash" },
+              v: {
+                en: "SHA-256 of the request body. SHA-256 is a function that turns any text into a fixed 64-character string; the same text always gives the same string.",
+                ar: "SHA-256 لجسم الـ request. و SHA-256 دالة تحوّل أي نص إلى نص ثابت الطول من 64 حرفاً؛ نفس النص يعطي دائماً نفس الناتج."
+              }
+            },
+            {
+              k: { en: "Scope", ar: "النطاق" },
+              v: {
+                en: "The key is unique per user and per endpoint, not globally. Two different customers may pick the same UUID and neither should block the other.",
+                ar: "المفتاح فريد لكل user ولكل endpoint، لا على مستوى النظام كله. عميلان مختلفان قد يختاران نفس الـ UUID ولا يجوز أن يحجب أحدهما الآخر."
+              }
+            },
+            {
+              k: { en: "TTL", ar: "TTL" },
+              v: {
+                en: "Time to live — how long a key is remembered before cleanup deletes it. 24 hours is a common choice, comfortably longer than any client will keep retrying.",
+                ar: "Time to live — كم يبقى المفتاح محفوظاً قبل أن تحذفه عملية التنظيف. 24 ساعة اختيار شائع، وهو أطول بمريح من أي مدة سيستمر فيها الـ client بإعادة المحاولة."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "Now trace one request end to end. The app sends POST /payments with header Idempotency-Key: 7f3c1a9e and body {orderId: 8842, amount: 250}. Step one: the server hashes the body. Step two: it opens a database transaction — a group of statements that either all take effect or none do — and inserts a row with that key, that hash and status 'in_progress'. Step three: if the insert succeeds, this request owns the work; it charges the card, writes the payments row, updates the key row to 'completed' with the 201 response body, and commits everything together. Step four: it returns 201.",
+          ar: "الآن تتبّع request واحداً من أوله إلى آخره. التطبيق يرسل POST /payments مع header فيه Idempotency-Key: 7f3c1a9e وجسم {orderId: 8842, amount: 250}. الخطوة الأولى: الـ server يحسب hash للجسم. الخطوة الثانية: يفتح transaction في الـ database — مجموعة عبارات إمّا أن تُنفَّذ كلها أو لا يُنفَّذ منها شيء — ويُدرج صفاً بذلك المفتاح وذلك الـ hash وبحالة in_progress. الخطوة الثالثة: إذا نجح الإدراج فهذا الـ request يملك العمل؛ فيخصم من البطاقة، ويكتب صف payments، ويحدّث صف المفتاح إلى completed مع جسم رد 201، ويعمل commit للكل معاً. الخطوة الرابعة: يعيد 201."
+        },
+        {
+          t: "p",
+          en: "Now the retry arrives. The insert fails with a duplicate-key error, so the server reads the existing row. If status is 'completed', it replays the stored response — same status code, same body, same payment id — and does no work. If status is still 'in_progress', the first request has not finished yet, so the server returns 409 Conflict with a Retry-After header telling the client to wait a moment. If the hash does not match the stored one, the client reused a key for different content, which is a client bug, so the server returns 422 Unprocessable Entity.",
+          ar: "الآن تصل إعادة المحاولة. الإدراج يفشل بخطأ تكرار المفتاح، فيقرأ الـ server الصف الموجود. إذا كانت الحالة completed، يعيد إرسال الرد المخزَّن — نفس status code ونفس الجسم ونفس معرّف الـ payment — ولا ينفّذ أي عمل. وإذا كانت الحالة ما زالت in_progress، فالـ request الأول لم ينته بعد، فيعيد الـ server 409 Conflict مع header اسمه Retry-After يخبر الـ client أن ينتظر قليلاً. وإذا لم يطابق الـ hash المخزَّن، فالـ client أعاد استخدام مفتاح لمحتوى مختلف، وهذا خطأ في الـ client، فيعيد الـ server 422 Unprocessable Entity."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "Claim the key, then do the work", ar: "احجز المفتاح ثم نفّذ العمل" },
+          code: "public async Task<IResult> Charge(ChargeRequest body, string idemKey, CancellationToken ct)\n{\n    var hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(body)));\n\n    await using var tx = await _db.Database.BeginTransactionAsync(ct);\n\n    // 1. Try to claim the key. The unique index decides the winner.\n    var record = new IdempotencyRecord\n    {\n        Key = idemKey, UserId = _user.Id, Endpoint = \"POST /payments\",\n        RequestHash = hash, Status = \"in_progress\", CreatedAt = DateTime.UtcNow\n    };\n    _db.IdempotencyRecords.Add(record);\n\n    try\n    {\n        await _db.SaveChangesAsync(ct);          // throws if the key already exists\n    }\n    catch (DbUpdateException e) when (IsUniqueViolation(e))\n    {\n        _db.ChangeTracker.Clear();\n        var existing = await _db.IdempotencyRecords.AsNoTracking()\n            .SingleAsync(r => r.Key == idemKey && r.UserId == _user.Id, ct);\n\n        if (existing.RequestHash != hash)\n            return Results.UnprocessableEntity(\"Idempotency-Key reused with a different body.\");\n\n        if (existing.Status == \"in_progress\")\n            return Results.StatusCode(409);      // caller should retry shortly\n\n        return Results.Content(existing.ResponseBody!, \"application/json\",\n                               statusCode: existing.ResponseCode);\n    }\n\n    // 2. We own the work. Charge, then store the response in the SAME transaction.\n    var payment = await _cards.ChargeAsync(body.OrderId, body.Amount, idemKey, ct);\n    _db.Payments.Add(payment);\n\n    record.Status = \"completed\";\n    record.ResponseCode = 201;\n    record.ResponseBody = JsonSerializer.Serialize(new { paymentId = payment.Id });\n\n    await _db.SaveChangesAsync(ct);\n    await tx.CommitAsync(ct);\n    return Results.Created($\"/payments/{payment.Id}\", new { paymentId = payment.Id });\n}"
+        },
+        {
+          t: "p",
+          en: "One detail carries most of the correctness: the payment row and the 'completed' key row are written in the same transaction. If they were separate writes, the process could die between them, leaving a charge with no record of the key — and the next retry would charge again. Committing them together means the system is never in a state where the work happened but the key does not say so.",
+          ar: "تفصيلة واحدة تحمل معظم الصحة: صف الـ payment وصف المفتاح بحالة completed يُكتبان في نفس الـ transaction. لو كانا كتابتين منفصلتين، لأمكن أن يموت الـ process بينهما، فيبقى خصم بلا سجل للمفتاح — وإعادة المحاولة التالية تخصم مرة أخرى. الـ commit المشترك يعني أن النظام لا يمر أبداً بحالة يكون فيها العمل قد تم والمفتاح لا يقول ذلك."
+        },
+        {
+          t: "callout",
+          kind: "warn",
+          en: "The card network call is outside your database, so the transaction cannot roll it back. That is why you also pass the same key to the card provider — every serious payment API accepts one — so the duplicate is stopped on their side too if your commit fails after the charge.",
+          ar: "استدعاء شبكة البطاقات خارج الـ database، فلا يستطيع الـ transaction التراجع عنه. لهذا تمرّر نفس المفتاح أيضاً إلى مزوّد البطاقات — كل payment API جاد يقبل واحداً — حتى يُمنع التكرار عندهم أيضاً إذا فشل الـ commit عندك بعد الخصم."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "Clients can retry a create request safely, which is the only way to survive a lost response.",
+              "The duplicate is caught by a database rule, not by code that can race.",
+              "The retry gets the original answer, so the user sees one consistent result.",
+              "Support can look up one key and see exactly what the client sent and what was returned."
+            ],
+            ar: [
+              "يستطيع الـ client إعادة محاولة request إنشاء بأمان، وهي الطريقة الوحيدة للنجاة من رد ضائع.",
+              "التكرار يُمسك بقاعدة في الـ database، لا بكود قابل للتسابق.",
+              "إعادة المحاولة تحصل على الرد الأصلي، فيرى المستخدم نتيجة واحدة متسقة.",
+              "يستطيع الدعم البحث بمفتاح واحد ورؤية ما أرسله الـ client وما أُعيد له بالضبط."
+            ]
+          },
+          cons: {
+            en: [
+              "Every protected request writes an extra row and its stored response body.",
+              "The client must generate and persist the key, so mobile and web callers need changes too.",
+              "You must decide what a retry sees while the first call is still running.",
+              "Stored response bodies can hold personal data, so they fall under your data-retention rules."
+            ],
+            ar: [
+              "كل request محمي يكتب صفاً إضافياً مع جسم الرد المخزَّن.",
+              "على الـ client أن ينشئ المفتاح ويحفظه، فتحتاج تطبيقات الموبايل والويب إلى تعديل أيضاً.",
+              "عليك أن تقرّر ماذا يرى الـ retry بينما الاستدعاء الأول ما زال يعمل.",
+              "أجسام الردود المخزَّنة قد تحوي بيانات شخصية، فتخضع لقواعد الاحتفاظ بالبيانات عندك."
+            ]
+          },
+          limits: {
+            en: [
+              "It only protects one endpoint; a duplicate created through a different route is not caught.",
+              "It cannot undo a side effect that already left your system, such as a sent email.",
+              "Keys expire, so a retry after the TTL window will be treated as a new request.",
+              "It does not stop a user tapping Pay twice with two different keys — that needs a UI guard."
+            ],
+            ar: [
+              "يحمي endpoint واحداً فقط؛ التكرار الناتج عن مسار مختلف لا يُمسك.",
+              "لا يستطيع التراجع عن أثر جانبي غادر نظامك فعلاً، مثل بريد أُرسل.",
+              "المفاتيح تنتهي صلاحيتها، فإعادة المحاولة بعد مدة الـ TTL تُعامل كـ request جديد.",
+              "لا يمنع مستخدماً يضغط Pay مرتين بمفتاحين مختلفين — هذا يحتاج حماية في الواجهة."
+            ]
+          },
+          alts: {
+            en: [
+              "Natural keys: make (orderId, userId) unique so a second payment for the same order is impossible.",
+              "Client-supplied resource id with PUT /payments/{id}, which is idempotent by HTTP definition.",
+              "A two-step flow: POST to reserve an id, then PUT to complete the action against it.",
+              "Detect and reconcile later — cheaper to build, but the customer sees the duplicate first."
+            ],
+            ar: [
+              "مفاتيح طبيعية: اجعل (orderId, userId) فريداً فيصبح payment ثانٍ لنفس الطلب مستحيلاً.",
+              "معرّف مورد يرسله الـ client عبر PUT /payments/{id}، وهي idempotent بتعريف HTTP.",
+              "تدفّق من خطوتين: POST لحجز معرّف، ثم PUT لإتمام العملية عليه.",
+              "الاكتشاف والتسوية لاحقاً — أرخص في البناء، لكن العميل يرى التكرار أولاً."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "The server generates the key", ar: "الـ server هو من ينشئ المفتاح" },
+          body: {
+            en: "A team added Guid.NewGuid() at the top of the handler and stored it as the idempotency key. Every retry produced a new Guid, so no two requests ever matched and the table just grew. They shipped it, saw zero duplicate-key errors in the logs, and concluded it worked. Two weeks later the duplicate charges were still happening at the same rate. The key must come from the caller and stay the same across retries of one user action.",
+            ar: "فريق أضاف Guid.NewGuid() في بداية الـ handler وخزّنه كـ idempotency key. كل إعادة محاولة أنتجت Guid جديداً، فلم يتطابق request مع آخر أبداً وتضخّم الجدول فقط. أطلقوا التعديل، ولم يروا أي خطأ تكرار مفتاح في الـ logs، فاستنتجوا أنه يعمل. بعد أسبوعين كانت الخصومات المكررة ما زالت بنفس المعدل. المفتاح يجب أن يأتي من المستدعي ويبقى ثابتاً عبر إعادات محاولة نفس عملية المستخدم."
+          },
+          fix: "// client side, once per Pay button press\nvar key = _pendingKey ??= Guid.NewGuid().ToString();\nrequest.Headers.Add(\"Idempotency-Key\", key);   // reused by every retry"
+        },
+        {
+          t: "mistake",
+          title: { en: "Check-then-insert instead of insert-then-catch", ar: "فحص ثم إدراج بدل إدراج ثم التقاط" },
+          body: {
+            en: "The handler did 'if (!await _db.Keys.AnyAsync(...)) { do the work; save the key; }'. It passed every test, because tests send requests one at a time. In production a client retried after 200 ms while the first call was still waiting on the card network. Both AnyAsync calls returned false, both charged. There was no unique index on the key column, so the database happily stored both rows.",
+            ar: "الـ handler كان يفعل: if (!await _db.Keys.AnyAsync(...)) { نفّذ العمل؛ احفظ المفتاح؛ }. نجح في كل الاختبارات، لأن الاختبارات ترسل request واحداً في كل مرة. في الإنتاج أعاد client المحاولة بعد 200 ms بينما الاستدعاء الأول ما زال ينتظر شبكة البطاقات. كلا استدعاءي AnyAsync أعادا false، وكلاهما خصم. لم يكن هناك unique index على عمود المفتاح، فخزّن الـ database الصفّين بلا اعتراض."
+          },
+          fix: "CREATE UNIQUE INDEX UX_idem_key_user\n  ON idempotency_keys(user_id, endpoint, [key]);\n-- then INSERT first and handle error 2601/2627 as \"this is a retry\""
+        },
+        {
+          t: "mistake",
+          title: { en: "Key row committed separately from the work", ar: "صف المفتاح يُحفظ منفصلاً عن العمل" },
+          body: {
+            en: "The code saved the key row, called SaveChangesAsync, then charged the card and called SaveChangesAsync again. A deployment restarted the pod between the two saves. The key row existed with status 'in_progress' but the charge had already gone through, and no code path ever moved it to 'completed'. Every retry got 409 forever, and the customer's money was taken with no order created. Write the effect and the completed key in one transaction.",
+            ar: "الكود حفظ صف المفتاح، واستدعى SaveChangesAsync، ثم خصم من البطاقة واستدعى SaveChangesAsync مرة أخرى. عملية نشر أعادت تشغيل الـ pod بين الحفظين. بقي صف المفتاح بحالة in_progress بينما كان الخصم قد تم فعلاً، ولم يوجد أي مسار كود ينقله إلى completed. كل إعادة محاولة كانت تحصل على 409 إلى الأبد، وأُخذ مال العميل بلا إنشاء طلب. اكتب الأثر وصف المفتاح المكتمل في transaction واحد."
+          }
+        },
+        {
+          t: "mistake",
+          title: { en: "Ignoring the request body on a repeat key", ar: "تجاهل جسم الـ request عند تكرار المفتاح" },
+          body: {
+            en: "A partner integration cached one key in a config file and sent it with every charge. The server saw the key, replayed the first stored response, and returned 201 with the original payment id — for 4,000 different charges. The partner's dashboard showed everything as successful; nothing after the first one had actually been charged. Storing a hash of the body and returning 422 on a mismatch would have surfaced the bug on request number two.",
+            ar: "تكامل مع شريك خزّن مفتاحاً واحداً في ملف إعدادات وأرسله مع كل عملية خصم. الـ server رأى المفتاح، وأعاد الرد الأول المخزَّن، وأرجع 201 بمعرّف الـ payment الأصلي — لـ 4,000 عملية خصم مختلفة. لوحة الشريك أظهرت كل شيء ناجحاً؛ ولم يُخصم شيء بعد الأولى. تخزين hash للجسم وإرجاع 422 عند عدم التطابق كان سيكشف الخلل من الـ request الثاني."
+          },
+          fix: "if (existing.RequestHash != hash)\n    return Results.UnprocessableEntity(\n        \"Idempotency-Key was already used with a different request body.\");"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "What does idempotent mean?", ar: "ماذا تعني كلمة idempotent؟" },
+          a: {
+            en: "It means running the operation more than once leaves the system in the same state as running it once. DELETE /orders/8842 is idempotent — the order is gone after the first call and still gone after the fourth. POST /payments is not, because each call creates another charge. The word says nothing about the response code; the second DELETE can return 404 and still be idempotent, because the state is the same.",
+            ar: "تعني أن تنفيذ العملية أكثر من مرة يترك النظام في نفس الحالة التي يتركها تنفيذها مرة واحدة. DELETE /orders/8842 هي idempotent — الطلب محذوف بعد الاستدعاء الأول وما زال محذوفاً بعد الرابع. أما POST /payments فليست كذلك، لأن كل استدعاء ينشئ خصماً آخر. الكلمة لا تقول شيئاً عن status code؛ الـ DELETE الثاني قد يعيد 404 ويبقى idempotent، لأن الحالة نفسها."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Why can't the server just check whether the request already exists?", ar: "لماذا لا يكتفي الـ server بفحص هل الـ request موجود مسبقاً؟" },
+          a: {
+            en: "Because the check and the write are two separate steps, and two copies of the same request can be inside that gap at the same time. Both look, both find nothing, both insert. I'd flip it around: insert the key first with a unique constraint on it and let the database decide the winner. The loser gets a duplicate-key error, which is my reliable signal that this is a retry. The database is doing the locking for me instead of me trying to invent it in application code.",
+            ar: "لأن الفحص والكتابة خطوتان منفصلتان، ويمكن أن تكون نسختان من نفس الـ request داخل تلك الفجوة في اللحظة نفسها. كلتاهما تنظر، ولا تجد شيئاً، وتُدرج. أنا أقلبها: أُدرج المفتاح أولاً مع unique constraint عليه وأترك الـ database يحدّد الفائز. الخاسر يحصل على خطأ تكرار مفتاح، وهذه إشارتي الموثوقة أن هذه إعادة محاولة. الـ database يقوم بالقفل بدلاً مني بدل أن أخترعه في كود التطبيق."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "What should a retry get back while the first request is still running?", ar: "ماذا يجب أن تحصل عليه إعادة المحاولة بينما الـ request الأول ما زال يعمل؟" },
+          a: {
+            en: "409 Conflict with a Retry-After header, usually one or two seconds. I don't want to block the second request waiting for the first, because that ties up a connection and can pile up under load. I also don't want to return an error that looks permanent, because the client would give up on something that is about to succeed. 409 plus Retry-After says clearly: same work is in flight, ask again shortly.",
+            ar: "409 Conflict مع header اسمه Retry-After، عادة ثانية أو ثانيتين. لا أريد أن أحجب الـ request الثاني في انتظار الأول، لأن ذلك يشغل اتصالاً وقد يتراكم تحت الحمل. ولا أريد أن أعيد خطأ يبدو نهائياً، لأن الـ client سيستسلم أمام شيء على وشك النجاح. الرد 409 مع Retry-After يقول بوضوح: نفس العمل قيد التنفيذ، اسأل مرة أخرى بعد قليل."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Is exactly-once delivery possible?", ar: "هل التوصيل exactly-once ممكن؟" },
+          a: {
+            en: "Not on a network, no. The sender can never distinguish 'the message was lost' from 'the reply was lost', so it must retry, so the message can arrive more than once. What you can build is effectively-once: at-least-once delivery plus a receiver that deduplicates. The key is what lets the receiver deduplicate. So when someone asks for exactly-once, what they actually need is a stable identifier on the message and a store of ids the receiver has already handled.",
+            ar: "على الشبكة، لا. المرسل لا يستطيع أبداً أن يفرّق بين «ضاعت الرسالة» و«ضاع الرد»، فهو مضطر لإعادة المحاولة، فتصل الرسالة أكثر من مرة. ما يمكن بناؤه هو effectively-once: at-least-once delivery مع مستقبِل يزيل التكرار. والمفتاح هو ما يتيح للمستقبِل إزالة التكرار. فحين يطلب أحدهم exactly-once، ما يحتاجه فعلاً هو معرّف ثابت على الرسالة ومخزن للمعرّفات التي عالجها المستقبِل."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Where do you store the keys, and for how long?", ar: "أين تخزّن المفاتيح، ولأي مدة؟" },
+          a: {
+            en: "In the same database as the data I'm protecting, because I need the key row and the effect in one transaction. Redis is tempting because it is fast and has expiry built in, but a Redis write and a SQL commit cannot be made atomic, so a crash between them reopens the double-charge window. For retention I use 24 hours, which is far longer than any client keeps retrying, and I delete expired rows in a nightly job. If I need a permanent record of what a client sent, that belongs in an audit table, not in the dedup store.",
+            ar: "في نفس الـ database الذي فيه البيانات التي أحميها، لأنني أحتاج صف المفتاح والأثر في transaction واحد. الـ Redis مغرٍ لأنه سريع وفيه انتهاء صلاحية جاهز، لكن كتابة في Redis و commit في SQL لا يمكن جعلهما atomic، فأي انهيار بينهما يعيد فتح نافذة الخصم المزدوج. أما مدة الاحتفاظ فأستخدم 24 ساعة، وهي أطول بكثير من أي مدة يستمر فيها client بإعادة المحاولة، وأحذف الصفوف المنتهية في مهمة ليلية. وإذا احتجت سجلاً دائماً لما أرسله الـ client فمكانه جدول audit لا الـ dedup store."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "How do you get idempotency adopted across many teams instead of one endpoint at a time?", ar: "كيف تجعل الـ idempotency تُعتمد عبر فرق كثيرة بدل endpoint واحد كل مرة؟" },
+          a: {
+            en: "I'd stop treating it as a feature each team writes. First, put the behaviour in a shared middleware or filter in the internal service template, so a team turns it on with an attribute rather than writing the table and the race handling themselves. Second, define one house rule in the API guidelines: any POST that creates a resource or moves money must accept Idempotency-Key, and the API review checklist asks for it. Third, add a platform metric for duplicate business actions per endpoint, so a missing implementation shows up on a dashboard instead of in a customer complaint. Fourth, ship the matching client helper in the internal SDK, because a server that supports keys and a client that never sends one buys nothing.",
+            ar: "سأتوقف عن معاملتها كميزة يكتبها كل فريق. أولاً، أضع السلوك في middleware أو filter مشترك داخل قالب الخدمة الداخلي، فيفعّله الفريق بـ attribute بدل أن يكتب الجدول ومعالجة التسابق بنفسه. ثانياً، أحدّد قاعدة واحدة في إرشادات الـ API: أي POST ينشئ مورداً أو يحرّك مالاً يجب أن يقبل Idempotency-Key، وقائمة مراجعة الـ API تسأل عنها. ثالثاً، أضيف مقياساً على مستوى المنصة لعدد عمليات الأعمال المكررة لكل endpoint، فيظهر التطبيق الناقص على لوحة قياس بدل أن يظهر في شكوى عميل. رابعاً، أطلق المساعد المقابل في الـ SDK الداخلي للـ client، لأن server يدعم المفاتيح مع client لا يرسل أياً منها لا يفيد بشيء."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "The key is stored, but the effect is not in the same transaction", ar: "المفتاح يُخزَّن، لكن الأثر ليس في نفس الـ transaction" },
+          bad: "await _keys.MarkCompletedAsync(idemKey, ct);   // commit #1\nvar payment = await _cards.ChargeAsync(body.OrderId, body.Amount, ct);\n_db.Payments.Add(payment);\nawait _db.SaveChangesAsync(ct);                // commit #2",
+          good: "await using var tx = await _db.Database.BeginTransactionAsync(ct);\nvar payment = await _cards.ChargeAsync(body.OrderId, body.Amount, idemKey, ct);\n_db.Payments.Add(payment);\nrecord.Status = \"completed\";\nrecord.ResponseCode = 201;\nrecord.ResponseBody = JsonSerializer.Serialize(new { paymentId = payment.Id });\nawait _db.SaveChangesAsync(ct);\nawait tx.CommitAsync(ct);",
+          why: {
+            en: "With two commits there is a window between them where the key says 'done' but no payment exists, or a payment exists with no completed key. A restart or a failed second commit lands you in that window. One transaction removes it: either both rows are visible or neither is. Passing idemKey to the card provider covers the one part that lives outside your database.",
+            ar: "مع commitين توجد نافذة بينهما يقول فيها المفتاح «تم» بلا وجود payment، أو يوجد payment بلا مفتاح مكتمل. إعادة تشغيل أو فشل الـ commit الثاني يوقعك في تلك النافذة. الـ transaction الواحد يزيلها: إمّا أن يظهر الصفّان أو لا يظهر أي منهما. وتمرير idemKey إلى مزوّد البطاقات يغطي الجزء الوحيد الذي يعيش خارج الـ database عندك."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "Key uniqueness is global instead of per user", ar: "تفرّد المفتاح عام بدل أن يكون لكل user" },
+          bad: "CREATE UNIQUE INDEX UX_idem ON idempotency_keys([key]);\n// lookup:\nvar existing = await _db.IdempotencyRecords\n    .SingleOrDefaultAsync(r => r.Key == idemKey, ct);",
+          good: "CREATE UNIQUE INDEX UX_idem ON idempotency_keys(user_id, endpoint, [key]);\n// lookup:\nvar existing = await _db.IdempotencyRecords\n    .SingleOrDefaultAsync(r => r.Key == idemKey\n                            && r.UserId == _user.Id\n                            && r.Endpoint == endpoint, ct);",
+          why: {
+            en: "A global unique key means one caller can claim a string that another caller then cannot use, and a caller that sends a guessable key such as 'order-1' will collide with every other tenant using the same pattern. Worse, without the user check the lookup could replay one customer's stored response body to a different customer. Scoping by user and endpoint keeps the guarantee local and removes the leak.",
+            ar: "التفرّد العام يعني أن مستدعياً واحداً قد يحجز نصاً لا يستطيع مستدعٍ آخر استخدامه بعده، ومستدعٍ يرسل مفتاحاً يسهل تخمينه مثل order-1 سيتصادم مع كل مستأجر آخر يستخدم نفس النمط. والأسوأ أن البحث بلا فحص الـ user قد يعيد جسم رد عميل إلى عميل آخر. تحديد النطاق بالـ user والـ endpoint يبقي الضمان محلياً ويزيل التسريب."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a real system the key travels further than one endpoint. A checkout flow might be: mobile app to the API gateway, gateway to the orders service, orders service publishes a message, and a payments worker consumes it. Every hop can retry, so the same key should be carried through all of them — as a header on the HTTP calls and as a message property on the queue message. Then each service can deduplicate using the same identity for the same business action.",
+          ar: "في نظام حقيقي يسافر المفتاح أبعد من endpoint واحد. تدفّق الشراء قد يكون: تطبيق موبايل إلى API gateway، ثم gateway إلى خدمة الطلبات، وخدمة الطلبات تنشر رسالة، ثم يستهلكها worker المدفوعات. كل قفزة قابلة لإعادة المحاولة، فيجب حمل نفس المفتاح خلالها كلها — كـ header على استدعاءات HTTP وكخاصية على رسالة الطابور. عندها تستطيع كل خدمة إزالة التكرار بنفس الهوية لنفس عملية الأعمال."
+        },
+        {
+          t: "ul",
+          en: [
+            "Message consumers: queues deliver at-least-once, so a consumer must skip a message id it has already processed. Same table, different producer.",
+            "Webhooks you receive: providers resend a webhook until you return 200, so store the provider's event id and ignore repeats.",
+            "Background jobs: a job runner that crashes mid-run will re-run the job, so the job body needs a key just as much as an endpoint does.",
+            "Public APIs: document the header name, the scope, the TTL, and what 409 and 422 mean, because clients have to build retry logic against your rules."
+          ],
+          ar: [
+            "مستهلكو الرسائل: الطوابير تسلّم at-least-once، فعلى المستهلك أن يتجاهل معرّف رسالة عالجه مسبقاً. نفس الجدول، ومنتج مختلف.",
+            "الـ webhooks التي تستقبلها: المزوّدون يعيدون إرسال الـ webhook حتى تعيد 200، فخزّن معرّف الحدث عندهم وتجاهل التكرار.",
+            "المهام الخلفية: مشغّل مهام ينهار في منتصف التنفيذ سيعيد تشغيل المهمة، فجسم المهمة يحتاج مفتاحاً تماماً كما يحتاجه endpoint.",
+            "الـ APIs العامة: وثّق اسم الـ header والنطاق ومدة الـ TTL ومعنى 409 و 422، لأن العملاء سيبنون منطق إعادة المحاولة على قواعدك."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "If the resource has a natural unique identity — one payment per order, one signup per email — put a unique constraint on that instead. It is simpler, needs no extra table, and protects you even against duplicates that arrive through a completely different code path.",
+          ar: "إذا كان للمورد هوية فريدة طبيعية — payment واحد لكل order، أو تسجيل واحد لكل بريد — فضع unique constraint عليها بدلاً من ذلك. إنها أبسط، ولا تحتاج جدولاً إضافياً، وتحميك حتى من تكرار يصل عبر مسار كود مختلف تماماً."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Latency", ar: "زمن الاستجابة" },
+              v: {
+                en: "One extra insert plus one index lookup on the retry path: about 1-2 ms. Against a 300 ms card call that is noise. Do not store the response body if it is megabytes — store a pointer to it instead.",
+                ar: "إدراج إضافي واحد مع بحث واحد في الـ index على مسار إعادة المحاولة: حوالي 1-2 ms. أمام استدعاء بطاقة يستغرق 300 ms هذا ضجيج. ولا تخزّن جسم الرد إذا كان بحجم megabytes — خزّن مؤشراً إليه بدلاً منه."
+              }
+            },
+            {
+              k: { en: "Database", ar: "قاعدة البيانات" },
+              v: {
+                en: "The table grows by one row per protected request. At 40,000 charges a day with a 24-hour TTL it stays around 40,000 rows — small. Without cleanup it becomes 15 million rows a year and the index stops fitting in memory.",
+                ar: "الجدول ينمو بصف واحد لكل request محمي. عند 40,000 عملية يومياً مع TTL مدته 24 ساعة يبقى حوالي 40,000 صف — حجم صغير. وبلا تنظيف يصبح 15 مليون صف سنوياً ويتوقف الـ index عن الاستيعاب في الذاكرة."
+              }
+            },
+            {
+              k: { en: "Memory", ar: "الذاكرة" },
+              v: {
+                en: "Response bodies dominate the row size. A 2 KB JSON body times 40,000 rows is about 80 MB of table data — fine. Storing full HTML or file contents here is not.",
+                ar: "أجسام الردود هي ما يحدّد حجم الصف. جسم JSON بحجم 2 KB مضروباً في 40,000 صف يعطي حوالي 80 MB من بيانات الجدول — مقبول. أما تخزين HTML كامل أو محتوى ملفات هنا فغير مقبول."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "قابلية التوسّع" },
+              v: {
+                en: "The unique index is the serialisation point: two requests with the same key are ordered by the database, everything else runs in parallel. Because keys are random, the writes spread across the index rather than piling on one page.",
+                ar: "الـ unique index هو نقطة التسلسل: requestان بنفس المفتاح يرتّبهما الـ database، وكل ما عداهما يعمل بالتوازي. ولأن المفاتيح عشوائية، تتوزّع الكتابات على الـ index بدل أن تتكدّس على صفحة واحدة."
+              }
+            },
+            {
+              k: { en: "Network", ar: "الشبكة" },
+              v: {
+                en: "Replaying a stored response costs one round trip and saves the whole downstream call. A retry that would have taken 300 ms and charged a card returns in about 5 ms and charges nothing.",
+                ar: "إعادة إرسال رد مخزَّن تكلّف رحلة ذهاب وإياب واحدة وتوفّر الاستدعاء الخارجي بالكامل. إعادة محاولة كانت ستستغرق 300 ms وتخصم من بطاقة تعود في حوالي 5 ms ولا تخصم شيئاً."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "SELECT [key], COUNT(*) FROM payments GROUP BY idempotency_key HAVING COUNT(*) > 1 — any row returned is a duplicate that got through, and tells you the protection is not working.",
+            "Log the key, the outcome (created / replayed / conflict / hash-mismatch) and the user id on every request; then count outcomes per hour to see how often retries actually happen.",
+            "SELECT COUNT(*) FROM idempotency_keys WHERE status = 'in_progress' AND created_at < DATEADD(minute,-5,GETUTCDATE()) — rows stuck here mean a process died mid-work and clients are getting 409 forever.",
+            "In SQL Server, watch for error numbers 2601 and 2627 in your logs — those are the duplicate-key errors. Seeing them is normal and healthy; seeing zero of them means no client is retrying, which usually means no client is sending the header.",
+            "Reproduce it on purpose: fire the same request twice in parallel with `curl ... & curl ... & wait` and confirm you get exactly one 201 and one 409 or replayed 201."
+          ],
+          ar: [
+            "SELECT [key], COUNT(*) FROM payments GROUP BY idempotency_key HAVING COUNT(*) > 1 — أي صف يعود هو تكرار نفذ فعلاً، ويخبرك أن الحماية لا تعمل.",
+            "سجّل المفتاح والنتيجة (created / replayed / conflict / hash-mismatch) ومعرّف الـ user في كل request؛ ثم اعدّ النتائج لكل ساعة لترى كم مرة تحدث إعادة المحاولة فعلاً.",
+            "SELECT COUNT(*) FROM idempotency_keys WHERE status = 'in_progress' AND created_at < DATEADD(minute,-5,GETUTCDATE()) — الصفوف العالقة هنا تعني أن process مات في منتصف العمل والعملاء يحصلون على 409 بلا نهاية.",
+            "في SQL Server راقب رقمي الخطأ 2601 و 2627 في الـ logs — هذان خطآ تكرار المفتاح. ظهورهما طبيعي وصحي؛ وعدم ظهورهما إطلاقاً يعني أن لا client يعيد المحاولة، وغالباً يعني أن لا client يرسل الـ header.",
+            "أعد إنتاج المشكلة عمداً: أطلق نفس الـ request مرتين بالتوازي بـ `curl ... & curl ... & wait` وتأكد أنك تحصل على 201 واحد فقط مع 409 أو 201 مُعاد."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Put the outcome of the idempotency check into a metric with a label for created / replayed / conflict / mismatch. A sudden rise in 'replayed' usually means a downstream dependency got slow and clients started timing out — the metric warns you about the slowdown before the latency alert does.",
+          ar: "ضع نتيجة فحص الـ idempotency في مقياس مع تسمية لكل من created / replayed / conflict / mismatch. الارتفاع المفاجئ في replayed يعني غالباً أن اعتمادية خارجية أصبحت بطيئة وبدأت مهل العملاء تنتهي — فينبّهك المقياس إلى التباطؤ قبل تنبيه زمن الاستجابة."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "Anywhere a request costs real money or creates something a human will notice, the industry standard is a client-supplied key on the header. Payment providers document it as Idempotency-Key and keep it for 24 hours; ride-hailing and food-delivery apps use it so a tap on an unreliable mobile connection never books two rides. The pattern shows up under different names — dedup id, message id, request id — but the mechanism is the same: a stable identifier plus a store of what has already been handled.",
+          ar: "في أي مكان يكلّف فيه الـ request مالاً حقيقياً أو ينشئ شيئاً سيلاحظه إنسان، المعيار في الصناعة هو مفتاح يرسله الـ client في الـ header. مزوّدو الدفع يوثّقونه باسم Idempotency-Key ويحتفظون به 24 ساعة؛ وتطبيقات نقل الركاب وتوصيل الطعام تستخدمه حتى لا تحجز ضغطة واحدة على اتصال ضعيف رحلتين. النمط يظهر بأسماء مختلفة — dedup id أو message id أو request id — لكن الآلية واحدة: معرّف ثابت مع مخزن لما تمت معالجته."
+        },
+        {
+          t: "ul",
+          en: [
+            "Payment platforms: one key per checkout attempt, so a customer on a weak connection is charged once no matter how many times the app retries.",
+            "Ticketing and booking systems: the key stops the same seat being reserved twice when the confirmation page fails to load.",
+            "Messaging and notification services: a dedup id prevents the same alert being sent five times when the sending worker restarts.",
+            "Banking and transfer rails: transfers carry an end-to-end reference, and the receiving bank rejects a repeat of the same reference outright."
+          ],
+          ar: [
+            "منصات الدفع: مفتاح واحد لكل محاولة شراء، فيُخصم من العميل ذي الاتصال الضعيف مرة واحدة مهما أعاد التطبيق المحاولة.",
+            "أنظمة التذاكر والحجز: المفتاح يمنع حجز نفس المقعد مرتين عندما تفشل صفحة التأكيد في التحميل.",
+            "خدمات الرسائل والإشعارات: معرّف إزالة التكرار يمنع إرسال نفس التنبيه خمس مرات عند إعادة تشغيل الـ worker المرسِل.",
+            "أنظمة التحويلات البنكية: التحويلات تحمل مرجعاً من طرف إلى طرف، والبنك المستقبِل يرفض تكرار نفس المرجع مباشرة."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Add an idempotency_keys table with a unique index on (user_id, endpoint, key), and make POST /payments reject a request that arrives without an Idempotency-Key header with 400. You are done when a request with no header gets 400 and a request with one gets 201.",
+          ar: "أضف جدول idempotency_keys مع unique index على (user_id, endpoint, key)، واجعل POST /payments يرفض بـ 400 أي request يصل بلا header اسمه Idempotency-Key. تنتهي عندما يحصل request بلا header على 400 و request معه على 201."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Implement insert-first with duplicate-key handling: the second call with the same key must return the stored response body and the same payment id, and must not call the card service again. Prove it with a test that asserts the fake card service was called exactly once.",
+          ar: "نفّذ أسلوب الإدراج أولاً مع معالجة خطأ تكرار المفتاح: الاستدعاء الثاني بنفس المفتاح يجب أن يعيد جسم الرد المخزَّن ونفس معرّف الـ payment، وألا يستدعي خدمة البطاقات مرة أخرى. أثبت ذلك باختبار يتحقق أن خدمة البطاقات الوهمية استُدعيت مرة واحدة بالضبط."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Fire 50 concurrent requests with the same key using Parallel.ForEachAsync against a real database. Exactly one must return 201 and the rest must return 409 or a replayed 201; the payments table must hold exactly one row. Then add the request-hash check and confirm a different body with the same key gets 422.",
+          ar: "أطلق 50 request متزامناً بنفس المفتاح باستخدام Parallel.ForEachAsync على database حقيقي. يجب أن يعيد واحد فقط 201 وأن يعيد الباقي 409 أو 201 مُعاداً؛ وجدول payments يجب أن يحوي صفاً واحداً بالضبط. ثم أضف فحص hash الجسم وتأكد أن جسماً مختلفاً بنفس المفتاح يحصل على 422."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Turn the whole thing into reusable middleware driven by an [Idempotent(ttlHours: 24)] attribute, so a handler needs no idempotency code of its own. It must buffer and replay the response, handle the in-progress case, and expose a metric labelled created / replayed / conflict / mismatch. You are done when you can protect a second, unrelated endpoint by adding one attribute and nothing else.",
+          ar: "حوّل الأمر كله إلى middleware قابل لإعادة الاستخدام يقوده attribute بصيغة [Idempotent(ttlHours: 24)]، بحيث لا يحتاج الـ handler إلى أي كود idempotency خاص به. يجب أن يخزّن الرد ويعيد إرساله، ويعالج حالة العمل الجاري، ويُخرج مقياساً بتسميات created / replayed / conflict / mismatch. تنتهي عندما تستطيع حماية endpoint ثانٍ غير مرتبط بإضافة attribute واحد فقط لا غير."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "Stripe API — idempotent requests", ar: "Stripe API — الـ requests الـ idempotent" },
+          url: "https://docs.stripe.com/api/idempotent_requests",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "RFC 9110 — HTTP semantics, idempotent methods", ar: "RFC 9110 — دلالات HTTP والـ methods الـ idempotent" },
+          url: "https://www.rfc-editor.org/rfc/rfc9110.html#name-idempotent-methods",
+          meta: { en: "Spec", ar: "مواصفة" }
+        },
+        {
+          t: "ref",
+          label: { en: "AWS Builders' Library — timeouts, retries and backoff with jitter", ar: "AWS Builders' Library — المهل وإعادة المحاولة والتراجع مع jitter" },
+          url: "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+          meta: { en: "Article", ar: "مقال" }
+        },
+        {
+          t: "ref",
+          label: { en: "Microsoft — duplicate detection in Azure Service Bus", ar: "Microsoft — اكتشاف التكرار في Azure Service Bus" },
+          url: "https://learn.microsoft.com/en-us/azure/service-bus-messaging/duplicate-detection",
+          meta: { en: "Docs", ar: "توثيق" }
+        }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: {
+        en: "Who should generate the idempotency key?",
+        ar: "من الذي يجب أن ينشئ الـ idempotency key؟"
+      },
+      options: [
+        { en: "The server, at the start of the handler", ar: "الـ server، في بداية الـ handler" },
+        { en: "The client, once per business action, reused on every retry", ar: "الـ client، مرة واحدة لكل عملية أعمال، ويُعاد استخدامه في كل إعادة محاولة" },
+        { en: "The load balancer, from the connection id", ar: "الـ load balancer، من معرّف الاتصال" },
+        { en: "The database, as an auto-increment column", ar: "الـ database، كعمود ترقيم تلقائي" }
+      ],
+      correct: 1,
+      why: {
+        en: "Only the client knows that a retry is the same user action as the earlier attempt. A server-generated key is different on every call, so nothing ever matches.",
+        ar: "الـ client وحده يعرف أن إعادة المحاولة هي نفس عملية المستخدم السابقة. المفتاح الذي ينشئه الـ server يختلف في كل استدعاء، فلا يتطابق شيء أبداً."
+      }
+    },
+    {
+      q: {
+        en: "Why is 'check if the key exists, then insert' unsafe?",
+        ar: "لماذا يُعدّ أسلوب «افحص وجود المفتاح ثم أدرج» غير آمن؟"
+      },
+      options: [
+        { en: "It is too slow for high traffic", ar: "إنه بطيء جداً للحمل العالي" },
+        { en: "It cannot store the response body", ar: "لا يستطيع تخزين جسم الرد" },
+        { en: "Two concurrent copies can both see nothing and both insert", ar: "نسختان متزامنتان قد تريان لا شيء وتُدرجان معاً" },
+        { en: "It requires a distributed lock service", ar: "يحتاج خدمة قفل موزّعة" }
+      ],
+      correct: 2,
+      why: {
+        en: "The check and the insert are separate steps. Two requests can both run the check before either runs the insert, so both proceed. Inserting first and catching the duplicate-key error removes the gap.",
+        ar: "الفحص والإدراج خطوتان منفصلتان. قد ينفّذ requestان الفحص قبل أن ينفّذ أي منهما الإدراج، فيمضي كلاهما. الإدراج أولاً والتقاط خطأ تكرار المفتاح يزيل الفجوة."
+      }
+    },
+    {
+      q: {
+        en: "A retry arrives while the first request is still charging the card. What is the best response?",
+        ar: "تصل إعادة محاولة بينما الـ request الأول ما زال يخصم من البطاقة. ما أفضل رد؟"
+      },
+      options: [
+        { en: "500, so the client stops", ar: "500، ليتوقف الـ client" },
+        { en: "201 with an empty body", ar: "201 بجسم فارغ" },
+        { en: "Block the request until the first one finishes", ar: "احجب الـ request حتى ينتهي الأول" },
+        { en: "409 Conflict with a Retry-After header", ar: "409 Conflict مع header اسمه Retry-After" }
+      ],
+      correct: 3,
+      why: {
+        en: "409 with Retry-After tells the client the same work is in flight and to ask again shortly. Blocking ties up a connection under load, and 201 with an empty body lies about a result that does not exist yet.",
+        ar: "الرد 409 مع Retry-After يخبر الـ client أن نفس العمل قيد التنفيذ وأن يسأل بعد قليل. والحجب يشغل اتصالاً تحت الحمل، و 201 بجسم فارغ يكذب بشأن نتيجة لم توجد بعد."
+      }
+    },
+    {
+      q: {
+        en: "Why store a hash of the request body next to the key?",
+        ar: "لماذا نخزّن hash لجسم الـ request بجانب المفتاح؟"
+      },
+      options: [
+        { en: "To compress the stored response", ar: "لضغط الرد المخزَّن" },
+        { en: "To catch a client that reused one key for different requests", ar: "لكشف client أعاد استخدام مفتاح واحد لـ requests مختلفة" },
+        { en: "To make the unique index smaller", ar: "لتصغير حجم الـ unique index" },
+        { en: "To let the key expire faster", ar: "لجعل المفتاح ينتهي أسرع" }
+      ],
+      correct: 1,
+      why: {
+        en: "Without the hash, a client that sends one fixed key for every charge gets the first stored response replayed forever and believes all its later charges succeeded. Comparing hashes lets the server return 422 and expose the bug immediately.",
+        ar: "بدون الـ hash، الـ client الذي يرسل مفتاحاً ثابتاً لكل عملية خصم يحصل على الرد الأول المخزَّن إلى الأبد ويظن أن كل عملياته اللاحقة نجحت. مقارنة الـ hash تتيح للـ server إرجاع 422 وكشف الخلل فوراً."
+      }
+    },
+    {
+      q: {
+        en: "What does 'exactly-once' realistically mean in a distributed system?",
+        ar: "ماذا تعني exactly-once واقعياً في نظام موزّع؟"
+      },
+      options: [
+        { en: "The network guarantees a message is delivered once", ar: "الشبكة تضمن تسليم الرسالة مرة واحدة" },
+        { en: "At-least-once delivery plus deduplication at the receiver", ar: "at-least-once delivery مع إزالة التكرار عند المستقبِل" },
+        { en: "At-most-once delivery with no retries", ar: "at-most-once delivery بلا إعادة محاولة" },
+        { en: "A two-phase commit across every service", ar: "two-phase commit عبر كل الخدمات" }
+      ],
+      correct: 1,
+      why: {
+        en: "The sender cannot tell a lost message from a lost reply, so it must retry and the message can arrive more than once. Deduplicating at the receiver makes the effect happen once — effectively-once, which is what people mean by exactly-once.",
+        ar: "المرسل لا يستطيع التفريق بين رسالة ضاعت ورد ضاع، فهو مضطر لإعادة المحاولة وقد تصل الرسالة أكثر من مرة. إزالة التكرار عند المستقبِل تجعل الأثر يحدث مرة واحدة — effectively-once، وهو ما يقصده الناس بـ exactly-once."
+      }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: timeouts & circuit breakers
+
+const timeoutsLesson = {
+  id: "timeouts",
+  moduleId: "distributed",
+  title: { en: "Timeouts and circuit breakers", ar: "المُهل والـ circuit breakers" },
+  summary: {
+    en: "A timeout is the promise that a call will end. A circuit breaker is the promise that you will stop making a call that keeps failing.",
+    ar: "الـ timeout هو الوعد بأن الطلب سينتهي. الـ circuit breaker هو الوعد بأنك ستتوقّف عن طلب يفشل باستمرار."
+  },
+  mins: 16,
+  sections: [
+    { key: "why", blocks: [
+      { t: "p",
+        en: "A timeout is a rule that says: if this call has not answered within N milliseconds, give up and treat it as failed. A circuit breaker is a rule one level above that: if the same call has failed many times in a row, stop even trying for a while. Together they stop one slow dependency from freezing your whole service.",
+        ar: "الـ timeout هو قاعدة تقول: إذا لم يرد هذا الطلب خلال N ميلي ثانية، توقّف واعتبره فاشلاً. والـ circuit breaker قاعدة أعلى منه: إذا فشل نفس الطلب عدة مرات متتالية، توقّف عن محاولته أصلاً لفترة. الاثنان معاً يمنعان dependency واحدة بطيئة من تجميد الخدمة كلها."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Dependency", ar: "Dependency" },
+          v: { en: "Any other thing your code must call to finish its work: another HTTP service, a database, a cache, a queue.", ar: "أي شيء آخر يجب أن يستدعيه الكود ليكمل عمله: خدمة HTTP أخرى، أو database، أو cache، أو queue." } },
+        { k: { en: "Timeout", ar: "Timeout" },
+          v: { en: "A maximum wait. When it expires the caller stops waiting and raises an error. The remote side may still be working.", ar: "أقصى مدة انتظار. عند انتهائها يتوقّف المستدعي عن الانتظار ويرمي خطأ. الطرف البعيد قد يكون ما زال يعمل." } },
+        { k: { en: "Circuit breaker", ar: "Circuit breaker" },
+          v: { en: "A small counter in front of a call. After enough failures it fails new calls instantly instead of sending them.", ar: "عدّاد صغير أمام الاستدعاء. بعد عدد كافٍ من حالات الفشل يُفشل الطلبات الجديدة فوراً بدل إرسالها." } },
+        { k: { en: "Fail fast", ar: "Fail fast" },
+          v: { en: "Returning an error in microseconds instead of holding the caller for seconds. Fast errors are cheap; slow errors are expensive.", ar: "إرجاع خطأ خلال ميكروثانية بدل حجز المستدعي لثوانٍ. الأخطاء السريعة رخيصة، والبطيئة مكلفة." } },
+        { k: { en: "Timeout budget", ar: "Timeout budget" },
+          v: { en: "The total time a request is allowed to take, split among the calls it makes, so the parts add up to less than the whole.", ar: "الوقت الكلي المسموح لطلب واحد، مقسّم على الاستدعاءات التي يقوم بها، بحيث يكون مجموع الأجزاء أقل من الكل." } },
+        { k: { en: "Bulkhead", ar: "Bulkhead" },
+          v: { en: "A cap on how many calls to one dependency may be in flight at once, so it cannot consume every thread or connection.", ar: "حد أقصى لعدد الاستدعاءات المتزامنة نحو dependency واحدة، حتى لا تستهلك كل الـ threads أو الـ connections." } }
+      ]},
+      { t: "p",
+        en: "Here is the running example for the whole lesson. An orders API serves GET /orders/{id}. To build the response it calls an internal Pricing service over HTTP. Normally Pricing answers in 40 ms. One afternoon Pricing hits a bad database plan and starts answering in 30 seconds instead. The orders API has no timeout on that call, so every request that arrives simply waits. Within two minutes the orders API stops answering anything at all — including endpoints that never touch Pricing.",
+        ar: "هذا هو المثال الجاري في الدرس كله. لدينا orders API يخدم GET /orders/{id}. لبناء الرد يستدعي خدمة داخلية اسمها Pricing عبر HTTP. في الوضع الطبيعي يرد Pricing خلال 40 ms. في أحد الأيام يقع Pricing على plan سيئ في الـ database ويصبح يرد بعد 30 ثانية. لا يوجد timeout على ذلك الاستدعاء في orders API، فكل طلب يصل ينتظر فقط. خلال دقيقتين يتوقّف orders API عن الرد على أي شيء — حتى الـ endpoints التي لا تلمس Pricing إطلاقاً."
+      },
+      { t: "p",
+        en: "Think of a call centre with twenty agents. Each agent who calls a supplier and stays on hold is an agent who cannot answer a new customer. If nobody hangs up after two minutes, all twenty agents end up on hold and the queue of customers grows without limit. The timeout is the rule \"hang up after two minutes\". The circuit breaker is the supervisor saying \"the supplier is down, stop calling them for the next half hour and tell customers now\". Your threads and HTTP connections are the agents; the customers are incoming requests.",
+        ar: "تخيّل مركز اتصال فيه عشرون موظفاً. كل موظف يتصل بمورّد ويبقى في الانتظار هو موظف لا يستطيع الرد على زبون جديد. إذا لم يغلق أحد الخط بعد دقيقتين، ينتهي الأمر بالعشرين كلهم في الانتظار ويكبر طابور الزبائن بلا حدود. الـ timeout هو قاعدة «أغلق الخط بعد دقيقتين». والـ circuit breaker هو المشرف الذي يقول «المورّد معطّل، توقّفوا عن الاتصال به نصف ساعة وأخبروا الزبائن الآن». الـ threads والـ HTTP connections عندك هم الموظفون، والطلبات الواردة هي الزبائن."
+      },
+      { t: "callout", kind: "note",
+        en: "A timeout does not cancel the work on the other side. When your client gives up on Pricing, Pricing usually keeps computing and may still write to its database. That is why timeouts and idempotency belong together.",
+        ar: "الـ timeout لا يلغي العمل عند الطرف الآخر. عندما يتوقّف عميلك عن انتظار Pricing، يستمر Pricing غالباً في الحساب وقد يكتب في الـ database. لهذا السبب يجب أن يسير الـ timeout مع الـ idempotency."
+      }
+    ]},
+    { key: "problem", blocks: [
+      { t: "p",
+        en: "The damage from a slow dependency is not linear — it multiplies. There is a simple rule for how many calls are in flight at the same time: arrival rate multiplied by how long each call takes. The orders API receives 200 requests per second. While Pricing answers in 40 ms (0.04 s), that is 200 × 0.04 = 8 calls in flight at any moment. When Pricing slows to 30 s, the same traffic gives 200 × 30 = 6000 calls in flight. Nothing about your traffic changed. Only the wait did, and in-flight work grew 750 times.",
+        ar: "الضرر الناتج عن dependency بطيئة ليس خطياً — بل يتضاعف. هناك قاعدة بسيطة لعدد الاستدعاءات الجارية في نفس اللحظة: معدّل الوصول مضروباً في مدة كل استدعاء. يستقبل orders API عدد 200 طلب في الثانية. عندما يرد Pricing خلال 40 ms أي 0.04 ثانية، يكون العدد 200 × 0.04 = 8 استدعاءات جارية في أي لحظة. وعندما يبطؤ Pricing إلى 30 ثانية يصبح 200 × 30 = 6000 استدعاء جارٍ. لم يتغيّر شيء في الترافيك، تغيّر الانتظار فقط، فنما العمل الجاري 750 ضعفاً."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Sockets", ar: "Sockets" },
+          v: { en: "6000 open TCP connections to one host. A socket is one open network channel; each one uses a port and kernel buffers, and ports run out.", ar: "6000 اتصال TCP مفتوح نحو host واحد. الـ socket قناة شبكية مفتوحة، وكل واحدة تستهلك port وbuffers في الـ kernel، والـ ports تنفد." } },
+        { k: { en: "Memory", ar: "الذاكرة" },
+          v: { en: "Each pending request keeps its buffers and objects alive. 6000 × roughly 40 KB is about 240 MB that the garbage collector cannot reclaim.", ar: "كل طلب معلّق يبقي buffers وobjects حية. 6000 × نحو 40 KB يساوي تقريباً 240 MB لا يستطيع الـ garbage collector تحريرها." } },
+        { k: { en: "Threads (only if you block)", ar: "Threads (فقط إذا حجبت)" },
+          v: { en: "With await, waiting costs no thread. With .Result or .Wait(), each wait pins one thread and the thread pool is exhausted in seconds.", ar: "مع await لا يكلّف الانتظار أي thread. أما مع ‎.Result أو ‎.Wait()‎ فكل انتظار يحجز thread وينفد الـ thread pool خلال ثوانٍ." } },
+        { k: { en: "Health checks", ar: "Health checks" },
+          v: { en: "The load balancer's health probe also queues behind the backlog, times out, and the instance is pulled out — traffic shifts to the next instance and kills it too.", ar: "فحص الصحة من الـ load balancer ينتظر أيضاً خلف التراكم، فينتهي وقته وتُسحب النسخة من الخدمة — فينتقل الترافيك للنسخة التالية ويقتلها هي أيضاً." } }
+      ]},
+      { t: "p",
+        en: "The last row is the part people miss. The failure spreads. Endpoints that never call Pricing get slow too, because they share the same process, the same memory and the same request queue. This is called cascading failure: one dependency becomes unhealthy, and everything that depends on the caller becomes unhealthy in turn. Adding a 500 ms timeout to the Pricing call changes 6000 in-flight calls to 200 × 0.5 = 100, and turns a total outage into a partial one where /orders/{id} returns a degraded response and everything else keeps working.",
+        ar: "السطر الأخير هو ما يغفل عنه الناس. الفشل ينتشر. حتى الـ endpoints التي لا تستدعي Pricing تصبح بطيئة، لأنها تشترك في نفس الـ process ونفس الذاكرة ونفس طابور الطلبات. يُسمّى هذا cascading failure: تصبح dependency واحدة غير سليمة، فيصبح كل ما يعتمد على المستدعي غير سليم بدوره. إضافة timeout قدره 500 ms على استدعاء Pricing تحوّل 6000 استدعاء جارٍ إلى 200 × 0.5 = 100، وتحوّل انقطاعاً كاملاً إلى انقطاع جزئي يرجع فيه ‎/orders/{id}‎ رداً منقوصاً بينما يستمر الباقي في العمل."
+      }
+    ]},
+    { key: "internals", blocks: [
+      { t: "p",
+        en: "A timeout in .NET is a timer plus a cancellation signal. You create a CancellationTokenSource — an object that owns a flag other code can watch — and tell it to trip after a set delay. You pass its CancellationToken into the call. When the timer fires, the token is marked cancelled, the socket read is aborted, and the awaiting code receives an OperationCanceledException. Nothing polls; the runtime schedules one timer callback per source.",
+        ar: "الـ timeout في .NET هو مؤقّت مع إشارة إلغاء. تنشئ CancellationTokenSource — كائن يملك علماً يستطيع كود آخر مراقبته — وتطلب منه أن يُفعّل بعد مدة محدّدة. ثم تمرّر الـ CancellationToken الخاص به إلى الاستدعاء. عندما ينطلق المؤقّت يُعلَّم الـ token كملغى، ويُقطع القراءة من الـ socket، ويستقبل الكود المنتظر استثناء OperationCanceledException. لا يوجد أي polling، بل يجدول الـ runtime callback واحداً للمؤقّت لكل source."
+      },
+      { t: "p",
+        en: "There is a default you should know: HttpClient.Timeout is 100 seconds unless you change it. That covers the whole call including reading the response body, and it is far too long for a service-to-service call. If your code never sets a timeout, this 100 seconds is the timeout you actually have.",
+        ar: "هناك قيمة افتراضية يجب أن تعرفها: قيمة HttpClient.Timeout هي 100 ثانية إن لم تغيّرها. وهي تغطي الاستدعاء كله بما فيه قراءة جسم الرد، وهي مدة طويلة جداً لاستدعاء بين خدمتين. إذا لم يضبط كودك أي timeout فهذه المئة ثانية هي الـ timeout الفعلي لديك."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "A per-call timeout that also respects the caller giving up", ar: "timeout لكل استدعاء يحترم أيضاً انسحاب المستدعي" },
+        code: "// HttpContext.RequestAborted is cancelled when the browser or caller\n// disconnects. We want EITHER of the two signals to stop the call.\npublic async Task<PriceDto?> GetPriceAsync(int orderId, CancellationToken callerToken)\n{\n    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));\n    using var linked = CancellationTokenSource.CreateLinkedTokenSource(\n        callerToken, timeoutCts.Token);\n\n    try\n    {\n        var response = await _http.GetAsync($\"/prices/{orderId}\", linked.Token);\n        response.EnsureSuccessStatusCode();\n        return await response.Content.ReadFromJsonAsync<PriceDto>(linked.Token);\n    }\n    catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)\n    {\n        // Our own 500 ms budget expired. This is a dependency failure.\n        _logger.LogWarning(\"Pricing timed out after 500ms for order {OrderId}\", orderId);\n        return null;   // caller decides what a missing price means\n    }\n    // If callerToken fired instead, the exception bubbles: the client is gone,\n    // so there is nobody left to answer and no point logging an error.\n}"
+      },
+      { t: "p",
+        en: "Notice the exception filter — the `when (...)` clause. Both a timeout and a disconnected client arrive as the same exception type, so you must ask which token tripped. Treating a client disconnect as a dependency failure is how teams end up with error dashboards full of noise every time a user closes a tab.",
+        ar: "لاحظ الـ exception filter، أي جملة ‎when (...)‎. الـ timeout وانقطاع العميل يصلان كنفس نوع الاستثناء، لذا يجب أن تسأل أي token هو الذي انطلق. اعتبار انقطاع العميل فشلاً في dependency هو ما يجعل لوحات الأخطاء عند بعض الفرق مليئة بالضجيج كلما أغلق مستخدم تبويبه."
+      },
+      { t: "p",
+        en: "Now the circuit breaker. The name comes from the fuse box in a house: when a circuit draws too much current, the breaker snaps open and cuts power to that line so the wiring does not burn. It stays open until someone resets it. The software version is the same idea — the \"current\" is the failure rate, and cutting power means refusing to send calls. It is a small state machine sitting in front of one dependency, with three states.",
+        ar: "ننتقل الآن إلى الـ circuit breaker. الاسم مأخوذ من لوحة الكهرباء في المنزل: عندما يسحب خط تياراً زائداً يقفز القاطع ويفصل الكهرباء عن ذلك الخط حتى لا تحترق الأسلاك، ويبقى مفصولاً حتى يعيده أحد. النسخة البرمجية هي نفس الفكرة — «التيار» هنا هو معدّل الفشل، وفصل الكهرباء يعني رفض إرسال الاستدعاءات. إنه state machine صغير يجلس أمام dependency واحدة، وله ثلاث حالات."
+      },
+      { t: "kv", rows: [
+        { k: { en: "Closed (normal)", ar: "Closed (طبيعي)" },
+          v: { en: "Calls pass through. The breaker counts outcomes over a rolling window — the last N seconds of traffic.", ar: "الاستدعاءات تمر. يعدّ الـ breaker النتائج على نافذة متحرّكة، أي آخر N ثانية من الترافيك." } },
+        { k: { en: "Open (tripped)", ar: "Open (مفصول)" },
+          v: { en: "Every call fails instantly with BrokenCircuitException, without touching the network. Costs microseconds instead of 500 ms.", ar: "كل استدعاء يفشل فوراً بـ BrokenCircuitException دون لمس الشبكة. يكلّف ميكروثوانٍ بدل 500 ms." } },
+        { k: { en: "Half-open (testing)", ar: "Half-open (اختبار)" },
+          v: { en: "After the break duration, one trial call is allowed through. Success closes the breaker; failure opens it again for another break duration.", ar: "بعد انتهاء مدة الفصل يُسمح باستدعاء تجريبي واحد. نجاحه يعيد الـ breaker إلى Closed، وفشله يفتحه من جديد لمدة فصل أخرى." } },
+        { k: { en: "Failure ratio", ar: "Failure ratio" },
+          v: { en: "The trip condition. For example 50% failures within a 30-second window. Ratios beat plain counts because they scale with traffic.", ar: "شرط الفصل. مثلاً 50% فشل خلال نافذة 30 ثانية. النسب أفضل من العدّ المجرّد لأنها تتناسب مع حجم الترافيك." } },
+        { k: { en: "Minimum throughput", ar: "Minimum throughput" },
+          v: { en: "The smallest number of calls in the window before the ratio counts. Stops 2 failures out of 2 calls at 3 a.m. from tripping the breaker.", ar: "أقل عدد استدعاءات في النافذة قبل أن تُحتسب النسبة. يمنع فشل استدعاءين من أصل استدعاءين في الثالثة فجراً من فصل الـ breaker." } }
+      ]},
+      { t: "p",
+        en: "Trace one incident through the machine. At 14:00 Pricing slows down. Calls start hitting the 500 ms timeout, so the breaker records failures. At 14:00:12 the window holds 40 calls and 26 of them failed. That is a ratio of 65%, above the 50% threshold, on a sample larger than the minimum of 10 calls. The breaker opens. For the next 15 seconds every GetPriceAsync returns in about 20 microseconds with BrokenCircuitException, so in-flight calls drop to near zero and the orders API is responsive again with prices missing. At 14:00:27 the breaker goes half-open and lets one call through. Pricing is still sick, that call times out, and the breaker opens for another 15 seconds. At 14:04 Pricing recovers, the trial call succeeds, the breaker closes, and traffic resumes.",
+        ar: "لنتتبّع حادثة واحدة عبر هذه الآلة. في الساعة 14:00 يبطؤ Pricing. تبدأ الاستدعاءات في بلوغ الـ timeout عند 500 ms، فيسجّل الـ breaker حالات فشل. عند 14:00:12 تحتوي النافذة على 40 استدعاءً، فشل منها 26. هذه نسبة 65%، أي فوق عتبة الـ 50%، وعلى عيّنة أكبر من الحد الأدنى وهو 10 استدعاءات. فيفتح الـ breaker. خلال الـ 15 ثانية التالية يرجع كل GetPriceAsync خلال نحو 20 ميكروثانية بـ BrokenCircuitException، فتهبط الاستدعاءات الجارية إلى ما يقارب الصفر ويعود orders API سريع الاستجابة مع غياب الأسعار. عند 14:00:27 ينتقل الـ breaker إلى half-open ويسمح باستدعاء واحد. Pricing ما زال معطّلاً فينتهي وقت ذلك الاستدعاء، ويفتح الـ breaker 15 ثانية أخرى. عند 14:04 يتعافى Pricing، وينجح الاستدعاء التجريبي، ويغلق الـ breaker، ويعود الترافيك."
+      },
+      { t: "code", lang: "csharp",
+        label: { en: "Wiring timeout + retry + breaker with Polly v8 on a typed HttpClient", ar: "ربط timeout و retry و breaker باستخدام Polly v8 على typed HttpClient" },
+        code: "// Polly is the standard .NET resilience library; a \"pipeline\" is an\n// ordered list of strategies wrapped around the call.\nbuilder.Services.AddHttpClient<PricingClient>(c =>\n{\n    c.BaseAddress = new Uri(\"https://pricing.internal\");\n    c.Timeout = TimeSpan.FromSeconds(2);      // hard outer stop\n})\n.AddResilienceHandler(\"pricing\", pipeline =>\n{\n    // 1. Innermost: the per-ATTEMPT timeout. Each try gets 500 ms.\n    pipeline.AddTimeout(TimeSpan.FromMilliseconds(500));\n\n    // 2. Retry sits OUTSIDE the timeout, so it retries a timed-out attempt.\n    pipeline.AddRetry(new HttpRetryStrategyOptions\n    {\n        MaxRetryAttempts = 2,\n        Delay            = TimeSpan.FromMilliseconds(100),\n        BackoffType      = DelayBackoffType.Exponential,\n        UseJitter        = true               // spread retries apart\n    });\n\n    // 3. Outermost: the breaker sees the final outcome of retries.\n    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions\n    {\n        FailureRatio       = 0.5,             // 50% of the window failed\n        SamplingDuration   = TimeSpan.FromSeconds(30),\n        MinimumThroughput  = 10,              // ignore tiny samples\n        BreakDuration      = TimeSpan.FromSeconds(15)\n    });\n});"
+      },
+      { t: "p",
+        en: "Order matters and is easy to get backwards. The timeout must be inside the retry, so each attempt is bounded separately; if it were outside, one 500 ms budget would have to cover all three attempts. The breaker must be outside the retry, so it judges \"did this call ultimately succeed\" rather than counting each individual attempt and tripping three times faster than you intended. Also note the two timeouts: HttpClient.Timeout at 2 s is the safety net for the whole operation, and the 500 ms strategy is the per-attempt budget. Three attempts of 500 ms plus backoff waits fit under 2 s.",
+        ar: "الترتيب مهم ومن السهل عكسه. يجب أن يكون الـ timeout داخل الـ retry حتى تكون كل محاولة محدودة بذاتها؛ ولو كان خارجه لغطّت ميزانية 500 ms واحدة المحاولات الثلاث كلها. ويجب أن يكون الـ breaker خارج الـ retry ليحكم على «هل نجح هذا الاستدعاء في النهاية» بدل عدّ كل محاولة على حدة وفصل الدائرة أسرع ثلاث مرات مما تريد. لاحظ أيضاً وجود timeout اثنين: قيمة HttpClient.Timeout عند ثانيتين هي شبكة أمان للعملية كلها، والـ 500 ms هي ميزانية المحاولة الواحدة. ثلاث محاولات بـ 500 ms مع فترات التراجع تبقى تحت الثانيتين."
+      }
+    ]},
+    { key: "tradeoffs", blocks: [
+      { t: "tradeoff",
+        pros: {
+          en: [
+            "A slow dependency can no longer freeze the whole service — its damage is capped at the timeout value.",
+            "An open breaker returns errors in microseconds, so the caller stays healthy and can serve a fallback.",
+            "It removes load from a struggling dependency, giving it room to recover instead of drowning it.",
+            "Failures become visible and countable, instead of showing up as a mysterious latency graph."
+          ],
+          ar: [
+            "لم تعد dependency بطيئة قادرة على تجميد الخدمة كلها — ضررها محدود بقيمة الـ timeout.",
+            "الـ breaker المفتوح يرجع أخطاء خلال ميكروثوانٍ، فيبقى المستدعي سليماً ويستطيع تقديم بديل.",
+            "يزيح الحمل عن dependency متعثّرة فيعطيها مجالاً للتعافي بدل إغراقها.",
+            "يصبح الفشل مرئياً وقابلاً للعدّ بدل أن يظهر كرسم latency غامض."
+          ]
+        },
+        cons: {
+          en: [
+            "A timeout that is too tight turns healthy slow requests into errors — you fail work that would have succeeded.",
+            "The remote side keeps working after you give up, so a timed-out write may still commit.",
+            "An open breaker fails requests that would have worked, because it judges the dependency by a sample.",
+            "More moving parts to configure, and wrong numbers are worse than no breaker at all."
+          ],
+          ar: [
+            "الـ timeout الضيّق جداً يحوّل طلبات سليمة لكن بطيئة إلى أخطاء — تُفشل عملاً كان سينجح.",
+            "الطرف البعيد يواصل العمل بعد انسحابك، فقد تُثبَّت كتابة انتهى وقتها عندك.",
+            "الـ breaker المفتوح يُفشل طلبات كانت ستنجح، لأنه يحكم على الـ dependency من خلال عيّنة.",
+            "أجزاء متحرّكة أكثر تحتاج ضبطاً، والأرقام الخاطئة أسوأ من غياب الـ breaker أصلاً."
+          ]
+        },
+        limits: {
+          en: [
+            "The breaker state lives in one process, so ten instances trip independently and at different moments.",
+            "It protects the caller, not the dependency — it only reduces load as a side effect.",
+            "It cannot distinguish \"this dependency is down\" from \"this one query is slow\" unless you break it per endpoint.",
+            "It does nothing for a dependency that returns wrong answers quickly."
+          ],
+          ar: [
+            "حالة الـ breaker تعيش داخل process واحد، فعشر نسخ تفصل الدائرة كل واحدة بمفردها وفي لحظة مختلفة.",
+            "يحمي المستدعي لا الـ dependency — تخفيف الحمل مجرد أثر جانبي.",
+            "لا يفرّق بين «هذه الـ dependency معطّلة» و«هذا الاستعلام تحديداً بطيء» إلا إذا فصلت breaker لكل endpoint.",
+            "لا يفيد شيئاً مع dependency ترجع إجابات خاطئة بسرعة."
+          ]
+        },
+        alts: {
+          en: [
+            "Bulkhead / concurrency limit: cap in-flight calls to one dependency instead of judging failure rates.",
+            "Load shedding: reject new incoming requests when your own queue is too deep.",
+            "Hedged requests: if the first call is slower than usual, send a second copy and take whichever answers first — costs extra traffic.",
+            "Cached or stale fallback data, which turns the failure into a correctness trade rather than an error."
+          ],
+          ar: [
+            "Bulkhead أو حد للتزامن: تحديد عدد الاستدعاءات الجارية نحو dependency بدل الحكم على نسب الفشل.",
+            "Load shedding: رفض الطلبات الواردة الجديدة عندما يصبح طابورك عميقاً جداً.",
+            "Hedged requests: إذا كان الاستدعاء الأول أبطأ من المعتاد أرسل نسخة ثانية وخذ أسرع رد — بتكلفة ترافيك إضافي.",
+            "بيانات بديلة من الـ cache أو قديمة، فيتحوّل الفشل إلى مقايضة في الدقة بدل خطأ."
+          ]
+        }
+      }
+    ]},
+    { key: "mistakes", blocks: [
+      { t: "mistake",
+        title: { en: "Every layer has the same timeout, so the outer one never fires", ar: "كل طبقة لها نفس الـ timeout، فالخارجي لا ينطلق أبداً" },
+        body: {
+          en: "A team set 30 seconds everywhere: the browser, the gateway, the orders API, and the Pricing call. When Pricing hung, the browser gave up at the same instant as the server. The user saw a blank error page and the server logged nothing useful, because it was still waiting when the connection closed. Timeouts must shrink as you go deeper: 10 s at the gateway, 3 s in the orders API, 500 ms for the Pricing call. Then the layer closest to the problem is the one that reports it, and the outer layers still have time to build a proper error response.",
+          ar: "ضبطت إحدى الفرق 30 ثانية في كل مكان: المتصفح، الـ gateway، و orders API، واستدعاء Pricing. عندما تعلّق Pricing استسلم المتصفح في نفس اللحظة التي استسلم فيها الخادم. رأى المستخدم صفحة خطأ فارغة ولم يسجّل الخادم شيئاً مفيداً لأنه كان ما زال ينتظر عند إغلاق الاتصال. يجب أن تصغر المُهل كلما نزلت أعمق: 10 ثوانٍ عند الـ gateway، و3 ثوانٍ في orders API، و500 ms لاستدعاء Pricing. عندها تكون الطبقة الأقرب للمشكلة هي التي تبلّغ عنها، ويبقى للطبقات الخارجية وقت لبناء رد خطأ مناسب."
+        }
+      },
+      { t: "mistake",
+        title: { en: "The CancellationToken is accepted and then not passed on", ar: "استقبال الـ CancellationToken ثم عدم تمريره" },
+        body: {
+          en: "The method signature took a CancellationToken, which made code review pass, but the token was never handed to the HTTP call or the database query inside. Cancellation only works if the token reaches the thing that is actually waiting. The timeout fired, the flag flipped, and absolutely nothing happened — the call kept running to completion. Passing the token is the whole mechanism; a token that stops at the top of a method is decoration.",
+          ar: "أخذت الدالة CancellationToken في توقيعها فمرّت مراجعة الكود، لكن الـ token لم يُسلَّم إطلاقاً إلى استدعاء الـ HTTP ولا إلى استعلام الـ database بداخلها. الإلغاء لا يعمل إلا إذا وصل الـ token إلى الشيء الذي ينتظر فعلاً. انطلق الـ timeout وانقلب العلم ولم يحدث أي شيء — استمر الاستدعاء حتى نهايته. تمرير الـ token هو الآلية كلها، والـ token الذي يتوقّف عند رأس الدالة مجرد زينة."
+        },
+        fix: "// bad: token ignored\nvar r = await _http.GetAsync(url);\n\n// good: token reaches the awaiting operation\nvar r = await _http.GetAsync(url, ct);\nvar rows = await _db.Orders.ToListAsync(ct);"
+      },
+      { t: "mistake",
+        title: { en: "Retrying a non-idempotent write after a timeout", ar: "إعادة محاولة كتابة غير idempotent بعد timeout" },
+        body: {
+          en: "POST /payments timed out at 2 seconds, so the retry policy sent it twice more. The payment service had actually received and processed all three; only the responses were slow. The customer was charged three times. A timeout tells you nothing about whether the other side did the work — it only tells you that you stopped waiting. Retrying a write is safe only when the request carries an idempotency key, meaning a unique client-generated id the server uses to recognise and ignore a duplicate.",
+          ar: "انتهى وقت POST /payments عند ثانيتين، فأرسلته سياسة الـ retry مرتين إضافيتين. وقد استقبلت خدمة الدفع الطلبات الثلاثة ونفّذتها كلها، والبطيء كان الردود فقط. فتم خصم المبلغ من العميل ثلاث مرات. الـ timeout لا يخبرك بشيء عمّا إذا نفّذ الطرف الآخر العمل — يخبرك فقط أنك توقّفت عن الانتظار. إعادة محاولة الكتابة آمنة فقط عندما يحمل الطلب idempotency key، أي معرّفاً فريداً ينشئه العميل ويستخدمه الخادم للتعرّف على النسخة المكرّرة وتجاهلها."
+        }
+      },
+      { t: "mistake",
+        title: { en: "One breaker shared by every call to a host", ar: "breaker واحد مشترك لكل الاستدعاءات نحو host واحد" },
+        body: {
+          en: "A typed client — one HttpClient registered at startup and injected into a class — called both GET /prices, which is a fast cache read, and POST /reprice, which is a heavy recalculation. The reprice endpoint started failing under load. Its failures tripped the shared breaker, and price reads — perfectly healthy and used by every page — began failing too. The breaker should sit per dependency-and-operation, not per hostname. A cheap fix is a separate typed client, and therefore a separate pipeline, per group of endpoints with similar cost and criticality.",
+          ar: "استُخدم typed client — أي HttpClient واحد يُسجَّل عند الإقلاع ويُحقن في class — لاستدعاء GET /prices، وهو قراءة سريعة من الـ cache، و POST /reprice، وهو إعادة حساب ثقيلة. بدأ endpoint إعادة الحساب يفشل تحت الحمل. فصلَت حالاتُ فشله الـ breaker المشترك، فبدأت قراءات الأسعار — وهي سليمة تماماً وتستخدمها كل صفحة — تفشل هي أيضاً. يجب أن يكون الـ breaker لكل dependency وعملية، لا لكل hostname. الحل الرخيص هو typed client منفصل، وبالتالي pipeline منفصل، لكل مجموعة endpoints متقاربة في التكلفة والأهمية."
+        }
+      }
+    ]},
+    { key: "interview", blocks: [
+      { t: "qa", level: "junior",
+        q: { en: "What is a timeout, and what happens on the server when one fires?", ar: "ما هو الـ timeout، وماذا يحدث على الخادم عندما ينطلق؟" },
+        a: {
+          en: "A timeout is a maximum wait I set on a call. If the answer has not arrived by then, my code stops waiting and gets an exception, usually OperationCanceledException in .NET. The important part is what does not happen: the server on the other side does not find out. It keeps processing my request and may still write to its database. So a timeout means \"I gave up\", not \"it did not happen\". That is why I treat a timed-out write as unknown rather than failed.",
+          ar: "الـ timeout هو أقصى مدة انتظار أضعها على استدعاء. إن لم يصل الرد خلالها يتوقّف كودي عن الانتظار ويحصل على استثناء، وهو غالباً OperationCanceledException في .NET. المهم هو ما لا يحدث: الخادم في الطرف الآخر لا يعلم بذلك. يواصل معالجة طلبي وقد يكتب في الـ database. إذن الـ timeout يعني «أنا انسحبت» لا «لم يحدث شيء». لذلك أعتبر الكتابة التي انتهى وقتها حالة مجهولة لا فاشلة."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "Walk me through the three circuit breaker states.", ar: "اشرح لي حالات الـ circuit breaker الثلاث." },
+        a: {
+          en: "Closed is normal — calls go through and the breaker just counts how many succeeded and failed in a rolling window, say the last 30 seconds. If the failure share crosses a threshold, for example half the calls, it moves to open. Open means every call fails immediately without touching the network, which is what saves the caller. After a break duration, say 15 seconds, it moves to half-open and lets a single trial call through. If that call succeeds it closes; if it fails it opens again. Half-open exists so recovery is tested with one request instead of the full flood coming back at once.",
+          ar: "الحالة Closed هي الطبيعية — الاستدعاءات تمر ويكتفي الـ breaker بعدّ الناجح والفاشل ضمن نافذة متحرّكة، لنقل آخر 30 ثانية. إذا تجاوزت نسبة الفشل عتبة معيّنة، مثلاً نصف الاستدعاءات، ينتقل إلى Open. و Open تعني أن كل استدعاء يفشل فوراً دون لمس الشبكة، وهذا ما ينقذ المستدعي. بعد مدة الفصل، لنقل 15 ثانية، ينتقل إلى Half-open ويسمح باستدعاء تجريبي واحد. إن نجح يعود إلى Closed، وإن فشل يفتح من جديد. وُجدت Half-open حتى يُختبر التعافي بطلب واحد بدل عودة الفيضان كله دفعة واحدة."
+        }
+      },
+      { t: "qa", level: "mid",
+        q: { en: "How do you choose the actual timeout number?", ar: "كيف تختار قيمة الـ timeout فعلياً؟" },
+        a: {
+          en: "I start from the dependency's measured latency, not from a round number. I look at its p99 — the value that 99 out of 100 calls come in under — and set the timeout a bit above it, commonly around p99 plus a margin. If Pricing's p99 is 300 ms I use 500 ms. Below p99 I would be killing calls that were about to succeed. Far above it I am just waiting on calls that are already lost. Then I check it fits the parent budget: if my endpoint promises a 3-second response and makes three sequential calls, those three timeouts plus my own work must add up to less than 3 seconds.",
+          ar: "أبدأ من الـ latency المقاس للـ dependency لا من رقم مستدير. أنظر إلى p99 عندها — وهي القيمة التي ينتهي تحتها 99 استدعاء من كل 100 — وأضع الـ timeout فوقها بقليل، عادة p99 زائد هامش. إذا كان p99 عند Pricing هو 300 ms أستخدم 500 ms. لو نزلت تحت p99 لكنت أقتل استدعاءات كانت على وشك النجاح. ولو ارتفعت كثيراً فوقها لكنت أنتظر استدعاءات ضائعة أصلاً. ثم أتأكد أنها تناسب الميزانية الأعلى: إذا وعد endpoint عندي برد خلال 3 ثوانٍ ويقوم بثلاثة استدعاءات متتابعة، فمجموع هذه المُهل مع عملي أنا يجب أن يقل عن 3 ثوانٍ."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "Why is a circuit breaker not enough on its own? What do you add?", ar: "لماذا لا يكفي الـ circuit breaker وحده؟ وماذا تضيف؟" },
+        a: {
+          en: "A breaker only reacts after enough failures, so during the window before it trips you still pile up in-flight calls. It also does nothing for a dependency that is slow but succeeding — no failures, no trip, and your latency is still ruined. So I pair it with two things. A bulkhead, which is a hard cap on concurrent calls to that dependency: past the cap, calls are rejected instantly, and that bound holds from the first millisecond rather than after a sampling window. And a fallback, so the caller has something to return — a cached price, a partial response with the price field omitted, or a clear 503 with Retry-After. Without a fallback, a breaker just converts slow failures into fast failures, which is better but still an outage.",
+          ar: "الـ breaker لا يتفاعل إلا بعد عدد كافٍ من حالات الفشل، لذا تبقى الاستدعاءات الجارية تتراكم خلال النافذة السابقة لفصله. كما أنه لا يفيد مع dependency بطيئة لكنها ناجحة — لا فشل، فلا فصل، ويبقى الـ latency عندك مدمّراً. لذلك أضمّ إليه شيئين. الأول bulkhead، وهو حد صارم لعدد الاستدعاءات المتزامنة نحو تلك الـ dependency: بعد الحد تُرفض الاستدعاءات فوراً، وهذا القيد يعمل من الميلي ثانية الأولى لا بعد نافذة قياس. والثاني fallback ليكون لدى المستدعي ما يرجعه — سعر من الـ cache، أو رد جزئي بدون حقل السعر، أو 503 واضح مع Retry-After. بدون fallback يحوّل الـ breaker الفشل البطيء إلى فشل سريع فقط، وهذا أفضل لكنه يبقى انقطاعاً."
+        }
+      },
+      { t: "qa", level: "senior",
+        q: { en: "Your service has ten instances. Each has its own breaker. Is that a problem?", ar: "خدمتك تعمل بعشر نسخ، ولكل واحدة breaker خاص بها. هل هذه مشكلة؟" },
+        a: {
+          en: "Mostly it is a feature. Each instance decides from what it actually observed, so an instance in a bad network zone can trip while the others keep serving, and you never have one global switch that turns off a dependency for everyone at once. The cost is that recovery is ragged: after a break duration, ten instances each send a trial call and they arrive at different moments, which is fine, but if they happened to trip together they also half-open together and can hit the recovering service with ten simultaneous probes. That is small at ten instances and real at a thousand. The fixes are jitter on the break duration — adding a small random offset so the instances do not wake up together — and allowing only one trial call at a time. I would only reach for shared breaker state in a coordination store if I had measured a genuine problem, because it adds a network hop and a shared point of failure to the very path meant to protect me.",
+          ar: "في الغالب هذه ميزة لا مشكلة. كل نسخة تقرّر بناءً على ما لاحظته فعلاً، فتستطيع نسخة في منطقة شبكة سيئة أن تفصل بينما تواصل البقية الخدمة، ولا يوجد مفتاح عام واحد يطفئ dependency للجميع دفعة واحدة. التكلفة أن التعافي غير منتظم: بعد مدة الفصل ترسل كل نسخة استدعاءً تجريبياً وتصل في لحظات مختلفة وهذا جيد، لكن إن كانت فصلت معاً فستنتقل إلى half-open معاً وقد تضرب الخدمة المتعافية بعشر محاولات متزامنة. هذا بسيط عند عشر نسخ وحقيقي عند ألف. والعلاج هو jitter على مدة الفصل — أي إضافة إزاحة عشوائية صغيرة حتى لا تستيقظ النسخ معاً — والسماح باستدعاء تجريبي واحد في كل مرة. ولن ألجأ إلى حالة breaker مشتركة في مخزن تنسيق إلا إذا قِست مشكلة فعلية، لأن ذلك يضيف قفزة شبكة ونقطة فشل مشتركة على نفس المسار الذي يفترض أن يحميني."
+        }
+      },
+      { t: "qa", level: "staff",
+        q: { en: "Timeouts keep being forgotten across dozens of services. How do you fix that structurally?", ar: "المُهل تُنسى باستمرار عبر عشرات الخدمات. كيف تعالج ذلك بنيوياً؟" },
+        a: {
+          en: "I stop treating it as a discipline problem, because reminding people in review does not scale past a few teams. First, make the safe path the default one: ship an internal package that registers HTTP clients with timeout, retry and breaker already configured, so an unprotected client requires extra work rather than less. Second, make the absence detectable — a startup check that fails the build or the boot if any registered HttpClient still has the 100-second default, plus a dashboard of calls with no deadline. Third, publish the budget as a contract: every service declares the latency it promises, and reviewers check that a new dependency's timeout fits inside the caller's declared budget. Fourth, prove it works — a scheduled fault-injection run that makes one dependency slow in a test environment and asserts the caller degrades instead of falling over. Documentation alone changes nothing; defaults, checks and drills do.",
+          ar: "أتوقّف عن معاملتها كمشكلة انضباط، لأن التذكير في المراجعات لا يتوسّع أبعد من بضعة فرق. أولاً أجعل المسار الآمن هو الافتراضي: أطرح حزمة داخلية تسجّل الـ HTTP clients ومعها timeout و retry و breaker مضبوطة مسبقاً، بحيث يحتاج العميل غير المحمي إلى عمل إضافي لا أقل. ثانياً أجعل الغياب قابلاً للكشف — فحص عند الإقلاع يُفشل البناء أو التشغيل إذا بقي أي HttpClient مسجّل على القيمة الافتراضية 100 ثانية، مع لوحة لعرض الاستدعاءات بلا مهلة. ثالثاً أنشر الميزانية كعقد: كل خدمة تعلن الـ latency الذي تعد به، ويتحقق المراجعون أن مهلة الـ dependency الجديدة تدخل ضمن ميزانية المستدعي المعلنة. رابعاً أثبت أن الأمر يعمل — تشغيل مجدول لحقن الأعطال يجعل dependency واحدة بطيئة في بيئة اختبار ويتأكد أن المستدعي يتدهور بلطف بدل أن ينهار. التوثيق وحده لا يغيّر شيئاً، بل الافتراضات والفحوص والتمارين."
+        }
+      }
+    ]},
+    { key: "codereview", blocks: [
+      { t: "review", severity: "high",
+        title: { en: "New HttpClient per call, no timeout, and a blocking wait", ar: "HttpClient جديد لكل استدعاء، بلا timeout، مع انتظار حاجب" },
+        bad: "public PriceDto GetPrice(int id)\n{\n    // 1. new client per call: sockets are not reused and linger\n    //    in TIME_WAIT, so under load the machine runs out of ports\n    using var http = new HttpClient();\n\n    // 2. no timeout set, so the default is 100 seconds\n    // 3. .Result blocks the calling thread for all of it\n    var json = http.GetStringAsync($\"https://pricing.internal/prices/{id}\").Result;\n\n    return JsonSerializer.Deserialize<PriceDto>(json)!;\n}",
+        good: "// registered once at startup with a real timeout and a pipeline\npublic sealed class PricingClient(HttpClient http)\n{\n    public async Task<PriceDto?> GetPriceAsync(int id, CancellationToken ct)\n    {\n        using var response = await http.GetAsync($\"/prices/{id}\", ct);\n        if (!response.IsSuccessStatusCode) return null;\n        return await response.Content.ReadFromJsonAsync<PriceDto>(ct);\n    }\n}",
+        why: {
+          en: "Three separate faults compound here. First, creating an HttpClient per call leaves each closed TCP connection in a waiting state for about two minutes. A busy endpoint therefore runs the machine out of source ports. Second, no timeout means the 100-second default applies. Third, `.Result` blocks a thread pool thread for the entire wait. At 200 requests per second against a hung dependency, the thread pool drains in seconds and the process stops answering everything, including its health check. The fixed version uses an injected client configured once at startup, awaits instead of blocking, and passes the caller's cancellation token down to the call.",
+          ar: "ثلاثة أخطاء منفصلة تتراكم هنا. أولاً، إنشاء HttpClient لكل استدعاء يترك كل اتصال TCP مغلق في حالة انتظار لدقيقتين تقريباً. لذلك يستنفد endpoint مزدحم كل الـ ports المصدرية على الجهاز. ثانياً، غياب الـ timeout يعني تطبيق القيمة الافتراضية 100 ثانية. ثالثاً، ‎.Result‎ يحجب thread من الـ thread pool طوال مدة الانتظار. وعند 200 طلب في الثانية نحو dependency متعلّقة يُستنزف الـ thread pool خلال ثوانٍ ويتوقّف الـ process عن الرد على كل شيء بما فيه فحص الصحة. النسخة المصحّحة تستخدم client محقوناً ومضبوطاً مرة واحدة عند الإقلاع، وتستخدم await بدل الحجب، وتمرّر cancellation token الخاص بالمستدعي إلى الاستدعاء."
+        }
+      },
+      { t: "review", severity: "medium",
+        title: { en: "Catching the breaker's exception and hiding it as a 200", ar: "التقاط استثناء الـ breaker وإخفاؤه كرد 200" },
+        bad: "try\n{\n    order.Price = await _pricing.GetPriceAsync(id, ct);\n}\ncatch (Exception)\n{\n    order.Price = 0m;   // silently pretend the price is zero\n}\nreturn Ok(order);",
+        good: "try\n{\n    order.Price = await _pricing.GetPriceAsync(id, ct);\n}\ncatch (Exception ex) when (ex is BrokenCircuitException or TimeoutRejectedException)\n{\n    _pricingUnavailable.Add(1);          // metric: someone must see this\n    _logger.LogWarning(ex, \"Pricing unavailable for order {OrderId}\", id);\n    order.Price = null;                  // explicitly absent, not zero\n    order.PriceStatus = \"unavailable\";   // the client can act on this\n}\nreturn Ok(order);",
+        why: {
+          en: "Degrading gracefully is right; degrading silently is not. Two things are wrong in the bad version. Catching bare Exception also swallows programming errors like a null reference or a bad deserialisation, which then look like a pricing outage forever. And returning 0 is a lie the client cannot detect — a price of zero is a valid number, so a UI will display \"Free\" and a downstream job may bill zero. The fixed version catches only the two resilience exceptions, records a metric so the outage is visible on a dashboard, and returns an explicitly absent price with a status field, so the caller can show \"price unavailable\" instead of a wrong number.",
+          ar: "التدهور اللطيف صحيح، أما التدهور الصامت فلا. هناك خطآن في النسخة السيئة. التقاط Exception المجرّد يبتلع أيضاً أخطاء برمجية مثل null reference أو فشل في الـ deserialisation، فتبدو للأبد وكأنها انقطاع في Pricing. وإرجاع 0 كذبة لا يستطيع العميل كشفها — فالسعر صفر رقم صالح، وستعرض الواجهة «مجاني» وقد تفوتر مهمة لاحقة بصفر. النسخة المصحّحة تلتقط استثناءي المرونة فقط، وتسجّل metric ليصبح الانقطاع مرئياً على لوحة، وترجع سعراً غائباً بشكل صريح مع حقل حالة، فيستطيع المستدعي عرض «السعر غير متاح» بدل رقم خاطئ."
+        }
+      }
+    ]},
+    { key: "sysdesign", blocks: [
+      { t: "p",
+        en: "In a system design interview, timeouts are how you show you understand partial failure. The move is to draw the call chain and put a number on every arrow, from the outside in. Browser waits 10 s for the gateway. The gateway waits 8 s for the orders API. The orders API promises 3 s and inside that spends at most 500 ms on Pricing, 300 ms on the inventory cache and 1 s on its own database. The numbers shrink as you go deeper, and the sum of the inner ones stays under the outer one. That gap is deliberate: it is the time left to build and send an error response after something inside fails.",
+        ar: "في مقابلة تصميم الأنظمة، المُهل هي الطريقة التي تُظهر بها أنك تفهم الفشل الجزئي. الحركة الصحيحة هي رسم سلسلة الاستدعاءات ووضع رقم على كل سهم من الخارج إلى الداخل. المتصفح ينتظر الـ gateway عشر ثوانٍ. والـ gateway ينتظر orders API ثماني ثوانٍ. و orders API يعد بثلاث ثوانٍ ينفق منها 500 ms كحد أقصى على Pricing، و300 ms على inventory cache، وثانية واحدة على قاعدة بياناته. الأرقام تصغر كلما نزلت أعمق، ويبقى مجموع الداخلية أقل من الخارجية. هذه الفجوة مقصودة: هي الوقت المتبقي لبناء رد خطأ وإرساله بعد فشل شيء في الداخل."
+      },
+      { t: "ul",
+        en: [
+          "Deadline propagation: pass the remaining time down with the request, so a call that arrives with 200 ms left does not start a 500 ms attempt. gRPC does this natively; over HTTP you send a header and honour it.",
+          "Classify dependencies as critical or optional before choosing numbers. Optional ones — recommendations, badges, related items — get short timeouts and a fallback. Critical ones — auth, payment — get a longer timeout and a real error.",
+          "Put a breaker on every network hop that can fail independently, and a separate one per operation class, so a heavy write endpoint failing does not block cheap reads on the same host.",
+          "Decide what an open breaker returns before you build it: cached data, a partial response with fields omitted, or 503 with a Retry-After header telling the client when to come back.",
+          "Cap concurrency per dependency as well as time. A bulkhead of, say, 50 in-flight calls bounds the damage from the very first request, before any breaker has enough samples to trip."
+        ],
+        ar: [
+          "Deadline propagation: مرّر الوقت المتبقي مع الطلب إلى الأسفل، حتى لا يبدأ استدعاء وصل ومعه 200 ms محاولةً مدتها 500 ms. يفعل gRPC ذلك أصلاً، وفي HTTP ترسل header وتحترمه.",
+          "صنّف الـ dependencies إلى حرجة واختيارية قبل اختيار الأرقام. الاختيارية — التوصيات والشارات والعناصر المرتبطة — تأخذ مُهلاً قصيرة وبديلاً. والحرجة — auth والدفع — تأخذ مهلة أطول وخطأً حقيقياً.",
+          "ضع breaker على كل قفزة شبكة يمكن أن تفشل بشكل مستقل، وواحداً منفصلاً لكل صنف من العمليات، حتى لا يعطّل فشلُ endpoint كتابة ثقيلة قراءاتٍ رخيصة على نفس الـ host.",
+          "قرّر ماذا يرجع الـ breaker المفتوح قبل أن تبنيه: بيانات من الـ cache، أو رد جزئي بحقول محذوفة، أو 503 مع header اسمه Retry-After يخبر العميل متى يعود.",
+          "حدّد التزامن لكل dependency إلى جانب الوقت. bulkhead بحد 50 استدعاءً جارياً مثلاً يحدّ الضرر من الطلب الأول، قبل أن تتوفّر للـ breaker عيّنات كافية للفصل."
+        ]
+      },
+      { t: "callout", kind: "warn",
+        en: "Timeouts and retries multiply. A 2 s timeout with 3 attempts at each of 3 chained services is a worst case of 2 × 3 × 3 = 18 seconds, and a single user request can turn into 27 calls on the dependency at the bottom. Always compute the worst case, not the happy path.",
+        ar: "المُهل والـ retries تتضاعف. timeout مدته ثانيتان مع ثلاث محاولات عند كل خدمة من ثلاث خدمات متسلسلة يعطي أسوأ حالة 2 × 3 × 3 = 18 ثانية، وقد يتحوّل طلب مستخدم واحد إلى 27 استدعاءً على الـ dependency في الأسفل. احسب دائماً أسوأ حالة لا المسار السعيد."
+      }
+    ]},
+    { key: "perf", blocks: [
+      { t: "kv", rows: [
+        { k: { en: "Latency", ar: "Latency" },
+          v: { en: "A timeout caps your p99 — the time the slowest 1 in 100 requests take. Without one, your p99 is the dependency's worst case, whatever that turns out to be.", ar: "الـ timeout يحدّ سقف p99 عندك، أي زمن أبطأ طلب من كل 100. وبدونه يصبح p99 عندك هو أسوأ حالة عند الـ dependency مهما كانت." } },
+        { k: { en: "Memory", ar: "الذاكرة" },
+          v: { en: "In-flight calls equal arrival rate times wait. Cutting the wait from 30 s to 0.5 s cut our example from 6000 pending requests to 100, and their buffers with them.", ar: "الاستدعاءات الجارية تساوي معدّل الوصول مضروباً في مدة الانتظار. خفض الانتظار من 30 ثانية إلى 0.5 ثانية خفض مثالنا من 6000 طلب معلّق إلى 100، ومعها buffers كل واحد." } },
+        { k: { en: "Network", ar: "الشبكة" },
+          v: { en: "Each pending call holds a socket. Sockets and source ports are finite per machine, roughly 28000 usable by default on Linux, and running out breaks every outbound call.", ar: "كل استدعاء معلّق يحجز socket. والـ sockets والـ ports المصدرية محدودة لكل جهاز، نحو 28000 قابلة للاستخدام افتراضياً على Linux، ونفادها يعطّل كل استدعاء صادر." } },
+        { k: { en: "CPU", ar: "المعالج" },
+          v: { en: "The breaker itself is nearly free: a counter and a state check, well under a microsecond. An open breaker is the cheapest possible outcome — it does no work at all.", ar: "الـ breaker نفسه شبه مجاني: عدّاد وفحص حالة، أقل بكثير من ميكروثانية. والـ breaker المفتوح هو أرخص نتيجة ممكنة لأنه لا ينفّذ أي عمل." } },
+        { k: { en: "Scalability", ar: "قابلية التوسّع" },
+          v: { en: "Without timeouts, adding instances just gives a slow dependency more victims. With them, each instance stays healthy and horizontal scaling actually helps.", ar: "بدون مُهل، إضافة نسخ تعطي الـ dependency البطيئة ضحايا أكثر فقط. ومعها تبقى كل نسخة سليمة ويصبح التوسّع الأفقي مفيداً فعلاً." } }
+      ]}
+    ]},
+    { key: "debug", blocks: [
+      { t: "ul",
+        en: [
+          "Metrics on the breaker: Polly emits a counter on every state change, in the OpenTelemetry format that most monitoring tools read. Chart the open/closed transitions per dependency — a breaker flapping open and closed every minute means your threshold is too tight or the dependency is half-broken.",
+          "A distributed trace of one slow request: look for a span that ends exactly at your timeout value. A span stopping at precisely 500 ms is a timeout, not slow work, and its parent tells you which call to blame.",
+          "dotnet-counters monitor --counters System.Net.Http on the running process: `current-requests` is the number of HTTP calls in flight right now. If it climbs and never falls, calls are going out and not coming back.",
+          "dotnet-dump collect then `dumpasync` in dotnet-dump analyze: lists the pending async operations. Hundreds all stopped at the same await line points straight at the unbounded call.",
+          "ss -tan state established | wc -l on Linux (netstat -an on Windows): counts open TCP connections. A count in the thousands to one host confirms connection buildup rather than a CPU problem."
+        ],
+        ar: [
+          "مقاييس الـ breaker: يصدر Polly عدّاداً عند كل تغيّر حالة، بصيغة OpenTelemetry التي تقرأها معظم أدوات المراقبة. ارسم انتقالات open/closed لكل dependency — الـ breaker الذي يفتح ويغلق كل دقيقة يعني أن عتبتك ضيّقة جداً أو أن الـ dependency نصف معطّلة.",
+          "trace موزّع لطلب بطيء واحد: ابحث عن span ينتهي عند قيمة الـ timeout بالضبط. الـ span الذي يتوقّف عند 500 ms تماماً هو timeout لا عمل بطيء، والـ parent الخاص به يخبرك أي استدعاء تلوم.",
+          "الأمر dotnet-counters monitor --counters System.Net.Http على الـ process العامل: القيمة ‎current-requests‎ هي عدد استدعاءات HTTP الجارية الآن. إن ارتفعت ولم تهبط فالاستدعاءات تخرج ولا تعود.",
+          "الأمر dotnet-dump collect ثم ‎dumpasync‎ داخل dotnet-dump analyze: يعرض العمليات الـ async المعلّقة. مئات منها متوقفة عند نفس سطر الـ await تشير مباشرة إلى الاستدعاء غير المحدود.",
+          "الأمر ss -tan state established | wc -l على Linux (أو netstat -an على Windows): يعدّ اتصالات TCP المفتوحة. عدد بالآلاف نحو host واحد يؤكد تراكم الاتصالات لا مشكلة في المعالج."
+        ]
+      },
+      { t: "callout", kind: "tip",
+        en: "Log the timeout value alongside the failure: \"Pricing timed out after 500ms\". A log line saying only \"request failed\" cannot tell you whether the dependency was slow or your budget was too tight — and those two have opposite fixes.",
+        ar: "سجّل قيمة الـ timeout مع الفشل هكذا: «Pricing timed out after 500ms». سطر سجل يقول «request failed» فقط لا يستطيع أن يخبرك هل كانت الـ dependency بطيئة أم كانت ميزانيتك ضيّقة — وللحالتين علاجان متعاكسان."
+      }
+    ]},
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "Any system where one user action fans out to several backend calls lives or dies on this. The pattern is always the same: identify which calls are optional, give them a short timeout and a fallback, and keep the page or the transaction alive without them. The teams that get this right are the ones whose product visibly degrades — a missing recommendation strip, a stale count — instead of showing an error page, during an incident their users never hear about.",
+        ar: "أي نظام يتفرّع فيه فعل مستخدم واحد إلى عدة استدعاءات خلفية يعيش أو يموت بهذا. النمط واحد دائماً: حدّد أي الاستدعاءات اختيارية، وأعطها timeout قصيراً وبديلاً، وأبقِ الصفحة أو المعاملة حية بدونها. الفرق التي تتقن هذا هي التي يتدهور منتجها بشكل مرئي — شريط توصيات غائب أو عدّاد قديم — بدل عرض صفحة خطأ، أثناء حادثة لا يسمع بها مستخدموها أصلاً."
+      },
+      { t: "ul",
+        en: [
+          "E-commerce checkout: the payment call gets a long timeout and no automatic retry without an idempotency key, while the recommendations panel gets 100 ms and silently disappears when it is slow.",
+          "Streaming and media apps: the play button never waits on the personalisation service. If it does not answer in 200 ms the app shows a generic row and starts playback anyway.",
+          "Banking and payment rails: the network call to the card scheme has a strict timeout, and a timed-out authorisation is written as \"unknown\" and reconciled later, never assumed failed.",
+          "Chat platforms: presence and typing indicators time out in tens of milliseconds and fall back to \"last seen\" data, because message delivery must never wait on a decorative feature."
+        ],
+        ar: [
+          "الدفع في التجارة الإلكترونية: استدعاء الدفع يأخذ timeout طويلاً وبلا إعادة محاولة تلقائية دون idempotency key، بينما تأخذ لوحة التوصيات 100 ms وتختفي بهدوء إن تأخّرت.",
+          "تطبيقات البث والوسائط: زر التشغيل لا ينتظر خدمة التخصيص أبداً. إن لم ترد خلال 200 ms يعرض التطبيق صفاً عاماً ويبدأ التشغيل على أي حال.",
+          "الأنظمة المصرفية وقنوات الدفع: الاستدعاء الشبكي نحو شبكة البطاقات له timeout صارم، والتفويض الذي انتهى وقته يُسجَّل «مجهولاً» ويُسوّى لاحقاً، ولا يُفترض فاشلاً أبداً.",
+          "منصّات المحادثة: مؤشّرات التواجد والكتابة لها مُهل بعشرات الميلي ثانية وترجع إلى بيانات «آخر ظهور»، لأن تسليم الرسائل يجب ألا ينتظر ميزة تجميلية أبداً."
+        ]
+      }
+    ]},
+    { key: "exercises", blocks: [
+      { t: "ex", diff: "easy",
+        en: "Build a small API with one endpoint that calls a fake dependency you control, and make that dependency sleep 10 seconds. Call your endpoint with no timeout configured and time it — it should take about 10 seconds. Now set HttpClient.Timeout to 1 second and call again. You have got it right when the second call fails in about 1 second and the exception you catch is a TaskCanceledException, which is a kind of OperationCanceledException.",
+        ar: "ابنِ API صغيراً فيه endpoint واحد يستدعي dependency وهمية تتحكم بها، واجعل تلك الـ dependency تنام 10 ثوانٍ. استدعِ الـ endpoint بلا timeout وقِس الزمن — يجب أن يستغرق نحو 10 ثوانٍ. ثم اضبط HttpClient.Timeout على ثانية واحدة واستدعِ مرة أخرى. تكون قد نجحت عندما يفشل الاستدعاء الثاني خلال ثانية تقريباً ويكون الاستثناء الذي تلتقطه TaskCanceledException، وهو نوع من OperationCanceledException."
+      },
+      { t: "ex", diff: "medium",
+        en: "Add a Polly circuit breaker to that client with a 50% failure ratio, a 10-second sampling window, a minimum of 5 calls and a 5-second break. Send 20 requests while the fake dependency is failing, then make it healthy again. You have got it right when your logs show the breaker opening after roughly the fifth failure, requests failing in under a millisecond while it is open, one trial request going out after 5 seconds, and the breaker closing.",
+        ar: "أضف circuit breaker من Polly إلى ذلك الـ client بنسبة فشل 50%، ونافذة قياس 10 ثوانٍ، وحد أدنى 5 استدعاءات، ومدة فصل 5 ثوانٍ. أرسل 20 طلباً بينما الـ dependency الوهمية تفشل، ثم أعدها سليمة. تكون قد نجحت عندما تُظهر سجلاتك فتح الـ breaker بعد الفشل الخامس تقريباً، وفشل الطلبات خلال أقل من ميلي ثانية أثناء فتحه، وخروج طلب تجريبي واحد بعد 5 ثوانٍ، ثم إغلاق الـ breaker."
+      },
+      { t: "ex", diff: "hard",
+        en: "Implement deadline propagation across two of your own services. Service A sends a header carrying the milliseconds it has left; service B reads it, subtracts its own expected work, and uses the remainder as the timeout for its call to service C. You have got it right when a request that arrives at B with 50 ms left fails immediately with a deadline-exceeded error instead of starting a 500 ms attempt it can never finish in time.",
+        ar: "نفّذ deadline propagation بين خدمتين من عندك. الخدمة A ترسل header يحمل عدد الميلي ثواني المتبقية لها؛ والخدمة B تقرأه وتطرح منه عملها المتوقّع وتستخدم الباقي كـ timeout لاستدعائها الخدمة C. تكون قد نجحت عندما يفشل فوراً طلبٌ يصل إلى B ومعه 50 ms متبقية بخطأ تجاوز المهلة، بدل أن يبدأ محاولة مدتها 500 ms لا يمكن أن ينهيها في الوقت."
+      },
+      { t: "ex", diff: "senior",
+        en: "Take one real service you own and produce a one-page timeout budget: every outbound call, its measured p99, its current timeout, and whether the sum fits inside what the service promises its callers. Then run a fault-injection test that makes the single most critical dependency slow. You have got it right when you can name at least one call whose timeout was wrong, show the fix, and demonstrate that the service now degrades to a partial response instead of failing its health check.",
+        ar: "خذ خدمة حقيقية تملكها وأنتج صفحة واحدة لميزانية المُهل: كل استدعاء صادر، و p99 المقاس له، والـ timeout الحالي، وهل يدخل المجموع ضمن ما تعد به الخدمة مستدعيها. ثم شغّل اختبار حقن أعطال يجعل أهم dependency لديك بطيئة. تكون قد نجحت عندما تستطيع تسمية استدعاء واحد على الأقل كانت مهلته خاطئة، وتعرض التصحيح، وتُظهر أن الخدمة تتدهور الآن إلى رد جزئي بدل أن تُفشل فحص صحتها."
+      }
+    ]},
+    { key: "refs", blocks: [
+      { t: "ref",
+        label: { en: "Polly resilience strategies: timeout, retry, circuit breaker", ar: "استراتيجيات المرونة في Polly: timeout و retry و circuit breaker" },
+        url: "https://www.pollydocs.org/strategies/circuit-breaker.html",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "Microsoft: building resilient HTTP apps with the standard resilience handler", ar: "Microsoft: بناء تطبيقات HTTP مرنة باستخدام standard resilience handler" },
+        url: "https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience",
+        meta: { en: "Docs", ar: "توثيق" }
+      },
+      { t: "ref",
+        label: { en: "Amazon Builders' Library: timeouts, retries and backoff with jitter", ar: "مكتبة Amazon Builders: المُهل وإعادة المحاولة والتراجع مع jitter" },
+        url: "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+        meta: { en: "Article", ar: "مقال" }
+      },
+      { t: "ref",
+        label: { en: "Martin Fowler: the Circuit Breaker pattern", ar: "Martin Fowler: نمط Circuit Breaker" },
+        url: "https://martinfowler.com/bliki/CircuitBreaker.html",
+        meta: { en: "Article", ar: "مقال" }
+      }
+    ]}
+  ],
+  quiz: [
+    {
+      q: {
+        en: "Your call to a dependency times out after 2 seconds. What do you know about the state of the work on the other side?",
+        ar: "انتهى وقت استدعائك لـ dependency بعد ثانيتين. ماذا تعرف عن حالة العمل في الطرف الآخر؟"
+      },
+      options: [
+        { en: "It was rolled back, because the connection closed", ar: "تم التراجع عنه لأن الاتصال أُغلق" },
+        { en: "Nothing — it may have completed, failed, or still be running", ar: "لا شيء — قد يكون اكتمل أو فشل أو ما زال يعمل" },
+        { en: "It definitely failed, since no response arrived", ar: "فشل بالتأكيد لأنه لم يصل أي رد" },
+        { en: "It was cancelled, because the token was marked cancelled", ar: "أُلغي لأن الـ token عُلِّم كملغى" }
+      ],
+      correct: 1,
+      why: {
+        en: "A timeout is a decision made entirely on the client side: you stopped waiting. The server usually never learns about it and keeps working, possibly committing its transaction. That is exactly why a timed-out write must be retried only with an idempotency key, or reconciled afterwards.",
+        ar: "الـ timeout قرار يُتخذ بالكامل في جهة العميل: أنت توقّفت عن الانتظار. والخادم غالباً لا يعلم بذلك ويواصل عمله وقد يثبّت معاملته. ولهذا بالضبط لا يجوز إعادة محاولة كتابة انتهى وقتها إلا مع idempotency key، أو تسويتها لاحقاً."
+      }
+    },
+    {
+      q: {
+        en: "In a Polly pipeline, where should the timeout strategy sit relative to the retry strategy?",
+        ar: "في pipeline من Polly، أين يجب أن يقع الـ timeout بالنسبة للـ retry؟"
+      },
+      options: [
+        { en: "Outside retry, so one budget covers all attempts together", ar: "خارج الـ retry، فتغطي ميزانية واحدة كل المحاولات معاً" },
+        { en: "It makes no difference; the order is only cosmetic", ar: "لا فرق، فالترتيب شكلي فقط" },
+        { en: "Inside retry, so each attempt gets its own bounded wait", ar: "داخل الـ retry، فتأخذ كل محاولة انتظارها المحدود الخاص" },
+        { en: "Inside the circuit breaker but outside everything else", ar: "داخل الـ circuit breaker وخارج كل ما عداه" }
+      ],
+      correct: 2,
+      why: {
+        en: "The timeout goes innermost so it bounds each individual attempt. If it were outside the retry, a single 500 ms budget would have to cover attempt one, the backoff wait, attempt two and so on — the later attempts would be cancelled before they had a chance to run.",
+        ar: "يوضع الـ timeout في الداخل ليحدّ كل محاولة على حدة. ولو كان خارج الـ retry لغطّت ميزانية 500 ms واحدة المحاولة الأولى وفترة التراجع والمحاولة الثانية وهكذا — فتُلغى المحاولات المتأخرة قبل أن تحصل على فرصة للعمل."
+      }
+    },
+    {
+      q: {
+        en: "Why does a circuit breaker have a half-open state instead of just closing when the break duration ends?",
+        ar: "لماذا للـ circuit breaker حالة half-open بدل أن يُغلق مباشرة عند انتهاء مدة الفصل؟"
+      },
+      options: [
+        { en: "To let a single trial call test recovery before full traffic returns", ar: "ليسمح باستدعاء تجريبي واحد يختبر التعافي قبل عودة الترافيك كاملاً" },
+        { en: "To give the caller time to warm its connection pool", ar: "ليمنح المستدعي وقتاً لتسخين connection pool عنده" },
+        { en: "To flush the failure counters accumulated in the window", ar: "لتفريغ عدّادات الفشل المتراكمة في النافذة" },
+        { en: "To let other instances of the service agree on the state", ar: "ليتفق باقي نسخ الخدمة على الحالة" }
+      ],
+      correct: 0,
+      why: {
+        en: "Closing immediately would send the full traffic back at a service that may still be struggling and knock it over again — the same reason you do not restart a struggling database and immediately point all traffic at it. Half-open probes with one request and only closes if that request succeeds.",
+        ar: "الإغلاق الفوري يعيد الترافيك كاملاً إلى خدمة قد تكون ما زالت متعثّرة فيسقطها من جديد — لنفس السبب الذي يمنعك من إعادة تشغيل database متعثّرة وتوجيه كل الترافيك إليها فوراً. حالة half-open تجسّ النبض بطلب واحد ولا تغلق إلا إذا نجح ذلك الطلب."
+      }
+    },
+    {
+      q: {
+        en: "An endpoint receives 100 requests per second and each one waits 4 seconds on a slow dependency. Roughly how many calls are in flight at any moment?",
+        ar: "endpoint يستقبل 100 طلب في الثانية وينتظر كل طلب 4 ثوانٍ على dependency بطيئة. كم عدد الاستدعاءات الجارية تقريباً في أي لحظة؟"
+      },
+      options: [
+        { en: "25", ar: "25" },
+        { en: "100", ar: "100" },
+        { en: "400", ar: "400" },
+        { en: "4", ar: "4" }
+      ],
+      correct: 2,
+      why: {
+        en: "In-flight work equals arrival rate multiplied by how long each unit of work takes: 100 per second × 4 seconds = 400 concurrent calls. This is why latency and capacity are the same problem — every extra second of waiting adds another 100 pending requests holding sockets and memory.",
+        ar: "العمل الجاري يساوي معدّل الوصول مضروباً في مدة كل وحدة عمل: 100 في الثانية × 4 ثوانٍ = 400 استدعاء متزامن. لهذا فإن الـ latency والسعة مشكلة واحدة — كل ثانية انتظار إضافية تضيف 100 طلب معلّق يحجز sockets وذاكرة."
+      }
+    },
+    {
+      q: {
+        en: "A dependency answers every call successfully but has become five times slower. What does a circuit breaker do?",
+        ar: "dependency ترد على كل الاستدعاءات بنجاح لكنها أصبحت أبطأ بخمس مرات. ماذا يفعل الـ circuit breaker؟"
+      },
+      options: [
+        { en: "It opens, because the latency threshold was crossed", ar: "يفتح لأن عتبة الـ latency تم تجاوزها" },
+        { en: "It goes half-open and samples the slow calls", ar: "ينتقل إلى half-open ويأخذ عيّنة من الاستدعاءات البطيئة" },
+        { en: "Nothing, unless the extra latency pushes calls past their timeout", ar: "لا شيء، إلا إذا دفع البطء الزائد الاستدعاءات لتجاوز مهلتها" },
+        { en: "It rejects calls once concurrency passes its limit", ar: "يرفض الاستدعاءات عندما يتجاوز التزامن حدّه" }
+      ],
+      correct: 2,
+      why: {
+        en: "A breaker counts outcomes, not durations. Successful-but-slow calls are successes, so it stays closed. The timeout is what converts \"too slow\" into a failure the breaker can count — which is why the two are configured together, and why a concurrency limit (bulkhead) is the tool for capping in-flight work directly.",
+        ar: "الـ breaker يعدّ النتائج لا المدد. فالاستدعاءات الناجحة وإن كانت بطيئة تُحسب نجاحاً، ويبقى مغلقاً. والـ timeout هو ما يحوّل «بطيء جداً» إلى فشل يستطيع الـ breaker عدّه — ولهذا يُضبطان معاً، ولهذا يكون حد التزامن أي الـ bulkhead هو الأداة المناسبة لتحديد العمل الجاري مباشرة."
+      }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: CAP
+
+const capLesson = {
+  id: "cap",
+  moduleId: "distributed",
+  title: { en: "CAP in practice", ar: "CAP عملياً" },
+  summary: {
+    en: "What CAP really forces you to choose, why the choice only appears during a network partition, and how PACELC describes the normal-day trade-off.",
+    ar: "ما الذي يجبرك CAP على اختياره فعلاً، ولماذا يظهر الاختيار فقط أثناء الـ partition، وكيف يصف PACELC المقايضة في الأيام العادية."
+  },
+  mins: 17,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "CAP says that when two parts of a distributed system cannot talk to each other, you must give up either consistency or availability — you cannot keep both. A distributed system is one program running as several copies on different machines. When the network link between those copies breaks, each copy is stuck with only the data it can see.",
+          ar: "يقول CAP إنه عندما لا يستطيع جزآن من نظام موزّع التواصل، يجب أن تتخلّى عن consistency أو availability — لا يمكنك الإبقاء على الاثنين. النظام الموزّع هو برنامج واحد يعمل كنسخ عدّة على أجهزة مختلفة. وعندما ينقطع الرابط الشبكي بين هذه النسخ، تعلق كل نسخة بالبيانات التي تراها فقط." },
+        { t: "kv", rows: [
+          { k: { en: "Consistency (C)", ar: "Consistency (C)" }, v: { en: "Every read returns the most recent write, or an error — never stale data.", ar: "كل read يعيد أحدث write، أو خطأ — لا بيانات قديمة أبداً." } },
+          { k: { en: "Availability (A)", ar: "Availability (A)" }, v: { en: "Every request gets a non-error answer, even if the data might be stale.", ar: "كل request يحصل على إجابة غير خاطئة، حتى لو كانت البيانات قديمة." } },
+          { k: { en: "Partition (P)", ar: "Partition (P)" }, v: { en: "The network drops messages between nodes, so they cannot reach each other.", ar: "الشبكة تُسقِط الرسائل بين الـ nodes فلا تصل إلى بعضها." } },
+          { k: { en: "Node / replica", ar: "Node / replica" }, v: { en: "One machine holding a copy of the data.", ar: "جهاز واحد يحمل نسخة من البيانات." } },
+          { k: { en: "CAP theorem", ar: "CAP theorem" }, v: { en: "During a partition you can be consistent or available, not both.", ar: "أثناء الـ partition يمكنك أن تكون consistent أو available، لا الاثنين." } },
+          { k: { en: "PACELC", ar: "PACELC" }, v: { en: "An extension: with a Partition choose A or C; Else (normal) choose Latency or Consistency.", ar: "امتداد: مع Partition اختر A أو C؛ وإلّا (عادياً) اختر Latency أو Consistency." } }
+        ]},
+        { t: "p",
+          en: "Picture two shop tills that normally phone each other after every sale so both know the stock count. One day the phone line dies. A customer at till B wants the last item. Till B cannot check with till A. It has two choices: refuse to sell until the line is back (stay consistent), or sell anyway and risk selling an item that till A already sold (stay available). That refusal-or-risk is exactly the CAP choice.",
+          ar: "تخيّل صندوقَي دفع في متجر يتصلان هاتفياً بعد كل عملية بيع ليعرف كلاهما عدد المخزون. في يوم ما ينقطع الخط الهاتفي. زبون عند الصندوق B يريد آخر قطعة. لا يستطيع B التحقق من A. أمامه خياران: يرفض البيع حتى يعود الخط (يبقى consistent)، أو يبيع رغم ذلك ويخاطر ببيع قطعة باعها A بالفعل (يبقى available). هذا الرفض-أو-المخاطرة هو بالضبط اختيار CAP." },
+        { t: "callout", kind: "note",
+          en: "Partition tolerance is not a choice you make — packet loss and dead links happen in any real network. So the real decision is only ever between C and A during that partition.",
+          ar: "Partition tolerance ليست خياراً تتخذه — فقدان الحزم والروابط الميتة يحدثان في أي شبكة حقيقية. لذا القرار الحقيقي دائماً بين C و A أثناء الـ partition فقط." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Take a key-value store that holds one user's account balance on two replicas, one in data center DC1 and one in DC2. The value is 100. A network partition cuts the link between DC1 and DC2, but clients can still reach each side.",
+          ar: "لنأخذ key-value store يحمل رصيد حساب مستخدم واحد على replica في مركز بيانات DC1 وأخرى في DC2. القيمة 100. يقطع partition الرابط بين DC1 و DC2، لكن العملاء ما زالوا يصلون إلى كل جانب." },
+        { t: "p",
+          en: "A write of 150 arrives at DC1. A read arrives at DC2 at the same moment. DC2 cannot ask DC1 what the newest value is. A consistent (CP) system makes DC2 reject the read — the client waits or gets an error, but never sees the wrong 100. An available (AP) system lets DC2 answer 100 immediately — fast, but wrong for now.",
+          ar: "يصل write بقيمة 150 إلى DC1. ويصل read إلى DC2 في اللحظة نفسها. لا يستطيع DC2 أن يسأل DC1 عن أحدث قيمة. النظام الـ consistent (CP) يجعل DC2 يرفض الـ read — ينتظر العميل أو يحصل على خطأ، لكنه لا يرى 100 الخاطئة أبداً. والنظام الـ available (AP) يدع DC2 يجيب بـ 100 فوراً — سريع، لكنه خاطئ الآن." },
+        { t: "kv", rows: [
+          { k: { en: "CP choice", ar: "خيار CP" }, v: { en: "Read on DC2 fails during the partition. 0 wrong answers, but some requests get nothing.", ar: "يفشل الـ read على DC2 أثناء الـ partition. صفر إجابات خاطئة، لكن بعض الطلبات لا تحصل على شيء." } },
+          { k: { en: "AP choice", ar: "خيار AP" }, v: { en: "Read on DC2 returns 100 (stale) until the link heals. 100% answered, some answers wrong.", ar: "يعيد الـ read على DC2 القيمة 100 (قديمة) حتى يُشفى الرابط. 100% مُجابة، بعض الإجابات خاطئة." } }
+        ]},
+        { t: "p",
+          en: "Neither is 'better' in the abstract. A bank balance usually wants CP — a wrong balance causes real loss. A 'likes' counter usually wants AP — a stale count for a few seconds harms no one, and downtime does.",
+          ar: "لا واحد منهما 'أفضل' مجرّداً. رصيد بنكي عادةً يريد CP — رصيد خاطئ يسبب خسارة فعلية. وعدّاد 'likes' عادةً يريد AP — عدد قديم لبضع ثوانٍ لا يؤذي أحداً، بينما التوقّف يؤذي." }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Under the hood, the system decides C-vs-A through how many replicas must confirm each read and write. This confirmation count is called a quorum — the minimum number of nodes that must agree before an operation is treated as done.",
+          ar: "تحت الغطاء، يقرّر النظام C مقابل A عبر عدد الـ replicas التي يجب أن تؤكّد كل read و write. يُسمّى عدد التأكيد هذا quorum — الحد الأدنى من الـ nodes التي يجب أن تتفق قبل اعتبار العملية منجزة." },
+        { t: "p",
+          en: "With N replicas, a write waits for W of them to acknowledge, and a read asks R of them. If W + R > N, every read set overlaps every write set by at least one node, so a read always sees the newest write — that is strong consistency. The cost: if a partition leaves fewer than W nodes reachable, the write cannot reach quorum and must fail. That failure is the system choosing C over A.",
+          ar: "مع N من الـ replicas، ينتظر الـ write تأكيد W منها، ويسأل الـ read عدد R منها. إذا كان W + R > N، فإن كل مجموعة read تتداخل مع كل مجموعة write بـ node واحد على الأقل، فيرى الـ read دائماً أحدث write — هذا strong consistency. الثمن: إذا ترك الـ partition عدداً أقل من W من الـ nodes قابلاً للوصول، لا يبلغ الـ write الـ quorum ويجب أن يفشل. هذا الفشل هو اختيار النظام لـ C على A." },
+        { t: "code", lang: "text", label: { en: "Quorum with N=3", ar: "Quorum مع N=3" },
+          code: "N = 3 replicas\nStrong (CP):  W = 2, R = 2   -> W + R = 4 > 3, reads see latest write\nFast   (AP):  W = 1, R = 1   -> W + R = 2 < 3, reads may be stale\n\nPartition isolates 1 of the 3 nodes:\n  CP config: the lone node cannot reach W=2, so it refuses writes\n  AP config: the lone node still accepts W=1 writes, reconciles later" },
+        { t: "p",
+          en: "PACELC finishes the picture. CAP only describes the rare partition. PACELC adds the common case: if there is a Partition, choose A or C; Else — when the network is healthy — you still choose between low Latency and Consistency, because waiting for more replicas to confirm always costs time. So a system is labelled like 'PC/EL': consistent under partition, low-latency otherwise.",
+          ar: "يكمل PACELC الصورة. CAP يصف الـ partition النادر فقط. يضيف PACELC الحالة الشائعة: إن وُجد Partition اختر A أو C؛ وإلّا — حين تكون الشبكة سليمة — تختار أيضاً بين Latency منخفض و Consistency، لأن انتظار تأكيد replicas أكثر يكلّف وقتاً دائماً. لذا يُوصف النظام بمثل 'PC/EL': consistent تحت الـ partition، ومنخفض الـ latency خلاف ذلك." },
+        { t: "kv", rows: [
+          { k: { en: "Quorum (W, R, N)", ar: "Quorum (W, R, N)" }, v: { en: "How many replicas confirm writes/reads out of the total.", ar: "كم replica تؤكّد الـ writes/reads من الإجمالي." } },
+          { k: { en: "Strong consistency", ar: "Strong consistency" }, v: { en: "A read always reflects the last completed write.", ar: "الـ read يعكس دائماً آخر write مكتمل." } },
+          { k: { en: "Eventual consistency", ar: "Eventual consistency" }, v: { en: "Replicas converge after the partition heals; reads may lag briefly.", ar: "تتقارب الـ replicas بعد شفاء الـ partition؛ قد تتأخّر الـ reads قليلاً." } },
+          { k: { en: "PACELC", ar: "PACELC" }, v: { en: "Names both the partition choice and the everyday latency choice.", ar: "يسمّي اختيار الـ partition واختيار الـ latency اليومي معاً." } }
+        ]}
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: { en: [
+            "CP: no client ever reads wrong data, so business rules stay safe.",
+            "CP: reasoning is simple — the data is always the single latest truth.",
+            "AP: the system keeps answering during network trouble, so uptime stays high.",
+            "AP: writes never block on distant replicas, so latency stays low."
+          ], ar: [
+            "CP: لا يقرأ أي عميل بيانات خاطئة، فتبقى قواعد العمل آمنة.",
+            "CP: التفكير بسيط — البيانات دائماً هي الحقيقة الأحدث الوحيدة.",
+            "AP: يبقى النظام يجيب أثناء مشاكل الشبكة، فيبقى الـ uptime عالياً.",
+            "AP: لا تتوقّف الـ writes بانتظار replicas بعيدة، فيبقى الـ latency منخفضاً."
+          ]},
+          cons: { en: [
+            "CP: some requests fail or hang during a partition — visible downtime.",
+            "CP: cross-region writes are slower because they wait for a quorum.",
+            "AP: reads can be stale, so clients must tolerate old values.",
+            "AP: concurrent writes on both sides create conflicts you must merge later."
+          ], ar: [
+            "CP: تفشل أو تتعلّق بعض الطلبات أثناء الـ partition — توقّف مرئي.",
+            "CP: الـ writes عبر المناطق أبطأ لأنها تنتظر quorum.",
+            "AP: قد تكون الـ reads قديمة، فعلى العملاء تحمّل قيم قديمة.",
+            "AP: writes متزامنة على الجانبين تُنشئ conflicts يجب دمجها لاحقاً."
+          ]},
+          limits: { en: [
+            "The choice only appears during a partition; the rest of the time both look fine.",
+            "'CP' and 'AP' are not absolute labels — they depend on the exact W/R config.",
+            "Consistency here means linearizability, not the C in database ACID."
+          ], ar: [
+            "الاختيار يظهر فقط أثناء الـ partition؛ بقية الوقت يبدو الاثنان جيدين.",
+            "'CP' و 'AP' ليست تسميات مطلقة — تعتمد على إعداد W/R الدقيق.",
+            "Consistency هنا تعني linearizability، لا الـ C في ACID لقواعد البيانات."
+          ]},
+          alts: { en: [
+            "Tunable consistency: pick W and R per operation, not per system.",
+            "Causal consistency: weaker than strong but preserves cause-and-effect order.",
+            "Single-leader with failover: strong reads from the leader, accept brief downtime."
+          ], ar: [
+            "Tunable consistency: اختر W و R لكل عملية، لا لكل النظام.",
+            "Causal consistency: أضعف من strong لكنه يحفظ ترتيب السبب والنتيجة.",
+            "Single-leader مع failover: reads قوية من الـ leader، مع قبول توقّف قصير."
+          ]}
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Treating CAP as pick-two-of-three", ar: "معاملة CAP كاختيار اثنين من ثلاثة" },
+          body: { en: "A team wrote 'we chose CA' in a design doc, meaning consistent and available but not partition-tolerant. On a real network partitions are unavoidable, so 'CA' means the system simply breaks when the link drops. There is no CA system on a real network — the honest choice is only C or A during the partition.", ar: "كتب فريق 'اخترنا CA' في مستند تصميم، أي consistent و available دون partition tolerance. على شبكة حقيقية الـ partitions لا مفر منها، فـ 'CA' يعني ببساطة أن النظام ينكسر عند انقطاع الرابط. لا يوجد نظام CA على شبكة حقيقية — الاختيار الصادق هو C أو A أثناء الـ partition فقط." } },
+        { t: "mistake",
+          title: { en: "Calling one database 'CP' forever", ar: "وصف قاعدة بيانات بأنها 'CP' للأبد" },
+          body: { en: "Someone labeled their store 'CP' and assumed every read was strongly consistent. But they had set R=1 for speed. With W + R not greater than N, reads could return stale data even with no partition. The label describes a configuration, not a fixed property of the product.", ar: "وصف أحدهم مخزنه بأنه 'CP' وافترض أن كل read قوي الاتساق. لكنه ضبط R=1 من أجل السرعة. مع كون W + R ليس أكبر من N، قد تعيد الـ reads بيانات قديمة حتى دون partition. التسمية تصف إعداداً، لا خاصية ثابتة في المنتج." } },
+        { t: "mistake",
+          title: { en: "Ignoring the latency (E) half of PACELC", ar: "تجاهل نصف الـ latency (E) في PACELC" },
+          body: { en: "A service used a strongly consistent multi-region write for every request, including a read-only feed. With no partition at all, each read still waited for two regions to confirm, adding 80 ms — meaning every user waited an extra 80 milliseconds for no safety benefit on a feed that could be slightly stale.", ar: "استخدمت خدمة write قوي الاتساق متعدّد المناطق لكل request، بما فيها feed للقراءة فقط. دون أي partition، ما زال كل read ينتظر تأكيد منطقتين، مضيفاً 80 ms — أي أن كل مستخدم انتظر 80 ميلي ثانية إضافية دون فائدة أمان على feed يحتمل أن يكون قديماً قليلاً." } },
+        { t: "mistake",
+          title: { en: "Assuming AP means no conflicts", ar: "افتراض أن AP يعني بلا conflicts" },
+          body: { en: "An AP shopping cart accepted writes on both sides of a partition. When the link healed, the same cart had two different item lists and the system silently kept one, losing the other. AP does not remove conflicts — it defers them, and you must define how to merge, such as taking the union of cart items.", ar: "قبِلت عربة تسوّق AP كتابات على جانبي الـ partition. عند شفاء الرابط، كان للعربة نفسها قائمتا عناصر مختلفتان واحتفظ النظام بواحدة بصمت وفقد الأخرى. AP لا يزيل الـ conflicts — يؤجّلها، وعليك تعريف كيفية الدمج، مثل أخذ اتحاد عناصر العربة." } }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What are the three letters in CAP?", ar: "ما الأحرف الثلاثة في CAP؟" },
+          a: { en: "Consistency — every read sees the latest write. Availability — every request gets an answer. Partition tolerance — the system keeps working when the network drops messages between nodes. The theorem says during a partition you can only keep two, and since partitions are unavoidable, you really choose between C and A.", ar: "Consistency — كل read يرى أحدث write. Availability — كل request يحصل على إجابة. Partition tolerance — يستمر النظام حين تُسقِط الشبكة الرسائل بين الـ nodes. تقول النظرية إنه أثناء الـ partition يمكنك الإبقاء على اثنين فقط، وبما أن الـ partitions لا مفر منها، فأنت تختار فعلاً بين C و A." } },
+        { t: "qa", level: "mid",
+          q: { en: "Why can't you have CA on a real network?", ar: "لماذا لا يمكن الحصول على CA على شبكة حقيقية؟" },
+          a: { en: "Because partitions will happen — cables fail, switches reboot, packets drop. 'CA' would mean you assume the network never splits. When it does split, a CA design has no defined behavior, so it just breaks. Partition tolerance is not optional; it is the baseline you build on, which leaves the choice between C and A.", ar: "لأن الـ partitions ستحدث — تفشل الكابلات، تُعاد تشغيل الـ switches، تُسقَط الحزم. 'CA' يعني أنك تفترض أن الشبكة لا تنقسم أبداً. حين تنقسم، لا يملك تصميم CA سلوكاً معرّفاً، فينكسر ببساطة. Partition tolerance ليست اختيارية؛ هي الأساس الذي تبني عليه، ما يترك الاختيار بين C و A." } },
+        { t: "qa", level: "mid",
+          q: { en: "How does a quorum implement the CAP choice?", ar: "كيف ينفّذ الـ quorum اختيار CAP؟" },
+          a: { en: "You pick W, the writes needed to confirm, and R, the reads needed, out of N replicas. If W + R > N every read overlaps the latest write, giving strong consistency. During a partition, if a side can't reach W nodes, a consistent system refuses the write — choosing C over A. Lower W and R for availability and speed, at the price of possibly stale reads.", ar: "تختار W، الكتابات اللازمة للتأكيد، و R، القراءات اللازمة، من N من الـ replicas. إذا W + R > N فكل read يتداخل مع أحدث write، ما يعطي strong consistency. أثناء الـ partition، إذا لم يصل جانب إلى W من الـ nodes، يرفض النظام الـ consistent الـ write — مختاراً C على A. اخفض W و R للـ availability والسرعة، بثمن reads قد تكون قديمة." } },
+        { t: "qa", level: "senior",
+          q: { en: "What does PACELC add over CAP?", ar: "ماذا يضيف PACELC على CAP؟" },
+          a: { en: "CAP only talks about the moment of a partition, which is rare. PACELC also describes normal operation: Else, with no partition, you still trade Latency against Consistency, because confirming more replicas takes time. Most systems spend nearly all their life in the 'E' case, so the latency-versus-consistency decision usually matters more day to day than the partition one.", ar: "CAP يتحدث فقط عن لحظة الـ partition، وهي نادرة. PACELC يصف أيضاً التشغيل العادي: Else، دون partition، ما زلت تقايض Latency مقابل Consistency، لأن تأكيد replicas أكثر يأخذ وقتاً. معظم الأنظمة تقضي جُلّ حياتها في حالة 'E'، فقرار الـ latency مقابل الـ consistency عادةً أهم يومياً من قرار الـ partition." } },
+        { t: "qa", level: "senior",
+          q: { en: "Give a concrete case where AP is the right call.", ar: "أعطِ حالة ملموسة يكون فيها AP الخيار الصحيح." },
+          a: { en: "A shopping cart. If a region is partitioned, refusing to let a user add items loses sales, while showing a slightly stale cart costs nothing serious. So you stay available, accept writes on both sides, and merge on heal — for a cart, take the union of items so nothing a customer added is lost. The business cost of downtime beats the cost of a brief conflict.", ar: "عربة تسوّق. إذا انفصلت منطقة، فمنع المستخدم من إضافة عناصر يفقد مبيعات، بينما إظهار عربة قديمة قليلاً لا يكلّف شيئاً خطيراً. لذا تبقى available، تقبل الكتابات على الجانبين، وتدمج عند الشفاء — للعربة خذ اتحاد العناصر كي لا يُفقد ما أضافه الزبون. تكلفة التوقّف للعمل تفوق تكلفة conflict قصير." } },
+        { t: "qa", level: "staff",
+          q: { en: "How would you stop teams from mislabeling systems as 'CA' across an org?", ar: "كيف تمنع الفرق من وصف الأنظمة خطأً بأنها 'CA' عبر المؤسسة؟" },
+          a: { en: "Make the design-doc template ask two separate questions: what happens during a partition, and what latency-versus-consistency choice you make when healthy — that is PACELC, and it forces the honest answer. Add a review gate where anyone claiming strong consistency must state the W, R and N. Run periodic partition drills so the claimed behavior is actually observed, not assumed.", ar: "اجعل قالب مستند التصميم يسأل سؤالين منفصلين: ماذا يحدث أثناء الـ partition، وأي اختيار latency مقابل consistency تتخذه في الحالة السليمة — هذا PACELC، وهو يفرض الإجابة الصادقة. أضِف بوابة مراجعة يُلزَم فيها كل من يدّعي strong consistency بذكر W و R و N. أجرِ تمارين partition دورية ليُلاحَظ السلوك المدّعى فعلاً لا يُفترض." } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Read path silently returns stale data on a balance", ar: "مسار القراءة يعيد بيانات قديمة بصمت على رصيد" },
+          bad: "// balance read, single replica, no quorum\nvar balance = await replica.GetAsync(accountId);\nreturn balance; // may be stale during a partition",
+          good: "// require a read quorum for money-critical data\nvar result = await store.GetAsync(accountId, new ReadOptions {\n    Consistency = ConsistencyLevel.Quorum // R + W > N\n});\nif (!result.Reached) throw new ConsistencyException();\nreturn result.Value;",
+          why: { en: "A balance is a place where a stale read causes real financial loss, so it needs strong consistency (a read quorum). The bad version reads from one replica with no quorum, so during a partition it can return an old balance and let a user overdraw. Money-critical reads must be CP; accept the possible failure over a wrong number.", ar: "الرصيد موضع يسبب فيه read قديم خسارة مالية فعلية، فيحتاج strong consistency (read quorum). النسخة السيئة تقرأ من replica واحدة دون quorum، فأثناء الـ partition قد تعيد رصيداً قديماً وتسمح للمستخدم بالسحب على المكشوف. القراءات الحرجة للمال يجب أن تكون CP؛ اقبل الفشل المحتمل بدل رقم خاطئ." } },
+        { t: "review", severity: "low",
+          title: { en: "Strong consistency forced on a view counter", ar: "فرض strong consistency على عدّاد مشاهدات" },
+          bad: "await store.IncrementAsync(\"views:\" + postId,\n    new WriteOptions { Consistency = ConsistencyLevel.All });",
+          good: "await store.IncrementAsync(\"views:\" + postId,\n    new WriteOptions { Consistency = ConsistencyLevel.One });",
+          why: { en: "A view counter has no correctness cost if it is off by a few for a moment, so paying for a full multi-replica confirmation on every increment just adds latency. Match the consistency level to how much a stale value actually hurts — here, almost none, so cheap AP writes are correct.", ar: "عدّاد المشاهدات لا يكلّف صحّةً إن أخطأ بقليل للحظة، فدفع ثمن تأكيد متعدّد الـ replicas على كل زيادة يضيف latency فقط. طابِق مستوى الـ consistency مع مقدار ضرر القيمة القديمة فعلاً — هنا يكاد يكون معدوماً، فكتابات AP الرخيصة صحيحة." } }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a real design, you rarely pick one CAP stance for the whole system. You split data by how much a stale read hurts, and give each part its own consistency level. Money and inventory get CP; feeds, counters and caches get AP.",
+          ar: "في تصميم حقيقي، نادراً ما تختار موقف CAP واحداً لكامل النظام. تقسم البيانات حسب مقدار ضرر الـ read القديم، وتعطي كل جزء مستوى consistency خاصاً به. المال والمخزون يأخذان CP؛ والـ feeds والعدّادات والـ caches تأخذ AP." },
+        { t: "ul",
+          en: [
+            "Classify each data type by the cost of a stale read before choosing C or A.",
+            "Use a single-leader store for the CP parts so one node holds the truth.",
+            "Use a multi-leader or quorum store for AP parts, with a defined merge rule.",
+            "Write down the PACELC label per store so on-call knows the expected behavior."
+          ],
+          ar: [
+            "صنّف كل نوع بيانات حسب تكلفة الـ read القديم قبل اختيار C أو A.",
+            "استخدم مخزن single-leader للأجزاء CP كي يحمل node واحد الحقيقة.",
+            "استخدم مخزن multi-leader أو quorum للأجزاء AP، مع قاعدة merge معرّفة.",
+            "اكتب تسمية PACELC لكل مخزن كي يعرف الـ on-call السلوك المتوقّع."
+          ]},
+        { t: "callout", kind: "tip",
+          en: "When in doubt, ask: if this exact value is 5 seconds old, does anything bad happen? A 'no' points to AP; a 'yes' points to CP.",
+          ar: "عند الشك اسأل: إن كانت هذه القيمة بالذات قديمة بـ 5 ثوانٍ، هل يحدث شيء سيئ؟ 'لا' تشير إلى AP؛ و'نعم' تشير إلى CP." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Latency", ar: "Latency" }, v: { en: "Higher W and R mean each op waits for more replicas, so strong consistency costs milliseconds per request.", ar: "قيم W و R أعلى تعني انتظار كل عملية replicas أكثر، فـ strong consistency يكلّف ميلي ثوانٍ لكل request." } },
+          { k: { en: "Network", ar: "Network" }, v: { en: "Cross-region quorums send messages over slow long-distance links; keep quorums in one region when you can.", ar: "quorums عبر المناطق ترسل رسائل عبر روابط بطيئة بعيدة المدى؛ أبقِ الـ quorums في منطقة واحدة متى أمكن." } },
+          { k: { en: "Availability", ar: "Availability" }, v: { en: "CP systems drop some requests during a partition; measure this as error rate, not just latency.", ar: "أنظمة CP تُسقِط بعض الطلبات أثناء الـ partition؛ قِس هذا كنسبة أخطاء، لا latency فقط." } },
+          { k: { en: "Scalability", ar: "Scalability" }, v: { en: "AP scales writes across regions freely; CP write throughput is capped by the leader or quorum round-trip.", ar: "AP يوسّع الـ writes عبر المناطق بحرية؛ إنتاجية كتابة CP محدودة بجولة الـ leader أو الـ quorum." } },
+          { k: { en: "CPU", ar: "CPU" }, v: { en: "AP conflict resolution (merging divergent replicas) adds CPU work after a partition heals.", ar: "حل conflicts في AP (دمج replicas متباعدة) يضيف عمل CPU بعد شفاء الـ partition." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "Cluster status command (e.g. `nodetool status` for Cassandra): shows which nodes see each other, so you can spot a partition.",
+            "Replica lag metric: watch how far behind followers are — growing lag warns of a forming split.",
+            "Client error rate by region: a spike on one side signals that side lost quorum.",
+            "Consistency-level logs on each op: confirm reads and writes actually used the level you intended.",
+            "A partition drill (block traffic between nodes on purpose): verify the system behaves as its CAP claim says."
+          ],
+          ar: [
+            "أمر حالة الـ cluster (مثل `nodetool status` لـ Cassandra): يبيّن أي nodes ترى بعضها، فترصد الـ partition.",
+            "مقياس تأخّر الـ replica: راقب كم يتأخّر الـ followers — تأخّر متزايد ينذر بانقسام يتكوّن.",
+            "نسبة أخطاء العميل حسب المنطقة: قفزة على جانب تشير إلى فقدان ذلك الجانب للـ quorum.",
+            "سجلات مستوى الـ consistency لكل عملية: أكّد أن الـ reads والـ writes استخدمت المستوى المقصود فعلاً.",
+            "تمرين partition (احجب المرور بين الـ nodes عمداً): تحقّق أن النظام يتصرّف كما يدّعي CAP."
+          ]},
+        { t: "callout", kind: "tip",
+          en: "The dangerous partition is the one that heals silently. Alert on 'replica rejoined after divergence' so a merge step actually runs instead of one side's writes vanishing.",
+          ar: "الـ partition الخطير هو الذي يُشفى بصمت. نبّه على 'replica أعاد الانضمام بعد تباعد' كي تعمل خطوة الـ merge فعلاً بدل اختفاء كتابات أحد الجانبين." }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "The CAP choice shows up any time data is copied across machines or regions, which is nearly every large system. The pattern is always the same: pick C where a stale value causes loss, pick A where downtime causes loss.",
+          ar: "يظهر اختيار CAP كلما نُسخت البيانات عبر أجهزة أو مناطق، وهو ما يحدث في كل نظام كبير تقريباً. النمط دائماً نفسه: اختر C حيث تسبب القيمة القديمة خسارة، واختر A حيث يسبب التوقّف خسارة." },
+        { t: "ul",
+          en: [
+            "Payment and banking systems: CP, because a wrong balance or double-spend is unacceptable.",
+            "Social feeds and 'like' counts: AP, because a few seconds of stale numbers harms no one.",
+            "Shopping carts: AP with a merge-on-heal rule, so a partition never blocks a purchase.",
+            "Service discovery and config: often CP, because two nodes acting on different config causes chaos."
+          ],
+          ar: [
+            "أنظمة الدفع والبنوك: CP، لأن رصيداً خاطئاً أو double-spend غير مقبول.",
+            "الـ feeds الاجتماعية وعدّادات 'like': AP، لأن ثوانٍ من الأرقام القديمة لا تؤذي أحداً.",
+            "عربات التسوّق: AP مع قاعدة merge-on-heal، كي لا يحجب partition عملية شراء أبداً.",
+            "اكتشاف الخدمات والـ config: غالباً CP، لأن عمل node ين على config مختلف يسبب فوضى."
+          ]}
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "For five features (bank transfer, chat message, view counter, seat booking, user avatar), label each CP or AP and write one sentence saying why. You got it right if each label matches the cost of a stale read.",
+          ar: "لخمس ميزات (تحويل بنكي، رسالة chat، عدّاد مشاهدات، حجز مقعد، avatar مستخدم)، صنّف كلاً CP أو AP واكتب جملة تبرّر. تكون مصيباً إن طابقت كل تسمية تكلفة الـ read القديم." },
+        { t: "ex", diff: "medium",
+          en: "With N=3 replicas, list every (W, R) pair and mark which give strong consistency (W + R > 3). Then say which pair survives one node down while staying strongly consistent. Correct when your table matches the quorum rule.",
+          ar: "مع N=3 من الـ replicas، اذكر كل زوج (W, R) وحدّد أيها يعطي strong consistency (W + R > 3). ثم قل أي زوج ينجو من سقوط node واحد مع بقائه قوي الاتساق. صحيح حين يطابق جدولك قاعدة الـ quorum." },
+        { t: "ex", diff: "hard",
+          en: "Build a two-node key-value demo. Add a switch that 'drops' messages between nodes to simulate a partition. Implement both a CP mode (reject on no quorum) and an AP mode (accept and reconcile). Prove each behaves correctly under the partition.",
+          ar: "ابنِ عرض key-value بـ node ين. أضف مفتاحاً 'يُسقِط' الرسائل بين الـ nodes لمحاكاة partition. نفّذ وضع CP (رفض عند غياب quorum) ووضع AP (قبول وتصالح). أثبت أن كلاً يتصرّف صحيحاً تحت الـ partition." },
+        { t: "ex", diff: "senior",
+          en: "Take one service you own and write its PACELC label with evidence: the W/R config for the P choice, and a measured latency number for the E choice. Then propose one change that better matches the business cost of staleness. Done when the label is backed by numbers, not guesses.",
+          ar: "خذ خدمة تملكها واكتب تسمية PACELC لها بأدلة: إعداد W/R لاختيار P، ورقم latency مقيس لاختيار E. ثم اقترح تغييراً واحداً يطابق أفضل تكلفة العمل للقِدَم. تنتهي حين تكون التسمية مدعومة بأرقام لا تخمين." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref", label: { en: "Gilbert & Lynch: proof of Brewer's conjecture", ar: "Gilbert & Lynch: برهان حدسية Brewer" }, url: "https://www.comp.nus.edu.sg/~gilbert/pubs/BrewersConjecture-SigAct.pdf", meta: { en: "Paper", ar: "ورقة بحثية" } },
+        { t: "ref", label: { en: "Eric Brewer: CAP twelve years later", ar: "Eric Brewer: CAP بعد اثني عشر عاماً" }, url: "https://www.infoq.com/articles/cap-twelve-years-later-how-the-rules-have-changed/", meta: { en: "Article", ar: "مقال" } },
+        { t: "ref", label: { en: "Daniel Abadi: consistency trade-offs and PACELC", ar: "Daniel Abadi: مقايضات الاتساق و PACELC" }, url: "https://www.cs.umd.edu/~abadi/papers/abadi-pacelc.pdf", meta: { en: "Paper", ar: "ورقة بحثية" } },
+        { t: "ref", label: { en: "Martin Kleppmann: please stop calling databases CP or AP", ar: "Martin Kleppmann: أرجوكم توقّفوا عن وصف قواعد البيانات بـ CP أو AP" }, url: "https://martin.kleppmann.com/2015/05/11/please-stop-calling-databases-cp-or-ap.html", meta: { en: "Article", ar: "مقال" } }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "During a network partition, CAP says you must give up which pair of options?", ar: "أثناء partition شبكي، يقول CAP إنه يجب التخلّي عن أي زوج من الخيارات؟" },
+      options: [
+        { en: "Consistency or Availability", ar: "Consistency أو Availability" },
+        { en: "Consistency or Partition tolerance", ar: "Consistency أو Partition tolerance" },
+        { en: "Availability or Partition tolerance", ar: "Availability أو Partition tolerance" },
+        { en: "Latency or Throughput", ar: "Latency أو Throughput" }
+      ],
+      correct: 0,
+      why: { en: "Partitions are unavoidable, so partition tolerance is a given. That leaves the real choice: stay consistent (reject/hang) or stay available (serve possibly stale data).", ar: "الـ partitions لا مفر منها، فـ partition tolerance مُسلّمة. يبقى الاختيار الحقيقي: البقاء consistent (رفض/تعليق) أو البقاء available (تقديم بيانات قد تكون قديمة)." }
+    },
+    {
+      q: { en: "With N=3 replicas, which (W, R) gives strong consistency?", ar: "مع N=3 من الـ replicas، أي (W, R) يعطي strong consistency؟" },
+      options: [
+        { en: "W=1, R=1", ar: "W=1, R=1" },
+        { en: "W=2, R=2", ar: "W=2, R=2" },
+        { en: "W=1, R=2", ar: "W=1, R=2" },
+        { en: "W=1, R=0", ar: "W=1, R=0" }
+      ],
+      correct: 1,
+      why: { en: "Strong consistency needs W + R > N. With N=3, W=2 and R=2 give 4 > 3, so every read set overlaps the latest write set by at least one node.", ar: "strong consistency يحتاج W + R > N. مع N=3، فإن W=2 و R=2 يعطيان 4 > 3، فتتداخل كل مجموعة read مع أحدث مجموعة write بـ node واحد على الأقل." }
+    },
+    {
+      q: { en: "Why is 'CA on a real network' not a meaningful choice?", ar: "لماذا 'CA على شبكة حقيقية' ليس خياراً ذا معنى؟" },
+      options: [
+        { en: "Because partitions are unavoidable, so the system has no defined behavior when one happens", ar: "لأن الـ partitions لا مفر منها، فلا سلوك معرّف للنظام حين يحدث أحدها" },
+        { en: "Because consistency and availability cannot both be implemented", ar: "لأن الـ consistency والـ availability لا يمكن تنفيذهما معاً أبداً" },
+        { en: "Because CA needs more than three replicas", ar: "لأن CA يحتاج أكثر من ثلاث replicas" },
+        { en: "Because CA is only for single-machine databases", ar: "لأن CA لقواعد البيانات أحادية الجهاز فقط" }
+      ],
+      correct: 0,
+      why: { en: "On a real network the link will drop at some point. A CA design assumes it never does, so when a partition hits it simply breaks. Partition tolerance is the baseline.", ar: "على شبكة حقيقية سينقطع الرابط في وقت ما. تصميم CA يفترض أنه لا ينقطع أبداً، فحين يقع partition ينكسر ببساطة. Partition tolerance هي الأساس." }
+    },
+    {
+      q: { en: "What does the 'ELC' part of PACELC describe?", ar: "ماذا يصف جزء 'ELC' في PACELC؟" },
+      options: [
+        { en: "The choice between Latency and Consistency when there is no partition", ar: "الاختيار بين Latency و Consistency حين لا يوجد partition" },
+        { en: "The choice between two error codes during a partition", ar: "الاختيار بين رمزَي خطأ أثناء الـ partition" },
+        { en: "The number of replicas needed for a quorum", ar: "عدد الـ replicas اللازمة لـ quorum" },
+        { en: "The maximum tolerable packet loss", ar: "أقصى فقدان حزم محتمل" }
+      ],
+      correct: 0,
+      why: { en: "PACELC's 'Else' half covers the healthy network: even with no partition you trade Latency against Consistency, since confirming more replicas takes time.", ar: "نصف 'Else' في PACELC يغطّي الشبكة السليمة: حتى دون partition تقايض Latency مقابل Consistency، لأن تأكيد replicas أكثر يأخذ وقتاً." }
+    },
+    {
+      q: { en: "For a 'likes' counter that can be stale for a few seconds, which stance fits best?", ar: "لعدّاد 'likes' يحتمل القِدَم لبضع ثوانٍ، أي موقف يناسب أكثر؟" },
+      options: [
+        { en: "AP — stay available since a slightly stale count harms no one", ar: "AP — ابقَ available لأن عدّاً قديماً قليلاً لا يؤذي أحداً" },
+        { en: "CP — reject reads until every replica agrees", ar: "CP — ارفض الـ reads حتى تتفق كل replica" },
+        { en: "CA — assume no partition ever happens", ar: "CA — افترض ألّا يحدث partition أبداً" },
+        { en: "It must use W + R > N for correctness", ar: "يجب أن يستخدم W + R > N للصحّة" }
+      ],
+      correct: 0,
+      why: { en: "A stale like count costs nothing, but downtime does, so availability wins. Cheap AP writes (low W and R) are the right fit here.", ar: "عدّاد likes قديم لا يكلّف شيئاً، لكن التوقّف يكلّف، فتفوز الـ availability. كتابات AP الرخيصة (W و R منخفضان) هي المناسبة هنا." }
+    }
+  ]
+};
+
+// ---------------------------------------------------------------- lesson: outbox
+
+const outboxLesson = {
+  id: "outbox",
+  moduleId: "distributed",
+  title: { en: "Outbox and exactly-once delivery", ar: "الـ outbox والتوصيل مرة واحدة" },
+  summary: {
+    en: "How to save data and send a message together, reliably, when the database and the message broker are two separate systems that can fail on their own.",
+    ar: "كيف تحفظ البيانات وترسل رسالة معاً وبشكل موثوق، عندما يكون الـ database والـ message broker نظامين منفصلين قد يفشل كل منهما وحده."
+  },
+  mins: 19,
+  sections: [
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "The outbox pattern lets you update your database and send a message as one all-or-nothing step, even though the database and the message broker are two separate systems. Without it you can save an order but fail to announce it — or announce an order that was never saved — and the two systems drift apart.",
+          ar: "الـ outbox pattern يتيح لك تحديث الـ database وإرسال رسالة كخطوة واحدة إما تنجح كلها أو تفشل كلها، رغم أن الـ database والـ message broker نظامان منفصلان. بدونه قد تحفظ order وتفشل في إعلانها، أو تعلن order لم تُحفظ أصلاً، فيبتعد النظامان عن بعضهما."
+        },
+        {
+          t: "kv",
+          rows: [
+            { k: { en: "message broker", ar: "message broker" }, v: { en: "A separate service (RabbitMQ, Kafka, Azure Service Bus) that carries messages from one application to others.", ar: "خدمة منفصلة (RabbitMQ أو Kafka أو Azure Service Bus) تنقل الرسائل من تطبيق إلى تطبيقات أخرى." } },
+            { k: { en: "dual write", ar: "dual write" }, v: { en: "Writing to two independent systems (a database and a broker) in one operation, with no shared transaction to keep them in step.", ar: "الكتابة إلى نظامين مستقلين (database وbroker) في عملية واحدة، دون transaction مشترك يبقيهما متوافقين." } },
+            { k: { en: "transaction", ar: "transaction" }, v: { en: "A group of database changes that all commit together or all roll back; nothing partial survives.", ar: "مجموعة تغييرات في الـ database تُثبَّت كلها معاً أو تُلغى كلها؛ لا شيء ناقص يبقى." } },
+            { k: { en: "outbox", ar: "outbox" }, v: { en: "An extra table in your own database where you write the message as part of the same transaction as your data.", ar: "جدول إضافي داخل الـ database عندك، تكتب فيه الرسالة كجزء من نفس الـ transaction الخاص ببياناتك." } },
+            { k: { en: "relay", ar: "relay" }, v: { en: "A background process that reads unsent rows from the outbox table and pushes them to the broker.", ar: "عملية خلفية تقرأ الصفوف غير المُرسَلة من جدول الـ outbox وتدفعها إلى الـ broker." } },
+            { k: { en: "idempotency", ar: "idempotency" }, v: { en: "An operation that gives the same result whether it runs once or many times, so a duplicate does no harm.", ar: "عملية تعطي نفس النتيجة سواء نُفِّذت مرة أو مرات، فلا يسبب التكرار أي ضرر." } }
+          ]
+        },
+        {
+          t: "p",
+          en: "Take a place-order endpoint. It must do two things: save the order row, and publish an 'OrderPlaced' message so the email service and the inventory service react. That is two writes to two systems. If the database commit succeeds but the broker send times out, the order exists but nobody is told: no confirmation email, no stock decrement.",
+          ar: "خذ endpoint لإنشاء order. عليه أن يفعل شيئين: يحفظ صف الـ order، وينشر رسالة 'OrderPlaced' كي يتفاعل معها الـ email service والـ inventory service. هذه كتابتان إلى نظامين. لو نجح commit في الـ database لكن انتهت مهلة إرسال الـ broker، تبقى الـ order موجودة لكن لا أحد يعلم: لا email تأكيد ولا خصم من المخزون."
+        },
+        {
+          t: "p",
+          en: "Think of mailing a signed contract. You file your copy in your cabinet (the database) and drop the other copy in the post box (the broker). If you file yours but the post send fails, your two records disagree. The outbox fixes this by writing the outgoing letter into your own cabinet first — in the same drawer as your record — and a courier picks it up later. Filing both copies is now one action.",
+          ar: "تخيل إرسال عقد موقّع بالبريد. تحفظ نسختك في خزانتك (الـ database) وتضع النسخة الأخرى في صندوق البريد (الـ broker). لو حفظت نسختك وفشل الإرسال، تختلف نسختاك. الـ outbox يحل هذا بكتابة الرسالة الصادرة في خزانتك أولاً، في نفس الدرج مع سجلك، ثم يمر ساعٍ لاحقاً ويأخذها. حفظ النسختين صار عملاً واحداً."
+        },
+        {
+          t: "callout",
+          kind: "note",
+          en: "The outbox does not remove duplicates. The relay can crash after sending but before marking the row sent, so the same message may go out twice. Exactly-once is reached by pairing the outbox (never lose a message) with idempotent consumers (a duplicate does no harm).",
+          ar: "الـ outbox لا يمنع التكرار. قد يتعطل الـ relay بعد الإرسال وقبل تعليم الصف كمُرسَل، فتخرج نفس الرسالة مرتين. تُحقَّق exactly-once بجمع الـ outbox (لا تفقد رسالة) مع consumers من نوع idempotent (التكرار لا يضر)."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "This is the dual-write problem. Your handler saves the order and then calls the broker — two steps, two systems, and no single transaction wrapping both. A failure between the two steps leaves the systems inconsistent, and there is no ordering of the two calls that closes every gap.",
+          ar: "هذه هي مشكلة الـ dual write. الـ handler يحفظ الـ order ثم يستدعي الـ broker — خطوتان، نظامان، ولا transaction واحد يغلّف الاثنين. أي فشل بين الخطوتين يترك النظامين غير متوافقين، ولا يوجد ترتيب للاستدعاءين يغلق كل الثغرات."
+        },
+        {
+          t: "kv",
+          rows: [
+            { k: { en: "DB commit succeeds, broker send fails", ar: "نجح commit في الـ DB وفشل إرسال الـ broker" }, v: { en: "The order exists but no message goes out. Downstream never reacts: no email, stock not reduced.", ar: "الـ order موجودة لكن لا رسالة تخرج. لا يتفاعل ما بعده: لا email ولا خصم مخزون." } },
+            { k: { en: "Broker send succeeds, DB commit rolls back", ar: "نجح إرسال الـ broker وأُلغي commit في الـ DB" }, v: { en: "A message went out for an order that does not exist. Consumers act on a phantom order.", ar: "خرجت رسالة عن order غير موجودة. يتصرّف الـ consumers بناءً على order وهمية." } },
+            { k: { en: "Send before commit, then commit", ar: "الإرسال قبل commit ثم commit" }, v: { en: "A consumer may read the order before it is committed and find nothing (a read-your-write gap).", ar: "قد يقرأ consumer الـ order قبل تثبيتها فلا يجد شيئاً (ثغرة read-your-write)." } },
+            { k: { en: "Retry the send after a crash", ar: "إعادة الإرسال بعد تعطّل" }, v: { en: "You cannot tell if the first send arrived, so you either risk a duplicate or a silent loss.", ar: "لا تعرف إن وصل الإرسال الأول، فتخاطر إما بتكرار أو بفقدان صامت." } }
+          ]
+        },
+        {
+          t: "p",
+          en: "The numbers make it real. A system processing 50,000 orders a day with a broker send-failure rate of just 0.1% loses about 50 announcements a day — meaning around 50 customers a day are charged with no confirmation and no inventory update. That is not a rare edge case; it is a steady daily leak that support and finance eventually notice.",
+          ar: "الأرقام توضح الأمر. نظام يعالج 50,000 order يومياً بنسبة فشل إرسال في الـ broker قدرها 0.1% فقط يفقد نحو 50 إعلاناً يومياً — أي نحو 50 عميلاً يومياً يُدفع لهم بلا تأكيد وبلا تحديث مخزون. هذه ليست حالة نادرة، بل تسريب يومي ثابت يلاحظه الـ support والـ finance في النهاية."
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "There are two moving parts: an outbox table that lives in the same database as your business data, and a relay — a background worker that forwards rows from that table to the broker. The trick is that the message row and the business row are inserted in one database transaction, so they are atomic: all-or-nothing, both saved or neither.",
+          ar: "هناك جزءان متحركان: جدول outbox يعيش في نفس الـ database مع بياناتك، وrelay — عامل خلفي يمرّر الصفوف من هذا الجدول إلى الـ broker. الحيلة أن صف الرسالة وصف البيانات يُدرَجان في transaction واحد، فيكونان atomic: إما الكل أو لا شيء، يُحفظان معاً أو لا يُحفظ أي منهما."
+        },
+        {
+          t: "kv",
+          rows: [
+            { k: { en: "Outbox table", ar: "جدول Outbox" }, v: { en: "Columns: Id, Type, Payload (the serialized message), CreatedAt, ProcessedAt (null until sent).", ar: "أعمدة: Id وType وPayload (الرسالة مُسلسَلة) وCreatedAt وProcessedAt (null حتى الإرسال)." } },
+            { k: { en: "The transaction", ar: "الـ transaction" }, v: { en: "One SaveChanges wrapping the business row and the outbox row together.", ar: "SaveChanges واحد يغلّف صف البيانات وصف الـ outbox معاً." } },
+            { k: { en: "The relay", ar: "الـ relay" }, v: { en: "A loop that polls unprocessed rows, publishes each, then marks ProcessedAt.", ar: "حلقة تستعلم عن الصفوف غير المعالَجة، تنشر كل واحد، ثم تعلّم ProcessedAt." } },
+            { k: { en: "The broker", ar: "الـ broker" }, v: { en: "The external system that finally receives and delivers the message to consumers.", ar: "النظام الخارجي الذي يستقبل الرسالة أخيراً ويسلّمها للـ consumers." } }
+          ]
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "Step 1 — write order and message in one transaction", ar: "الخطوة 1 — اكتب الـ order والرسالة في transaction واحد" },
+          code: "public async Task PlaceOrder(Order order, OrderPlaced evt)\n{\n    db.Orders.Add(order);\n    db.Outbox.Add(new OutboxMessage {\n        Id = Guid.NewGuid(),\n        Type = \"OrderPlaced\",\n        Payload = JsonSerializer.Serialize(evt),\n        CreatedAt = DateTime.UtcNow\n    });\n    // one SaveChanges = one transaction: order + message commit together\n    await db.SaveChangesAsync();\n}"
+        },
+        {
+          t: "p",
+          en: "Because both inserts share one transaction, the failure windows from the problem section disappear. There is no moment where the order is committed but the message is not, or the reverse. The handler never talks to the broker at all — it only writes to its own database, which it can do atomically.",
+          ar: "لأن الإدراجين يتشاركان transaction واحداً، تختفي نوافذ الفشل من قسم المشكلة. لا توجد لحظة تكون فيها الـ order مثبَّتة والرسالة لا، أو العكس. الـ handler لا يكلّم الـ broker إطلاقاً — يكتب فقط إلى الـ database الخاص به، وهو ما يستطيع فعله بشكل atomic."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "Step 2 — the relay loop (runs in the background)", ar: "الخطوة 2 — حلقة الـ relay (تعمل في الخلفية)" },
+          code: "var pending = await db.Outbox\n    .Where(m => m.ProcessedAt == null)\n    .OrderBy(m => m.CreatedAt)\n    .Take(100)\n    .ToListAsync();\n\nforeach (var m in pending)\n{\n    await broker.PublishAsync(m.Type, m.Payload);  // publish first\n    m.ProcessedAt = DateTime.UtcNow;               // mark only after ack\n}\nawait db.SaveChangesAsync();"
+        },
+        {
+          t: "p",
+          en: "The relay is like a mailroom clerk who checks the outgoing tray every second, sends whatever is there, and stamps each item 'sent'. If the clerk faints right after dropping a letter in the post but before stamping it, next round he sends it again — the recipient might get two. That is why the relay is at-least-once, not exactly-once: it never loses a message, but it can repeat one. An alternative to polling is Change Data Capture (CDC) — a tool like Debezium tails the database's write log and emits the outbox rows for you, with no polling query.",
+          ar: "الـ relay مثل موظف غرفة بريد يفحص صينية الصادر كل ثانية، يرسل ما فيها، ويختم كل عنصر بـ 'مُرسَل'. لو أُغمي عليه فور وضع رسالة في البريد وقبل ختمها، يرسلها مجدداً في الجولة التالية — قد يستلم المتلقي نسختين. لهذا الـ relay هو at-least-once لا exactly-once: لا يفقد رسالة لكنه قد يكررها. بديل الـ polling هو Change Data Capture (CDC) — أداة مثل Debezium تتابع سجل الكتابة في الـ database وتُصدِر صفوف الـ outbox نيابةً عنك، دون استعلام polling."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: ["No lost messages: they survive even if the broker is down when the order is placed.", "One local transaction — no slow distributed transaction across two systems.", "Works with any broker, since the handler only writes to its own database.", "Gives an audit trail: every message ever published is a row you can inspect."],
+            ar: ["لا رسائل مفقودة: تبقى حتى لو كان الـ broker متوقفاً وقت إنشاء الـ order.", "transaction محلي واحد — دون transaction موزّع بطيء عبر نظامين.", "يعمل مع أي broker، لأن الـ handler يكتب فقط إلى الـ database الخاص به.", "يوفّر سجل تدقيق: كل رسالة نُشرت هي صف يمكنك فحصه."]
+          },
+          cons: {
+            en: ["Adds latency: a message goes out after the next poll, not instantly.", "Needs a background relay that must run and be monitored.", "Duplicates are still possible, so consumers must be idempotent.", "The outbox table grows and needs regular cleanup."],
+            ar: ["يضيف latency: الرسالة تخرج بعد الـ poll التالي لا فوراً.", "يحتاج relay خلفياً يجب أن يعمل ويُراقَب.", "التكرار ما زال ممكناً، فيجب أن تكون الـ consumers من نوع idempotent.", "جدول الـ outbox يكبر ويحتاج تنظيفاً منتظماً."]
+          },
+          limits: {
+            en: ["Only covers messages that originate from a database write.", "Does not help if the consumer's side effect is itself non-idempotent.", "Polling adds steady database load at high message volume."],
+            ar: ["يغطي فقط الرسائل الناشئة عن كتابة في الـ database.", "لا يفيد إن كان أثر الـ consumer نفسه غير idempotent.", "الـ polling يضيف حملاً ثابتاً على الـ database عند حجم رسائل كبير."]
+          },
+          alts: {
+            en: ["Distributed transaction (two-phase commit): strong but slow and poorly supported by brokers.", "Change Data Capture (Debezium): tail the DB log instead of polling.", "Event sourcing: the event store is the source of truth, so there is no second write."],
+            ar: ["transaction موزّع (two-phase commit): قوي لكنه بطيء وضعيف الدعم من الـ brokers.", "Change Data Capture (Debezium): تابع سجل الـ DB بدل الـ polling.", "Event sourcing: مخزن الأحداث هو مصدر الحقيقة، فلا توجد كتابة ثانية."]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Calling the broker from the request handler", ar: "استدعاء الـ broker من داخل الـ handler" },
+          body: {
+            en: "A team saved the order with SaveChanges, then called broker.Publish right after. That is the dual write again. When the broker had a 3-second blip during a sale, hundreds of orders committed with no OrderPlaced message, and the fix was manual replay from logs.",
+            ar: "فريق حفظ الـ order بـ SaveChanges ثم استدعى broker.Publish مباشرة. هذه هي الـ dual write من جديد. حين تعطّل الـ broker 3 ثوانٍ أثناء عرض بيع، ثُبِّتت مئات الـ orders بلا رسالة OrderPlaced، وكان الإصلاح إعادة تشغيل يدوية من الـ logs."
+          },
+          fix: "db.Orders.Add(order);\ndb.Outbox.Add(new OutboxMessage { Type = \"OrderPlaced\", Payload = payload });\nawait db.SaveChangesAsync(); // no broker call in the request"
+        },
+        {
+          t: "mistake",
+          title: { en: "Marking the row processed before the broker confirms", ar: "تعليم الصف كمعالَج قبل تأكيد الـ broker" },
+          body: {
+            en: "The relay set ProcessedAt and then published. When a publish threw, the row was already marked done, so it was never retried and the message was lost. Always publish first and mark only after the broker acknowledges.",
+            ar: "الـ relay ضبط ProcessedAt ثم نشر. حين رمى النشر استثناءً، كان الصف مُعلَّماً كمكتمل، فلم يُعَد أبداً وضاعت الرسالة. انشر أولاً دائماً وعلّم فقط بعد أن يؤكّد الـ broker."
+          },
+          fix: "await broker.PublishAsync(m.Type, m.Payload); // ack first\nm.ProcessedAt = DateTime.UtcNow;              // then mark"
+        },
+        {
+          t: "mistake",
+          title: { en: "Assuming the outbox alone gives exactly-once", ar: "افتراض أن الـ outbox وحده يعطي exactly-once" },
+          body: {
+            en: "A payments team believed the outbox meant no duplicates, so consumers were not idempotent. The relay crashed mid-batch, resent messages on restart, and a few customers were charged twice. The outbox guarantees delivery, not uniqueness — dedup on the consumer.",
+            ar: "فريق مدفوعات ظنّ أن الـ outbox يعني لا تكرار، فلم تكن الـ consumers idempotent. تعطّل الـ relay في منتصف دفعة، وأعاد الإرسال عند التشغيل، فدُفع لبعض العملاء مرتين. الـ outbox يضمن التوصيل لا التفرّد — أزل التكرار عند الـ consumer."
+          },
+          fix: "if (await db.Processed.AnyAsync(p => p.MessageId == id)) return;\n// ... apply the effect ...\ndb.Processed.Add(new Processed { MessageId = id });"
+        },
+        {
+          t: "mistake",
+          title: { en: "Two relay instances polling the same rows", ar: "نسختا relay تستعلمان عن نفس الصفوف" },
+          body: {
+            en: "To scale, the team ran two relay instances. Both selected the same unprocessed rows and both published them, doubling every message. Without row-level locking, parallel pollers collide. Lock the rows you claim so a second poller skips them.",
+            ar: "للتوسّع، شغّل الفريق نسختي relay. اختارت كلتاهما نفس الصفوف غير المعالَجة ونشرتهما، فتضاعفت كل رسالة. دون قفل على مستوى الصف، تتصادم الـ pollers المتوازية. اقفل الصفوف التي تأخذها كي تتخطاها النسخة الثانية."
+          },
+          fix: "SELECT TOP (100) * FROM Outbox WITH (UPDLOCK, READPAST)\nWHERE ProcessedAt IS NULL ORDER BY CreatedAt;"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "What problem does the transactional outbox solve?", ar: "ما المشكلة التي يحلها الـ transactional outbox؟" },
+          a: {
+            en: "It solves the dual-write problem: you need to save data and send a message, but the database and the broker are separate systems with no shared transaction. The outbox writes the message into a table in the same database, in the same transaction as the data, so both commit together. A background relay sends it to the broker afterward.",
+            ar: "يحل مشكلة الـ dual write: تحتاج حفظ بيانات وإرسال رسالة، لكن الـ database والـ broker نظامان منفصلان بلا transaction مشترك. الـ outbox يكتب الرسالة في جدول داخل نفس الـ database، في نفس الـ transaction مع البيانات، فيُثبَّتان معاً. ثم يرسلها relay خلفي إلى الـ broker لاحقاً."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Why not just use a distributed transaction across the database and the broker?", ar: "لماذا لا نستخدم فقط transaction موزّعاً عبر الـ database والـ broker؟" },
+          a: {
+            en: "Distributed transactions (two-phase commit) coordinate a commit across both systems, but they are slow, they hold locks while waiting for every participant, and most modern brokers like Kafka do not support them well. They also fail badly under partial failure. The outbox needs only one local transaction, which every database already does fast and reliably.",
+            ar: "الـ transactions الموزّعة (two-phase commit) تنسّق commit عبر النظامين، لكنها بطيئة، وتحتجز أقفالاً أثناء انتظار كل مشارك، ومعظم الـ brokers الحديثة مثل Kafka لا تدعمها جيداً. كما تفشل بشكل سيئ تحت الفشل الجزئي. الـ outbox يحتاج transaction محلياً واحداً فقط، وهو ما يفعله كل database بسرعة وموثوقية."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Does the outbox give you exactly-once delivery?", ar: "هل يعطيك الـ outbox توصيلاً exactly-once؟" },
+          a: {
+            en: "Not on its own. The outbox guarantees a message is never lost, but the relay can crash after publishing and before marking the row sent, so the same message may go out twice — that is at-least-once. You get effectively exactly-once by making consumers idempotent: they record each message id they have handled and ignore repeats.",
+            ar: "ليس وحده. الـ outbox يضمن ألا تُفقَد رسالة، لكن الـ relay قد يتعطّل بعد النشر وقبل تعليم الصف كمُرسَل، فتخرج نفس الرسالة مرتين — هذا at-least-once. تحصل عملياً على exactly-once بجعل الـ consumers idempotent: تسجّل كل message id عالجته وتتجاهل التكرار."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "How does the relay avoid sending the same message twice, and can it fully?", ar: "كيف يتجنّب الـ relay إرسال نفس الرسالة مرتين، وهل يمكنه تماماً؟" },
+          a: {
+            en: "It publishes first and only marks ProcessedAt after the broker acknowledges, and it locks the rows it claims so parallel relays do not grab the same ones. But it can never be fully single-send: the gap between a successful publish and the mark is a place to crash, and on restart it will resend. So we accept at-least-once at the relay and push uniqueness to idempotent consumers, which is cheaper and more robust than trying to make the relay perfect.",
+            ar: "ينشر أولاً ولا يعلّم ProcessedAt إلا بعد أن يؤكّد الـ broker، ويقفل الصفوف التي يأخذها كي لا تأخذ الـ relays المتوازية نفسها. لكنه لا يمكن أن يكون مُرسِلاً وحيداً تماماً: الفجوة بين نشر ناجح والتعليم مكان قابل للتعطّل، وعند التشغيل سيعيد الإرسال. لذا نقبل at-least-once عند الـ relay وندفع التفرّد إلى consumers من نوع idempotent، وهو أرخص وأمتن من محاولة جعل الـ relay مثالياً."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Polling versus Change Data Capture for the relay — when would you pick each?", ar: "الـ polling مقابل Change Data Capture للـ relay — متى تختار كلاً منهما؟" },
+          a: {
+            en: "Polling is simple: a query every second for unprocessed rows. It is easy to run and debug, but it adds constant database load and adds latency equal to the poll interval. CDC, using a tool like Debezium, tails the database's write-ahead log and emits outbox rows with near-zero lag and no polling query, but it is more infrastructure to operate and tie into. I start with polling and move to CDC only when the polling load or the added latency becomes a measured problem.",
+            ar: "الـ polling بسيط: استعلام كل ثانية عن الصفوف غير المعالَجة. سهل التشغيل والتصحيح، لكنه يضيف حملاً ثابتاً على الـ database وlatency بقدر فترة الـ poll. الـ CDC، بأداة مثل Debezium، يتابع سجل الكتابة في الـ database ويُصدِر صفوف الـ outbox بتأخير شبه معدوم ودون استعلام polling، لكنه بنية أكثر لتشغيلها وربطها. أبدأ بالـ polling وأنتقل إلى الـ CDC فقط حين يصبح حمل الـ polling أو الـ latency مشكلة مقيسة."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "How do you make outbox plus idempotency a default across many teams, not something each reinvents?", ar: "كيف تجعل الـ outbox مع الـ idempotency افتراضياً عبر فرق كثيرة، لا شيئاً يعيد كل فريق اختراعه؟" },
+          a: {
+            en: "I ship it as shared infrastructure, not documentation. A small library gives one call that writes a domain event to the outbox inside the current transaction, plus a hosted relay and a consumer wrapper that dedups on message id automatically. Teams get reliability by using the platform's publish and subscribe, without hand-rolling tables or poll loops. I back it with a lint or architecture test that flags any direct broker.Publish in a request path, and dashboards for outbox backlog that the platform team owns.",
+            ar: "أطرحه كبنية مشتركة لا كتوثيق. مكتبة صغيرة تعطي استدعاءً واحداً يكتب domain event إلى الـ outbox داخل الـ transaction الحالي، مع relay مُستضاف وغلاف consumer يزيل التكرار على message id تلقائياً. تحصل الفرق على الموثوقية باستخدام publish وsubscribe الخاصين بالمنصّة، دون كتابة جداول أو حلقات polling يدوياً. أدعمه بـ lint أو architecture test يكشف أي broker.Publish مباشر في مسار request، وبلوحات لمراقبة تراكم الـ outbox يملكها فريق المنصّة."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "Publishing to the broker straight from the handler", ar: "النشر إلى الـ broker مباشرة من الـ handler" },
+          bad: "db.Orders.Add(order);\nawait db.SaveChangesAsync();\nawait broker.PublishAsync(\"OrderPlaced\", payload); // separate system, no transaction",
+          good: "db.Orders.Add(order);\ndb.Outbox.Add(new OutboxMessage { Type = \"OrderPlaced\", Payload = payload });\nawait db.SaveChangesAsync(); // order + message in one transaction",
+          why: {
+            en: "The bad version is a dual write. If the process dies or the broker times out between SaveChanges and Publish, the order is committed with no message and downstream never reacts. The good version writes the message to the outbox in the same transaction, so it can never be orphaned; a relay sends it later.",
+            ar: "النسخة السيئة dual write. لو مات الـ process أو انتهت مهلة الـ broker بين SaveChanges وPublish، تُثبَّت الـ order بلا رسالة ولا يتفاعل ما بعدها. النسخة الجيدة تكتب الرسالة إلى الـ outbox في نفس الـ transaction فلا تصبح يتيمة أبداً؛ يرسلها relay لاحقاً."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "Outbox row without a stable message id", ar: "صف outbox بلا message id ثابت" },
+          bad: "db.Outbox.Add(new OutboxMessage { Type = \"OrderPlaced\", Payload = payload });\n// no id travels with the message, so a consumer cannot detect a resend",
+          good: "db.Outbox.Add(new OutboxMessage {\n    Id = Guid.NewGuid(),          // travels with the message\n    Type = \"OrderPlaced\", Payload = payload\n});\n// consumer dedups on this Id",
+          why: {
+            en: "Since the relay is at-least-once, consumers need a stable id to recognise a duplicate. Without an id carried in the message, a resend after a relay crash looks like a brand-new event, and the consumer applies the effect twice. A generated id attached at write time makes consumer-side dedup possible.",
+            ar: "بما أن الـ relay هو at-least-once، تحتاج الـ consumers id ثابتاً لتمييز التكرار. دون id محمول في الرسالة، تبدو إعادة الإرسال بعد تعطّل الـ relay كحدث جديد تماماً، فيطبّق الـ consumer الأثر مرتين. id مولَّد ومربوط وقت الكتابة يتيح إزالة التكرار عند الـ consumer."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a typical order pipeline, the order service writes the order and an OrderPlaced row to its outbox in one transaction. A relay forwards OrderPlaced to the broker, where the email, inventory, and analytics services each consume it independently. If any consumer is down, the broker holds the message; if the relay lags, the outbox holds it. Nothing is lost because every hop has durable storage behind it.",
+          ar: "في pipeline طلبات نموذجي، يكتب الـ order service الـ order وصف OrderPlaced إلى الـ outbox في transaction واحد. يمرّر relay رسالة OrderPlaced إلى الـ broker، حيث يستهلكها الـ email والـ inventory والـ analytics كلٌّ على حدة. لو تعطّل أي consumer، يحتفظ الـ broker بالرسالة؛ ولو تأخّر الـ relay، يحتفظ بها الـ outbox. لا شيء يُفقَد لأن كل قفزة خلفها تخزين دائم."
+        },
+        {
+          t: "ul",
+          en: ["Microservices publishing domain events so other services stay in sync.", "Saga steps: committing a local step and reliably triggering the next.", "Keeping a search index or cache updated after a database change.", "Sending emails, SMS, or push notifications that must not be silently dropped."],
+          ar: ["Microservices تنشر domain events كي تبقى بقية الخدمات متزامنة.", "خطوات الـ saga: تثبيت خطوة محلية وتشغيل التالية بموثوقية.", "إبقاء search index أو cache محدّثاً بعد تغيير في الـ database.", "إرسال email أو SMS أو push notifications يجب ألا تُسقَط بصمت."]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Keep the outbox table in the same database as the business data. A separate outbox database reintroduces the dual-write problem — the whole point is that the message row and the data share one transaction.",
+          ar: "أبقِ جدول الـ outbox في نفس الـ database مع بيانات العمل. database outbox منفصل يعيد مشكلة الـ dual write — الهدف كله أن يتشارك صف الرسالة وصف البيانات transaction واحداً."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            { k: { en: "Database", ar: "Database" }, v: { en: "Each transaction writes an extra outbox row; the poll query and cleanup add read/delete load. Index ProcessedAt and CreatedAt.", ar: "كل transaction يكتب صف outbox إضافياً؛ استعلام الـ poll والتنظيف يضيفان حمل قراءة/حذف. افهرس ProcessedAt وCreatedAt." } },
+            { k: { en: "Latency", ar: "Latency" }, v: { en: "Downstream reaction is delayed by the poll interval — a 1-second poll means up to ~1 s before a message is even sent.", ar: "يتأخّر تفاعل ما بعده بقدر فترة الـ poll — poll بثانية يعني حتى نحو 1 ث قبل إرسال الرسالة أصلاً." } },
+            { k: { en: "Scalability", ar: "Scalability" }, v: { en: "Multiple relay instances need row locking (UPDLOCK/READPAST) to scale without double-sending.", ar: "نسخ relay متعددة تحتاج قفل صفوف (UPDLOCK/READPAST) للتوسّع دون إرسال مزدوج." } },
+            { k: { en: "Memory", ar: "Memory" }, v: { en: "The poll batch size (e.g. 100 rows) bounds how much the relay holds in memory per cycle.", ar: "حجم دفعة الـ poll (مثلاً 100 صف) يحدّ ما يحتفظ به الـ relay في الذاكرة لكل دورة." } },
+            { k: { en: "Network", ar: "Network" }, v: { en: "One broker round-trip per message plus steady polling traffic to the database.", ar: "رحلة broker واحدة لكل رسالة إضافةً إلى حركة polling ثابتة نحو الـ database." } }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "Query the outbox for rows where ProcessedAt IS NULL older than N seconds — a growing count means the relay is stuck or the broker is down.",
+            "Read the relay logs for publish exceptions and the last CreatedAt it processed — tells you exactly where it stalled.",
+            "Open the broker admin UI or metrics — confirm messages actually arrive and are not piling in a dead-letter queue.",
+            "Trace one message id across producer log, outbox row, and consumer log — pinpoint where a specific message was lost or duplicated.",
+            "Compare counts over a window: orders created versus OrderPlaced messages consumed — a gap quantifies the drift."
+          ],
+          ar: [
+            "استعلم عن صفوف الـ outbox حيث ProcessedAt IS NULL وأقدم من N ثانية — عدد متزايد يعني أن الـ relay عالق أو الـ broker متوقف.",
+            "اقرأ logs الـ relay بحثاً عن استثناءات نشر وآخر CreatedAt عالجه — يخبرك أين توقّف بالضبط.",
+            "افتح واجهة إدارة الـ broker أو مقاييسه — تأكّد أن الرسائل تصل فعلاً ولا تتراكم في dead-letter queue.",
+            "تتبّع message id واحداً عبر log المنتج وصف الـ outbox وlog الـ consumer — حدّد أين فُقدت أو تكرّرت رسالة بعينها.",
+            "قارن الأعداد خلال نافذة: الـ orders المُنشأة مقابل رسائل OrderPlaced المستهلَكة — الفجوة تقيس الانحراف."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Alert on outbox backlog depth and the age of the oldest unprocessed row, not just on relay uptime. The relay can be running and still fail every publish silently, so uptime alone tells you nothing.",
+          ar: "نبّه على عمق تراكم الـ outbox وعمر أقدم صف غير معالَج، لا على تشغيل الـ relay فقط. قد يكون الـ relay يعمل ويفشل كل نشر بصمت، فالتشغيل وحده لا يخبرك بشيء."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "Any system where a database change must reliably trigger something elsewhere reaches for the outbox. The common thread is that losing the follow-up action is unacceptable and the broker cannot share the database's transaction.",
+          ar: "أي نظام يجب فيه أن يُطلِق تغيير في الـ database شيئاً آخر بموثوقية يلجأ إلى الـ outbox. الخيط المشترك أن فقدان الإجراء التابع غير مقبول، والـ broker لا يمكنه مشاركة transaction الـ database."
+        },
+        {
+          t: "ul",
+          en: [
+            "E-commerce order pipelines that must email, decrement stock, and start fulfilment.",
+            "Payment and billing systems emitting settlement or refund events exactly once in effect.",
+            "Ticketing and booking, where a confirmed seat hold must always be announced downstream.",
+            "Any microservice publishing domain events to keep other services and read models in sync."
+          ],
+          ar: [
+            "pipelines طلبات التجارة الإلكترونية التي يجب أن ترسل email وتخصم مخزوناً وتبدأ التنفيذ.",
+            "أنظمة المدفوعات والفوترة التي تُصدِر أحداث تسوية أو استرداد مرة واحدة في الأثر.",
+            "التذاكر والحجوزات، حيث يجب دائماً إعلان حجز مقعد مؤكَّد لما بعده.",
+            "أي microservice ينشر domain events لإبقاء بقية الخدمات والـ read models متزامنة."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Add an OutboxMessage table and, in one SaveChanges, insert an order plus its message. Prove atomicity: throw an exception after adding both but before commit, and confirm neither row exists.",
+          ar: "أضف جدول OutboxMessage، وفي SaveChanges واحد أدرِج order مع رسالتها. أثبت الـ atomicity: ارمِ استثناءً بعد إضافة الاثنين وقبل commit، وتأكّد أن أياً من الصفين غير موجود."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Write a polling relay that publishes each pending message and marks ProcessedAt after the broker acks. Prove durability: stop the broker, create an order, restart the broker, and confirm the message is still delivered.",
+          ar: "اكتب relay بالـ polling ينشر كل رسالة معلّقة ويعلّم ProcessedAt بعد ack الـ broker. أثبت الديمومة: أوقف الـ broker، أنشئ order، أعد تشغيل الـ broker، وتأكّد أن الرسالة سُلِّمت رغم ذلك."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Run two relay instances against one outbox table using UPDLOCK/READPAST (or SKIP LOCKED). Generate 1,000 messages and prove every message is published exactly once with no duplicates under concurrent polling.",
+          ar: "شغّل نسختي relay على جدول outbox واحد باستخدام UPDLOCK/READPAST (أو SKIP LOCKED). ولّد 1000 رسالة وأثبت أن كل رسالة نُشرت مرة واحدة بلا تكرار تحت polling متزامن."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Make the consumer idempotent with a processed-messages table keyed by message id. Deliberately deliver the same message twice and prove its side effect (for example, decrementing stock) is applied only once.",
+          ar: "اجعل الـ consumer idempotent بجدول رسائل معالَجة مفتاحه message id. سلّم نفس الرسالة مرتين عمداً وأثبت أن أثرها (مثلاً خصم المخزون) طُبِّق مرة واحدة فقط."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "Transactional Outbox pattern (microservices.io)", ar: "نمط Transactional Outbox (microservices.io)" },
+          url: "https://microservices.io/patterns/data/transactional-outbox.html",
+          meta: { en: "Pattern", ar: "نمط" }
+        },
+        {
+          t: "ref",
+          label: { en: "Debezium Outbox Event Router", ar: "Debezium Outbox Event Router" },
+          url: "https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: ".NET microservices: event-based communication", ar: ".NET microservices: التواصل القائم على الأحداث" },
+          url: "https://learn.microsoft.com/en-us/dotnet/architecture/microservices/multi-container-microservice-net-applications/integration-event-based-microservice-communications",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Designing Data-Intensive Applications (Kleppmann)", ar: "Designing Data-Intensive Applications (Kleppmann)" },
+          url: "https://dataintensive.net/",
+          meta: { en: "Book", ar: "كتاب" }
+        }
+      ]
+    }
+  ],
+  quiz: [
+    {
+      q: { en: "What problem does the transactional outbox solve?", ar: "ما المشكلة التي يحلها الـ transactional outbox؟" },
+      options: [
+        { en: "It makes the message broker faster.", ar: "يجعل الـ message broker أسرع." },
+        { en: "It lets a database write and a message send commit together as one atomic step.", ar: "يتيح لكتابة في الـ database وإرسال رسالة أن يُثبَّتا معاً كخطوة atomic واحدة." },
+        { en: "It removes the need for a message broker.", ar: "يلغي الحاجة إلى message broker." },
+        { en: "It encrypts messages in transit.", ar: "يشفّر الرسائل أثناء النقل." }
+      ],
+      correct: 1,
+      why: {
+        en: "The outbox writes the message into the same database and transaction as the data, so both persist together or not at all — solving the dual-write problem.",
+        ar: "الـ outbox يكتب الرسالة في نفس الـ database والـ transaction مع البيانات، فيبقيان معاً أو لا يبقى أي منهما — حلاً لمشكلة الـ dual write."
+      }
+    },
+    {
+      q: { en: "The relay crashes right after publishing a message but before marking it processed. What happens on restart?", ar: "يتعطّل الـ relay فور نشر رسالة وقبل تعليمها كمعالَجة. ماذا يحدث عند التشغيل؟" },
+      options: [
+        { en: "The message is lost permanently.", ar: "تُفقَد الرسالة نهائياً." },
+        { en: "The message is sent again — a duplicate.", ar: "تُرسَل الرسالة مجدداً — تكرار." },
+        { en: "The original order is rolled back.", ar: "يُلغى الـ order الأصلي." },
+        { en: "The row is skipped forever.", ar: "يُتخطّى الصف إلى الأبد." }
+      ],
+      correct: 1,
+      why: {
+        en: "The row is still marked unprocessed, so the relay republishes it — this is why the relay is at-least-once and consumers must be idempotent.",
+        ar: "يبقى الصف مُعلَّماً كغير معالَج، فيعيد الـ relay نشره — لهذا الـ relay هو at-least-once ويجب أن تكون الـ consumers idempotent."
+      }
+    },
+    {
+      q: { en: "Why is the outbox alone not enough for exactly-once effects?", ar: "لماذا لا يكفي الـ outbox وحده لتحقيق أثر exactly-once؟" },
+      options: [
+        { en: "Because the broker deduplicates automatically.", ar: "لأن الـ broker يزيل التكرار تلقائياً." },
+        { en: "Because the relay can resend after a crash, so consumers must be idempotent.", ar: "لأن الـ relay قد يعيد الإرسال بعد تعطّل، فيجب أن تكون الـ consumers idempotent." },
+        { en: "Because the outbox frequently loses messages.", ar: "لأن الـ outbox يفقد الرسائل كثيراً." },
+        { en: "Because local transactions are not atomic.", ar: "لأن الـ transactions المحلية ليست atomic." }
+      ],
+      correct: 1,
+      why: {
+        en: "The outbox guarantees delivery, not uniqueness. A resend after a relay crash is a duplicate; idempotent consumers make that duplicate harmless.",
+        ar: "الـ outbox يضمن التوصيل لا التفرّد. إعادة الإرسال بعد تعطّل الـ relay تكرار؛ الـ consumers الـ idempotent تجعل ذلك التكرار غير ضار."
+      }
+    },
+    {
+      q: { en: "Why must the outbox table live in the same database as the business data?", ar: "لماذا يجب أن يعيش جدول الـ outbox في نفس الـ database مع بيانات العمل؟" },
+      options: [
+        { en: "For faster reads.", ar: "لقراءات أسرع." },
+        { en: "So the message insert and the data write share one transaction.", ar: "كي يتشارك إدراج الرسالة وكتابة البيانات transaction واحداً." },
+        { en: "Because brokers require it.", ar: "لأن الـ brokers تشترط ذلك." },
+        { en: "To save storage space.", ar: "لتوفير مساحة تخزين." }
+      ],
+      correct: 1,
+      why: {
+        en: "A separate outbox database brings back the dual-write problem. Only a shared database lets both rows commit in one atomic transaction.",
+        ar: "database outbox منفصل يعيد مشكلة الـ dual write. فقط database مشترك يتيح تثبيت الصفين في transaction atomic واحد."
+      }
+    },
+    {
+      q: { en: "Two relay instances poll the same outbox table. What prevents them from sending the same row twice?", ar: "نسختا relay تستعلمان عن نفس جدول الـ outbox. ما الذي يمنعهما من إرسال نفس الصف مرتين؟" },
+      options: [
+        { en: "A longer poll interval.", ar: "فترة poll أطول." },
+        { en: "Row-level locking such as UPDLOCK/READPAST (SKIP LOCKED).", ar: "قفل على مستوى الصف مثل UPDLOCK/READPAST (SKIP LOCKED)." },
+        { en: "A bigger poll batch size.", ar: "حجم دفعة poll أكبر." },
+        { en: "Deleting rows immediately on read.", ar: "حذف الصفوف فور القراءة." }
+      ],
+      correct: 1,
+      why: {
+        en: "Row locking makes each poller claim rows the other skips, so a message is not published by both instances at once.",
+        ar: "قفل الصفوف يجعل كل poller يأخذ صفوفاً يتخطاها الآخر، فلا تنشر النسختان رسالة واحدة معاً."
+      }
+    }
+  ]
+};
+
 export const lessonDetail = {
   "async-await": asyncLesson, "gc": gcLesson,
   "http-anatomy": httpAnatomyLesson, "http-methods": httpMethodsLesson, "http-caching": httpCachingLesson,
@@ -9139,7 +16541,13 @@ export const lessonDetail = {
   "gc-disposal": gcDisposalLesson, "tasks": tasksLesson, "sync-primitives": syncPrimitivesLesson,
   "exception-cost": exceptionCostLesson, "exception-design": exceptionDesignLesson,
   "di-why": diWhyLesson, "di-root": diRootLesson, "di-lifetimes": diLifetimesLesson,
-  "captive": captiveLesson
+  "captive": captiveLesson,
+  "ef-tracking": efTrackingLesson, "ef-notracking": efNoTrackingLesson, "ef-n1": efN1Lesson, "ef-split": efSplitLesson,
+  "clustered": clusteredLesson, "covering": coveringLesson, "read-plan": readPlanLesson,
+  "param-sniffing": paramSniffingLesson, "isolation-levels": isolationLevelsLesson,
+  "deadlocks": deadlocksLesson,
+  "retries": retriesLesson, "idempotency": idempotencyLesson, "timeouts": timeoutsLesson,
+  "cap": capLesson, "outbox": outboxLesson
 };
 
 // ---------------------------------------------------------------- modules
