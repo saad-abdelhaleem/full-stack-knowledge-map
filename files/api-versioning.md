@@ -4,334 +4,493 @@ const apiVersioningLesson = {
   moduleId: "foundations",
   title: { en: "Versioning and evolution", ar: "الإصدارات والتطوّر" },
   summary: {
-    en: "How to change an API that other people depend on: what actually counts as a breaking change, where the version goes, and why the deprecation process matters more than the scheme you pick.",
-    ar: "كيف تغيّر API يعتمد عليه آخرون: ما الذي يُعدّ فعلاً تغييراً كاسراً، وإلى أين يذهب رقم الإصدار، ولماذا تكون عملية الإيقاف التدريجي أهم من الأسلوب الذي تختاره."
+    en: "How to change the shape of your requests and responses without breaking the programs that already call you.",
+    ar: "كيف تغيّر شكل الـ request والـ response دون أن تكسر البرامج التي تستدعيك بالفعل."
   },
   mins: 15,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "Versioning exists for exactly one reason: you need to change the contract while somebody who did not read your commit is still calling the old one. If you owned every client and could deploy them atomically with the server, you would never version anything — you would just edit the code. Every versioning scheme is therefore a mechanism for buying time between your release and their upgrade.", ar: "الـ versioning موجود لسبب واحد بالضبط: أنت تحتاج تغيير العقد بينما لا يزال شخص لم يقرأ الـ commit لديك يستدعي العقد القديم. فلو كنت تملك كل العملاء وتستطيع نشرهم ذرّياً مع السيرفر لما احتجت إصداراً أبداً — لكنت عدّلت الكود وانتهى. ولذلك فكل أسلوب versioning هو في جوهره وسيلة لشراء وقت بين إصدارك أنت وترقيتهم هم." },
-      { t: "p", en: "That reframing kills most of the arguments. The debate teams spend two weeks on — /v1/ in the path versus an Api-Version header versus a versioned media type — decides where three characters live. The decisions that actually determine whether your API can evolve are different ones: what your team is allowed to change without a version bump, how long an old version is supported, how you know who is still on it, and whether you can afford to run two code paths in production at the same time.", ar: "وإعادة الصياغة هذه تقتل معظم الجدل. فالنقاش الذي يقضي فيه الفريق أسبوعين — /v1/ في المسار مقابل header باسم Api-Version مقابل media type محدد الإصدار — يحسم مكان ثلاثة أحرف فقط. أما القرارات التي تحدد فعلاً هل يستطيع API لديك التطوّر فهي قرارات أخرى: ما الذي يُسمح لفريقك بتغييره دون رفع إصدار، وكم تدعم الإصدار القديم، وكيف تعرف من لا يزال عليه، وهل تستطيع تحمّل تشغيل مسارَي كود في الـ production في الوقت نفسه." },
-      { t: "p", en: "The cost is real and compounding. Every live version is a code path that must be tested, monitored, secured and patched. A team that ships v1 through v6 in three years is not more mature than one that shipped v1 and v2 — it is carrying six times the surface area for the same product, and every incident now begins with the question \"which version was the caller on?\". The goal of good versioning is not to version often; it is to make most changes possible without versioning at all.", ar: "والتكلفة حقيقية ومتراكمة. فكل إصدار حيّ هو مسار كود يجب اختباره ورصده وتأمينه وترقيعه. والفريق الذي أطلق v1 حتى v6 في ثلاث سنوات ليس أنضج من فريق أطلق v1 و v2 — بل يحمل ستة أضعاف مساحة السطح لنفس المنتج، وكل حادثة تبدأ الآن بسؤال «أي إصدار كان المستدعي عليه؟». وهدف الـ versioning الجيد ليس أن تُصدر كثيراً؛ بل أن تجعل معظم التغييرات ممكنة دون إصدار جديد أصلاً." },
-      { t: "callout", kind: "note", en: "Semantic versioning was designed for libraries, where the consumer chooses when to take an upgrade. An HTTP API is the opposite: the server upgrades and the client finds out. Patch and minor numbers have no meaning over the wire — nobody calls /v2.3.1/orders. In practice API versions are a small sequence of integers or dates, and the only interesting question is whether a change forces a new one.", ar: "الـ semantic versioning صُمِّم للمكتبات، حيث يختار المستهلك وقت الترقية. وHTTP API هو العكس: السيرفر يترقّى والعميل يكتشف ذلك. فأرقام الـ patch والـ minor لا معنى لها عبر الشبكة — لا أحد يستدعي /v2.3.1/orders. وعملياً تكون إصدارات الـ API سلسلة صغيرة من الأعداد أو التواريخ، والسؤال المهم الوحيد هو هل يفرض تغييرٌ ما إصداراً جديداً." }
-    ]},
-
-    { key: "problem", blocks: [
-      { t: "p", en: "The concrete failure looks like this. A team renames a JSON property from customerName to customer_name to be consistent with the rest of the payload. Locally every test passes, because the tests deserialize with the same models the server serializes with. In production, three mobile app versions from the last eighteen months are deserializing into a strongly-typed struct with a non-nullable field, and they now see null. The 5xx rate does not move — the API is returning 200 the whole time. What moves is the mobile crash rate, four hours later, in a dashboard owned by a different team.", ar: "الفشل الملموس يبدو كالتالي. فريق يعيد تسمية خاصية JSON من customerName إلى customer_name ليكون متسقاً مع بقية الـ payload. ومحلياً تنجح كل الاختبارات، لأنها تفكّ التسلسل بنفس الموديلات التي يسلسل بها السيرفر. وفي الـ production تكون ثلاث نسخ من تطبيق الموبايل من آخر ثمانية عشر شهراً تفكّ التسلسل إلى struct قوي التنميط بحقل غير قابل لأن يكون null، فترى الآن null. ولا تتحرك نسبة الـ 5xx — فالـ API يرجع 200 طول الوقت. الذي يتحرك هو نسبة انهيار تطبيق الموبايل، بعد أربع ساعات، في لوحة يملكها فريق آخر." },
-      { t: "p", en: "The mirror-image failure is versioning too eagerly. A team that treats every change as breaking ends up with v1 through v5 in eighteen months, each a copied controller with a copied DTO and a copied validator. A security fix to the token check now has to be applied five times, and the fifth is forgotten. Six months later 80% of traffic is on v5, 19% on v4, and 1% is spread across v1–v3 by two integrators who cannot be contacted — so nothing can be deleted, and the maintenance cost is permanent.", ar: "والفشل المعاكس هو الإصدار بحماسة مفرطة. فالفريق الذي يعتبر كل تغيير كاسراً ينتهي بـ v1 حتى v5 في ثمانية عشر شهراً، كل منها controller منسوخ مع DTO منسوخ وvalidator منسوخ. وإصلاح أمني في التحقق من الـ token يجب تطبيقه الآن خمس مرات، وتُنسى الخامسة. وبعد ستة أشهر تكون 80% من الحركة على v5 و19% على v4 و1% موزّعة على v1–v3 لدى متكاملين اثنين لا يمكن الوصول إليهما — فلا شيء يمكن حذفه، وتصبح تكلفة الصيانة دائمة." },
-      { t: "kv", rows: [
-        { k: { en: "Additive change, tolerant client", ar: "تغيير إضافي مع client متسامح" }, v: { en: "New optional response field: zero client changes, no version bump, ships on a Tuesday afternoon", ar: "حقل استجابة اختياري جديد: صفر تغييرات لدى العملاء، بلا رفع إصدار، ويُنشر بعد ظهر الثلاثاء" } },
-        { k: { en: "Rename or type change", ar: "إعادة تسمية أو تغيير نوع" }, v: { en: "Silent 200-with-null failures across every client generation still in the wild; typically discovered by a support ticket, not an alert", ar: "أعطال صامتة بـ 200 مع null عبر كل أجيال العملاء الموجودة؛ وتُكتشف عادةً بتذكرة دعم لا بتنبيه" } },
-        { k: { en: "New required request field", ar: "حقل طلب مطلوب جديد" }, v: { en: "Instant 400 for every existing caller — loud, immediate, and the easiest breaking change to catch in staging", ar: "400 فوري لكل مستدعٍ قائم — صاخب وآني وأسهل تغيير كاسر يُلتقط في الـ staging" } },
-        { k: { en: "Tightened validation", ar: "تشديد التحقق" }, v: { en: "Payloads that were accepted for two years start failing; often the sneakiest break because the schema on paper did not change", ar: "أجسام كانت مقبولة لعامين تبدأ بالفشل؛ وهو غالباً أخفى كسر لأن الـ schema على الورق لم يتغير" } },
-        { k: { en: "Five live versions", ar: "خمسة إصدارات حيّة" }, v: { en: "5x the test matrix, 5x the patch surface, and every incident starts by asking which version the caller used", ar: "خمسة أضعاف مصفوفة الاختبار، وخمسة أضعاف سطح الترقيع، وكل حادثة تبدأ بسؤال أي إصدار استخدم المستدعي" } }
-      ]}
-    ]},
-
-    { key: "internals", blocks: [
-      { t: "p", en: "Start with the only definition that is operationally useful: a change is breaking if a correctly-written existing client stops working. That phrasing does two jobs. It rules out the paranoid position that any change is breaking, because a correctly-written client ignores fields it does not know. And it rules out the reckless position that only removals count, because a correctly-written client absolutely does depend on a field's name, its type, the meaning of an enum value it switches on, and the status code it branches on.", ar: "ابدأ بالتعريف الوحيد المفيد عملياً: التغيير كاسر إذا توقف عن العمل client قائم مكتوب بشكل صحيح. وهذه الصياغة تؤدي وظيفتين. فهي تُبعد الموقف المرتاب الذي يرى كل تغيير كاسراً، لأن الـ client المكتوب بشكل صحيح يتجاهل الحقول التي لا يعرفها. وتُبعد كذلك الموقف المتهوّر الذي يرى الحذف وحده كاسراً، لأن الـ client المكتوب بشكل صحيح يعتمد قطعاً على اسم الحقل ونوعه ومعنى قيمة الـ enum التي يتفرّع عليها والـ status code الذي يتفرّع عليه." },
-      { t: "kv", rows: [
-        { k: { en: "Safe (no version bump)", ar: "آمن (بلا رفع إصدار)" }, v: { en: "Adding an optional response field; adding an optional request field with a default; adding a new endpoint; adding a new enum value the client is not required to switch on exhaustively; relaxing validation", ar: "إضافة حقل استجابة اختياري؛ إضافة حقل طلب اختياري بقيمة افتراضية؛ إضافة endpoint جديد؛ إضافة قيمة enum جديدة لا يُلزَم الـ client بالتفرّع الشامل عليها؛ تخفيف التحقق" } },
-        { k: { en: "Breaking (needs a version)", ar: "كاسر (يحتاج إصداراً)" }, v: { en: "Removing or renaming a field; changing a type (\"42\" to 42, string to object); making an optional request field required; tightening validation; changing a status code for the same condition; changing the meaning of an existing value", ar: "حذف حقل أو إعادة تسميته؛ تغيير نوع (\"42\" إلى 42، أو string إلى object)؛ جعل حقل طلب اختياري مطلوباً؛ تشديد التحقق؛ تغيير status code لنفس الحالة؛ تغيير معنى قيمة قائمة" } },
-        { k: { en: "Breaking but invisible in tests", ar: "كاسر لكنه غير مرئي في الاختبارات" }, v: { en: "Changing default sort order; changing default page size; changing null vs absent for a field; changing precision (2 decimals to 4); changing a previously-stable id format", ar: "تغيير ترتيب الفرز الافتراضي؛ تغيير حجم الصفحة الافتراضي؛ تغيير null مقابل الغياب لحقل؛ تغيير الدقة (من منزلتين إلى أربع)؛ تغيير صيغة معرّف كانت مستقرة" } },
-        { k: { en: "Behavioural, not structural", ar: "سلوكي لا بنيوي" }, v: { en: "Making a synchronous operation async (200 becomes 202); making a write no longer idempotent; adding rate limits; adding a required auth scope — the schema is unchanged and every client breaks anyway", ar: "تحويل عملية متزامنة إلى غير متزامنة (200 تصبح 202)؛ جعل كتابة غير idempotent؛ إضافة حدود معدل؛ إضافة scope مصادقة مطلوب — الـ schema لم يتغير وينكسر كل العملاء رغم ذلك" } }
-      ]},
-      { t: "p", en: "Where the version travels is the next decision, and each option has a different consequence for infrastructure rather than for elegance. A URL path segment (/v2/orders) is visible in every access log, cacheable as a distinct key, routable at the gateway without parsing headers, and trivially testable in a browser — at the cost of saying that /v1/orders/9 and /v2/orders/9 are different resources when they are the same order. A header (Api-Version: 2) keeps the URI honest but is invisible in logs unless you add it, and requires Vary: Api-Version or your cache will serve a v1 body to a v2 client. A versioned media type (Accept: application/vnd.acme.order.v2+json) is the most theoretically correct because content negotiation is exactly the HTTP mechanism for representation choice, and the least used because it is awkward to call from a browser and awkward to document.", ar: "أين يسافر رقم الإصدار هو القرار التالي، ولكل خيار نتيجة مختلفة على البنية التحتية لا على الأناقة. فقطعة في مسار الـ URL (‏/v2/orders) مرئية في كل سجل وصول، وقابلة للـ caching كمفتاح مستقل، وقابلة للتوجيه عند الـ gateway دون تحليل headers، وقابلة للاختبار في المتصفح ببساطة — بثمن أن تقول إن /v1/orders/9 و /v2/orders/9 موردان مختلفان وهما نفس الطلب. والـ header (‏Api-Version: 2) يُبقي الـ URI صادقاً لكنه غير مرئي في السجلات إلا إذا أضفته، ويستلزم Vary: Api-Version وإلا قدّم الـ cache جسم v1 لعميل v2. والـ media type محدد الإصدار (‏Accept: application/vnd.acme.order.v2+json) هو الأصح نظرياً لأن الـ content negotiation هو تحديداً آلية HTTP لاختيار التمثيل، وهو الأقل استخداماً لأنه مزعج في الاستدعاء من المتصفح ومزعج في التوثيق." },
-      { t: "code", lang: "csharp", label: { en: "ASP.NET Core: multiple version readers, one code path", ar: "ASP.NET Core: قارئات إصدار متعددة ومسار كود واحد" }, code: "// Asp.Versioning.Mvc\nbuilder.Services.AddApiVersioning(o =>\n{\n    o.DefaultApiVersion = new ApiVersion(1, 0);\n    o.AssumeDefaultVersionWhenUnspecified = false; // be explicit; see mistakes\n    o.ReportApiVersions = true;                    // emits api-supported-versions\n    o.ApiVersionReader = ApiVersionReader.Combine(\n        new UrlSegmentApiVersionReader(),\n        new HeaderApiVersionReader(\"Api-Version\"),\n        new MediaTypeApiVersionReader(\"v\"));\n})\n.AddMvc();\n\n[ApiController]\n[Route(\"v{version:apiVersion}/orders\")]\n[ApiVersion(1.0, Deprecated = true)]\n[ApiVersion(2.0)]\npublic sealed class OrdersController : ControllerBase\n{\n    // ONE handler, one query, one set of business rules.\n    [HttpGet(\"{id:guid}\")]\n    public async Task<IActionResult> Get(Guid id, ApiVersion version, CancellationToken ct)\n    {\n        var order = await _query.GetAsync(id, ct);\n        if (order is null) return NotFound();\n\n        // Version differences live in the representation layer only.\n        return Ok(version.MajorVersion switch\n        {\n            1 => OrderV1.From(order),\n            _ => OrderV2.From(order)\n        });\n    }\n}" },
-      { t: "p", en: "The structural point in that sample matters more than the configuration. The version is a property of the representation, not of the domain. If v1 and v2 are two controllers with two services and two repositories, you have forked your product and every bug fix is now two pull requests. If they are two mappers over one domain model, adding v3 costs one file. Response mapping is cheap to fork; business logic is ruinous to fork. Where request shapes differ, the same rule applies inward: parse both shapes into one canonical command object at the edge, and let everything behind the controller be version-blind.", ar: "والنقطة البنيوية في ذلك المثال أهم من الإعدادات. فالإصدار خاصية للتمثيل لا للمجال. فإن كان v1 و v2 عبارة عن controllerين بخدمتين وrepositoryين فقد شطرت منتجك وأصبح كل إصلاح خطأ عبارة عن pull request مزدوج. وإن كانا mapperين فوق موديل مجال واحد فإن إضافة v3 تكلّف ملفاً واحداً. فتشطير تحويل الاستجابات رخيص، وتشطير منطق العمل مدمّر. وحيث تختلف أشكال الطلبات ينطبق نفس المبدأ للداخل: حلّل الشكلين إلى أمر canonical واحد عند الحافة، واجعل كل ما وراء الـ controller أعمى تجاه الإصدار." },
-      { t: "p", en: "There is a fourth model that large public APIs converge on and that most teams never consider: date-based versions pinned per consumer. Instead of the caller choosing a version on each request, the account is pinned to the API date that was current when it first integrated, and the server runs a chain of request/response transformations from that date forward to today's internal model. New code is written once against the current shape; each historical break is one small, permanently-frozen, individually-tested transformer. The cost is real machinery and discipline; the payoff is that adding a break does not add a code path — it adds a transformer.", ar: "وهناك نموذج رابع تتقارب إليه APIs العامة الكبيرة ولا يفكر فيه معظم الفرق: إصدارات مبنية على التاريخ ومثبَّتة لكل مستهلك. فبدل أن يختار المستدعي إصداراً في كل request، يُثبَّت الحساب على تاريخ الـ API الذي كان سارياً حين تكامل أول مرة، ويشغّل السيرفر سلسلة تحويلات للطلب والاستجابة من ذلك التاريخ إلى موديله الداخلي الحالي. فيُكتب الكود الجديد مرة واحدة مقابل الشكل الحالي؛ ويكون كل كسر تاريخي محوّلاً صغيراً مجمّداً بشكل دائم ومختبراً على حدة. والتكلفة آلية حقيقية وانضباط؛ والمكسب أن إضافة كسر لا تضيف مسار كود — بل تضيف محوّلاً." },
-      { t: "code", lang: "csharp", label: { en: "Date-pinned versions as a transformation chain", ar: "الإصدارات المثبّتة بالتاريخ كسلسلة تحويلات" }, code: "// Internal model is always \"today\". Each break is one frozen transformer.\npublic interface IResponseTransform\n{\n    DateOnly IntroducedOn { get; }\n    bool Applies(string resource);\n    JsonNode Downgrade(JsonNode current);\n}\n\n// 2025-03-11: 'name' was split into 'firstName' + 'lastName'.\npublic sealed class SplitCustomerName : IResponseTransform\n{\n    public DateOnly IntroducedOn => new(2025, 3, 11);\n    public bool Applies(string resource) => resource is \"order\" or \"customer\";\n\n    public JsonNode Downgrade(JsonNode current)\n    {\n        current[\"name\"] = $\"{current[\"firstName\"]} {current[\"lastName\"]}\".Trim();\n        current.AsObject().Remove(\"firstName\");\n        current.AsObject().Remove(\"lastName\");\n        return current;\n    }\n}\n\n// Apply newest-first back to the caller's pinned date.\nvar body = transforms\n    .Where(t => t.IntroducedOn > caller.PinnedDate && t.Applies(resource))\n    .OrderByDescending(t => t.IntroducedOn)\n    .Aggregate(currentJson, (acc, t) => t.Downgrade(acc));" },
-      { t: "p", en: "Whatever scheme you pick, the part that actually retires an old version is measurement plus a schedule. You need per-version, per-consumer request counts — a counter tagged with version and client id, nothing more elaborate — because \"can we delete v1?\" must be answerable with a query, not a meeting. Then the announced lifecycle: on deprecation the responses carry Deprecation and Sunset headers (RFC 8594) and a Link to the migration guide; at the sunset date the version returns 410 Gone with a problem-details body naming the replacement. Teams that skip the counters never delete anything, and teams that skip the announcement get an incident on sunset day.", ar: "وأي أسلوب اخترت، فالجزء الذي يُنهي فعلاً إصداراً قديماً هو القياس مع جدول زمني. فأنت تحتاج أعداد requests لكل إصدار ولكل مستهلك — counter موسوم بالإصدار ومعرّف العميل، لا أكثر — لأن سؤال «هل نحذف v1؟» يجب أن يُجاب باستعلام لا باجتماع. ثم دورة الحياة المُعلنة: عند الإيقاف التدريجي تحمل الاستجابات ترويستَي Deprecation و Sunset (‏RFC 8594) مع Link إلى دليل الترحيل؛ وفي تاريخ الإغلاق يرجع الإصدار 410 Gone بجسم problem details يسمّي البديل. والفرق التي تتخطى العدّادات لا تحذف شيئاً أبداً، والتي تتخطى الإعلان تحصل على حادثة في يوم الإغلاق." },
-      { t: "callout", kind: "tip", en: "Tolerant reader is the highest-leverage thing you can ask of consumers, and the cheapest to enforce on yourself: ignore unknown fields, never assume field order, never assume an enum is closed, and never parse a string id for meaning. In .NET that means not setting JsonSerializerOptions.UnmappedMemberHandling to Disallow on client models, and modelling incoming enums as string plus a known-values check rather than a hard enum bind.", ar: "الـ tolerant reader هو أعلى ما تستطيع طلبه من المستهلكين أثراً، وأرخص ما تفرضه على نفسك: تجاهل الحقول المجهولة، ولا تفترض ترتيب الحقول، ولا تفترض أن الـ enum مغلق، ولا تحلّل معرّفاً نصياً بحثاً عن معنى. وفي .NET يعني ذلك ألا تضبط JsonSerializerOptions.UnmappedMemberHandling على Disallow في موديلات العميل، وأن تنمذج الـ enums الواردة كنص مع فحص للقيم المعروفة بدل ربط enum صارم." }
-    ]},
-
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "An API version is a label on a request that tells the server which shape of input and output the caller expects. You need it because the moment another program reads your JSON, that JSON stops being yours to edit. Change it and their code breaks on the day you deploy, not on the day they are ready.",
+          ar: "الـ API version هو label على الـ request يخبر الـ server بأي شكل من الـ input والـ output يتوقعه الـ caller. تحتاجه لأنه بمجرد أن يقرأ برنامج آخر الـ JSON الخاص بك، لم يعد ملكك لتعدّله كما تريد. إذا غيّرته سيتعطّل كودهم يوم تنشر أنت، لا يوم يكونون هم جاهزين."
+        },
+        { t: "kv", rows: [
+          { k: { en: "Client", ar: "Client" },
+            v: { en: "Any program that calls your API: a mobile app, a partner's server, your own frontend. The key point is that you usually cannot redeploy it.", ar: "أي برنامج يستدعي الـ API: تطبيق موبايل، server لشريك، أو الـ frontend الخاص بك. النقطة المهمة أنك عادةً لا تستطيع إعادة نشره." } },
+          { k: { en: "Contract", ar: "Contract" },
+            v: { en: "The exact fields, types and rules a client depends on. It is not a document — it is whatever the client's code actually reads.", ar: "الـ fields والأنواع والقواعد التي يعتمد عليها الـ client. ليس مستنداً — هو ما يقرأه كود الـ client فعلياً." } },
+          { k: { en: "Breaking change", ar: "Breaking change" },
+            v: { en: "A change that makes correct old client code stop working: removing a field, renaming it, changing its type, or requiring a new input.", ar: "تغيير يجعل كود client قديماً وصحيحاً يتوقف عن العمل: حذف field، أو إعادة تسميته، أو تغيير نوعه، أو طلب input جديد إجبارياً." } },
+          { k: { en: "Additive change", ar: "Additive change" },
+            v: { en: "A change old clients can safely ignore: a new optional field in the response, or a new optional input.", ar: "تغيير يستطيع الـ clients القدامى تجاهله بأمان: field اختياري جديد في الـ response، أو input اختياري جديد." } },
+          { k: { en: "Deprecation", ar: "Deprecation" },
+            v: { en: "Publicly announcing that a version will be switched off on a stated date, while it keeps working until then.", ar: "إعلان علني أن نسخة ستُغلق في تاريخ محدّد، مع بقائها تعمل حتى ذلك التاريخ." } },
+          { k: { en: "Sunset", ar: "Sunset" },
+            v: { en: "A standard HTTP response header carrying the date a version stops working, so the removal is machine-readable, not just an email.", ar: "response header قياسي في HTTP يحمل تاريخ توقّف النسخة، حتى يكون الإغلاق قابلاً للقراءة آلياً لا مجرد بريد إلكتروني." } }
+        ]},
+        { t: "p",
+          en: "The pressure comes from one fact: you deploy and they do not. You can ship a new build of your service in ten minutes. A mobile app on a customer's phone updates when that customer feels like it, which for many people is never. So at any moment your single server is being called by three or four generations of client code at the same time. Versioning is what lets those generations run side by side.",
+          ar: "الضغط يأتي من حقيقة واحدة: أنت تنشر وهم لا ينشرون. تستطيع إصدار نسخة جديدة من الـ service خلال عشر دقائق. أما تطبيق الموبايل على هاتف العميل فيتحدّث عندما يريد العميل، وكثيرون لا يفعلون أبداً. لذلك في أي لحظة يستدعي الـ server الواحد ثلاثة أو أربعة أجيال من كود الـ clients في الوقت نفسه. الـ versioning هو ما يسمح لهذه الأجيال بالعمل جنباً إلى جنب."
+        },
+        { t: "p",
+          en: "Think of the power sockets in an office building. Once people have plugged in laptops, printers and lamps, you cannot change the pin layout on a Tuesday. What buildings do instead is install the new socket type next to the old one. They put a notice on the old one saying it goes away next year. Both stay live during the switch. An API version is that second socket: the old shape stays powered while callers move over at their own pace.",
+          ar: "تخيّل مقابس الكهرباء في مبنى مكاتب. بعد أن يوصّل الناس أجهزة اللابتوب والطابعات والمصابيح، لا تستطيع تغيير شكل الفتحات فجأة. ما تفعله المباني هو تركيب المقبس الجديد بجوار القديم. ثم تضع إشعاراً على القديم بأنه سيُزال العام القادم. ويبقى الاثنان يعملان أثناء الانتقال. الـ API version هو ذلك المقبس الثاني: الشكل القديم يبقى يعمل بينما ينتقل الـ callers بالسرعة التي تناسبهم."
+        },
+        { t: "callout", kind: "note",
+          en: "Versioning is not something you add later. Your first public release is v1 whether you label it or not — and an unlabelled API is simply a v1 with no way to move off it.",
+          ar: "الـ versioning ليس شيئاً تضيفه لاحقاً. أول إصدار عام لديك هو v1 سواء وضعت له label أم لا — والـ API بلا label هو ببساطة v1 لا تملك طريقة للخروج منه."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Take one endpoint. GET /orders/1017 returns { \"id\": 1017, \"customerName\": \"Sara\", \"total\": 249.50 }. The team now wants a customer object instead of a flat name, and wants total renamed to totalAmount to match the rest of the API. Both changes are small, correct, and take an afternoon.",
+          ar: "خذ endpoint واحداً. الاستدعاء GET /orders/1017 يُرجع { \"id\": 1017, \"customerName\": \"Sara\", \"total\": 249.50 }. الآن يريد الفريق customer object بدل الاسم المسطّح، ويريد إعادة تسمية total إلى totalAmount ليتطابق مع بقية الـ API. التغييران صغيران وصحيحان ويستغرقان بعد ظهر واحد."
+        },
+        { t: "p",
+          en: "Deploying that over the old response breaks every client reading total. In a typical mobile product, about 40 out of every 100 active installs still run a build from three months ago. That means 40% of your users are executing code you cannot patch. Those users see 0.00 on the order screen. Their JSON parser looked for total, did not find it, and left the number at its default value of zero. Nothing throws. Nothing appears in your error logs. You learn about it from support tickets the next morning.",
+          ar: "نشر هذا فوق الـ response القديم يكسر كل client يقرأ total. في منتج موبايل نموذجي، حوالي 40 من كل 100 تثبيت نشط ما زالت تعمل بنسخة عمرها ثلاثة أشهر. هذا يعني أن 40% من مستخدميك ينفّذون كوداً لا تستطيع تعديله. هؤلاء يرون 0.00 في شاشة الطلب. الـ JSON parser بحث عن total ولم يجده، فترك الرقم على قيمته الافتراضية صفر. لا يُرمى أي exception. لا يظهر شيء في سجلات الأخطاء. تعرف بالأمر من تذاكر الدعم في صباح اليوم التالي."
+        },
+        { t: "kv", rows: [
+          { k: { en: "Add optional deliveryEta to the response", ar: "إضافة deliveryEta اختياري إلى الـ response" },
+            v: { en: "Safe. Old parsers skip fields they do not recognise, so nothing notices.", ar: "آمن. الـ parsers القديمة تتجاهل الـ fields التي لا تعرفها، فلا يلاحظ أحد." } },
+          { k: { en: "Rename total to totalAmount", ar: "إعادة تسمية total إلى totalAmount" },
+            v: { en: "Breaking, and silently so. Every client reading total now reads zero and shows a wrong number.", ar: "كاسر، وبصمت. كل client يقرأ total صار يقرأ صفراً ويعرض رقماً خاطئاً." } },
+          { k: { en: "Change total from 249.50 to \"249.50\"", ar: "تغيير total من 249.50 إلى \"249.50\"" },
+            v: { en: "Breaking. A client deserializing into a decimal field now throws a parse error on every order.", ar: "كاسر. الـ client الذي يحوّلها إلى decimal صار يرمي parse error مع كل طلب." } },
+          { k: { en: "Make the optional currency input required", ar: "جعل الـ input الاختياري currency إجبارياً" },
+            v: { en: "Breaking. Old clients get 400 responses for requests that succeeded yesterday.", ar: "كاسر. الـ clients القدامى يحصلون على 400 لطلبات كانت تنجح بالأمس." } },
+          { k: { en: "Accept a longer note field than before", ar: "قبول note أطول مما كان" },
+            v: { en: "Safe. Loosening validation never invalidates a request that already passed.", ar: "آمن. تخفيف الـ validation لا يُبطل أبداً طلباً كان يمرّ من قبل." } }
+        ]}
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Versioning is two separate mechanisms, and mixing them up is where most of the confusion comes from. The first is how the version gets into the request. The second is how the server uses it to pick which piece of code runs.",
+          ar: "الـ versioning آليتان منفصلتان، والخلط بينهما مصدر معظم الالتباس. الأولى: كيف تصل النسخة داخل الـ request. الثانية: كيف يستخدمها الـ server لاختيار الكود الذي سينفَّذ."
+        },
+        { t: "p",
+          en: "There are four common ways to carry the version. In the path: GET /v1/orders/1017, visible in every log line and every browser bar. In a custom header: GET /orders/1017 with X-Api-Version: 2, which keeps the URL stable. In the media type, using content negotiation — the mechanism where the client states the format it wants in the Accept header: Accept: application/vnd.shop.order+json;v=2. Or in the query string: /orders/1017?api-version=2. They differ only in where the label sits; everything after that is identical.",
+          ar: "هناك أربع طرق شائعة لحمل النسخة. في المسار: GET /v1/orders/1017، وتظهر في كل سطر log وفي شريط المتصفح. في header مخصّص: GET /orders/1017 مع X-Api-Version: 2، وهذا يُبقي الـ URL ثابتاً. في الـ media type عبر content negotiation — وهي الآلية التي يعلن فيها الـ client الصيغة التي يريدها في الـ Accept header: Accept: application/vnd.shop.order+json;v=2. أو في الـ query string: /orders/1017?api-version=2. الفرق بينها هو موضع الـ label فقط؛ وما بعد ذلك متطابق."
+        },
+        { t: "kv", rows: [
+          { k: { en: "Version reader", ar: "Version reader" },
+            v: { en: "The component that pulls the version out of the request — a path segment, a header, or a query parameter.", ar: "المكوّن الذي يستخرج النسخة من الـ request: جزء من المسار، أو header، أو query parameter." } },
+          { k: { en: "Default version", ar: "Default version" },
+            v: { en: "What the server assumes when a request carries no version at all. Usually the oldest version you still support.", ar: "ما يفترضه الـ server عندما لا يحمل الـ request أي نسخة. عادةً أقدم نسخة ما زلت تدعمها." } },
+          { k: { en: "Action selector", ar: "Action selector" },
+            v: { en: "The step that looks at all handler methods matching the route and keeps the one declared for that version.", ar: "الخطوة التي تنظر إلى كل الـ handler methods المطابقة للمسار وتُبقي تلك المعلنة لتلك النسخة." } },
+          { k: { en: "Version metadata", ar: "Version metadata" },
+            v: { en: "Headers the server adds to the response — api-supported-versions and Sunset — so a client can discover what exists and what is ending.", ar: "headers يضيفها الـ server إلى الـ response — مثل api-supported-versions و Sunset — ليكتشف الـ client ما هو متاح وما سينتهي." } }
+        ]},
+        { t: "p",
+          en: "Now trace one request end to end in ASP.NET Core using the Asp.Versioning package. First, routing matches the template v{version:apiVersion}/orders/{id} against GET /v2/orders/1017 and captures the text 2. Second, the version reader turns that text into an ApiVersion value of 2.0. Third, the action selector looks at both methods that could serve /orders/{id} and keeps the one marked MapToApiVersion(\"2.0\"). Fourth, that method runs, loads the order, and maps it to the v2 response type. Fifth, the middleware attaches api-supported-versions: 1.0, 2.0 to the response. The version reader is the receptionist reading the floor number off your visitor pass; the action selector is the lift that only stops at that floor. The building underneath — the database, the business rules — is the same either way.",
+          ar: "الآن تتبّع request واحداً من أوله إلى آخره في ASP.NET Core باستخدام حزمة Asp.Versioning. أولاً: الـ routing يطابق القالب v{version:apiVersion}/orders/{id} مع GET /v2/orders/1017 ويلتقط النص 2. ثانياً: الـ version reader يحوّل هذا النص إلى قيمة ApiVersion تساوي 2.0. ثالثاً: الـ action selector ينظر إلى الـ method-ين اللذين يمكنهما خدمة /orders/{id} ويُبقي الموسوم بـ MapToApiVersion(\"2.0\"). رابعاً: تُنفَّذ تلك الـ method، تقرأ الطلب، وتحوّله إلى نوع الـ response الخاص بـ v2. خامساً: يضيف الـ middleware الترويسة api-supported-versions: 1.0, 2.0 إلى الـ response. الـ version reader هو موظف الاستقبال الذي يقرأ رقم الطابق من بطاقة الزائر؛ والـ action selector هو المصعد الذي لا يقف إلا عند ذلك الطابق. أما المبنى تحتهما — قاعدة البيانات وقواعد العمل — فهو نفسه في الحالتين."
+        },
+        { t: "code", lang: "csharp",
+          label: { en: "Two versions of one endpoint over one domain object", ar: "نسختان من endpoint واحد فوق domain object واحد" },
+          code: "// Program.cs — configured once for the whole app\nbuilder.Services.AddApiVersioning(o =>\n{\n    o.DefaultApiVersion = new ApiVersion(1, 0);\n    o.AssumeDefaultVersionWhenUnspecified = true;  // callers sending no version get 1.0\n    o.ReportApiVersions = true;                    // adds api-supported-versions header\n    o.ApiVersionReader = new UrlSegmentApiVersionReader();\n});\n\n[ApiController]\n[Route(\"v{version:apiVersion}/orders\")]\n[ApiVersion(\"1.0\", Deprecated = true)]\n[ApiVersion(\"2.0\")]\npublic class OrdersController : ControllerBase\n{\n    private readonly IOrderService _orders;\n\n    [HttpGet(\"{id:int}\"), MapToApiVersion(\"1.0\")]\n    public async Task<ActionResult<OrderV1>> GetV1(int id)\n    {\n        var order = await _orders.GetAsync(id);   // same domain object\n        return order is null ? NotFound() : OrderV1.From(order);\n    }\n\n    [HttpGet(\"{id:int}\"), MapToApiVersion(\"2.0\")]\n    public async Task<ActionResult<OrderV2>> GetV2(int id)\n    {\n        var order = await _orders.GetAsync(id);   // same domain object\n        return order is null ? NotFound() : OrderV2.From(order);\n    }\n}\n\n// OrderV1.From(order) -> { \"id\": 1017, \"customerName\": \"Sara\", \"total\": 249.50 }\n// OrderV2.From(order) -> { \"id\": 1017, \"customer\": { \"id\": 88, \"name\": \"Sara\" }, \"totalAmount\": 249.50 }"
+        },
+        { t: "p",
+          en: "Notice what is not versioned. Both handlers call the same service and load the same Order entity. The version applies to the response type, not to your domain model or your database. Keeping one internal Order plus two small mapping methods is exactly what stops two versions from slowly drifting into two half-maintained products.",
+          ar: "لاحظ ما هو غير مُنسَّخ. كلا الـ handler-ين يستدعي نفس الـ service ويقرأ نفس الـ Order entity. النسخة تنطبق على نوع الـ response، لا على الـ domain model ولا على قاعدة البيانات. الاحتفاظ بـ Order داخلي واحد مع mapping method-ين صغيرين هو بالضبط ما يمنع النسختين من الانحراف تدريجياً إلى منتجَين نصف مُصانَين."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "Putting the version in the URL makes it visible in logs, curl commands and browser bars — you always know which version a request used.",
+              "A gateway or load balancer can route /v1 and /v2 to completely different deployments with no code involved.",
+              "Easy to explain to a partner in one sentence: \"call /v2 instead\".",
+              "Anyone can test it by pasting a URL; no client library or special header needed."
+            ],
+            ar: [
+              "وضع النسخة في الـ URL يجعلها ظاهرة في الـ logs وأوامر curl وشريط المتصفح — تعرف دائماً أي نسخة استُخدمت.",
+              "يستطيع الـ gateway أو الـ load balancer توجيه /v1 و /v2 إلى deployments مختلفة تماماً دون أي كود.",
+              "سهل الشرح لشريك في جملة واحدة: «استدعِ /v2 بدلاً منه».",
+              "يستطيع أي شخص تجربته بلصق URL؛ دون حاجة إلى client library أو header خاص."
+            ]
+          },
+          cons: {
+            en: [
+              "The same order now has two URLs, which contradicts the idea that a URL names one resource.",
+              "It tempts teams to bump the entire API for a change that touched one field.",
+              "Clients hard-code the version into URL strings scattered across their codebase, making their upgrade harder than it should be.",
+              "Two live versions means two sets of tests and two places to apply every fix."
+            ],
+            ar: [
+              "الطلب نفسه صار له URL-ان، وهذا يناقض فكرة أن الـ URL يسمّي resource واحداً.",
+              "يغري الفرق برفع نسخة الـ API كلها من أجل تغيير مسّ field واحداً.",
+              "الـ clients يضعون النسخة داخل نصوص URL منتشرة في كودهم، ما يجعل ترقيتهم أصعب مما يجب.",
+              "نسختان حيّتان تعنيان مجموعتَي اختبارات وموضعَين لتطبيق كل إصلاح."
+            ]
+          },
+          limits: {
+            en: [
+              "It only versions the URL, so it cannot express \"same endpoint, different response format\".",
+              "HTTP caches key on the full URL, so v1 and v2 are cached separately even when the bytes are identical.",
+              "It says nothing about messages on a queue or gRPC calls, which need their own scheme.",
+              "It does not help with a change inside a field's meaning — same name, same type, new semantics is invisible to any versioning scheme."
+            ],
+            ar: [
+              "يُنسّخ الـ URL فقط، فلا يستطيع التعبير عن «نفس الـ endpoint بصيغة response مختلفة».",
+              "الـ HTTP caches تعتمد على الـ URL كاملاً، فتُخزَّن v1 و v2 منفصلتين حتى لو كانت البايتات متطابقة.",
+              "لا يقول شيئاً عن الرسائل في الـ queue أو استدعاءات gRPC، وهذه تحتاج أسلوبها الخاص.",
+              "لا يساعد عندما يتغيّر معنى الـ field: نفس الاسم ونفس النوع بدلالة جديدة لا يراه أي أسلوب versioning."
+            ]
+          },
+          alts: {
+            en: [
+              "Header versioning (X-Api-Version: 2) — stable URLs, but invisible in logs unless you log that header on purpose.",
+              "Media-type versioning through Accept — the most correct under REST rules, and the hardest for partners to get right.",
+              "Date versioning (2024-08-01) — one global timeline; good when many small changes ship often, as each account is pinned to a date.",
+              "No versions at all — allow only additive changes and never remove a field. Cheapest to run, and it forces you to live with old names forever."
+            ],
+            ar: [
+              "Header versioning عبر X-Api-Version: 2 — URLs ثابتة، لكنها غير مرئية في الـ logs ما لم تسجّل ذلك الـ header عمداً.",
+              "Media-type versioning عبر Accept — الأصحّ وفق قواعد REST، والأصعب على الشركاء أن يضبطوه.",
+              "Date versioning مثل 2024-08-01 — خط زمني واحد؛ مناسب عندما تُنشر تغييرات صغيرة كثيرة، إذ يُثبَّت كل حساب على تاريخ.",
+              "بلا versions إطلاقاً — تسمح بالتغييرات الإضافية فقط ولا تحذف field أبداً. الأرخص تشغيلاً، ويجبرك على التعايش مع الأسماء القديمة إلى الأبد."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Bumping the whole API for one field", ar: "رفع نسخة الـ API كلها من أجل field واحد" },
+          body: {
+            en: "A team renamed total to totalAmount on the order endpoint and created /v2 for all 47 endpoints in the service. Forty-six of them were copy-pasted unchanged. Six months later a bug fix landed in /v2/customers and nobody remembered /v1/customers, so the same customer id returned two different email addresses depending on which URL you asked. Version the smallest unit you can: one endpoint, or even one response type.",
+            ar: "فريق أعاد تسمية total إلى totalAmount في endpoint الطلبات وأنشأ /v2 لكل الـ 47 endpoint في الـ service. ستة وأربعون منها نُسخت كما هي. بعد ستة أشهر نزل إصلاح خطأ في /v2/customers ونسي الجميع /v1/customers، فصار نفس الـ customer id يُرجع بريدين مختلفين حسب الـ URL الذي تسأله. نسّخ أصغر وحدة ممكنة: endpoint واحد، أو حتى نوع response واحد."
+          },
+          fix: "// version the controller that changed, not the service\n[ApiVersion(\"1.0\")]\n[ApiVersion(\"2.0\")]\n[Route(\"v{version:apiVersion}/customers\")]\npublic class CustomersController : ControllerBase\n{\n    // one action serves both versions - nothing changed here\n    [HttpGet(\"{id:int}\")]\n    public Task<CustomerDto> Get(int id) => _customers.GetAsync(id);\n}"
+        },
+        { t: "mistake",
+          title: { en: "Calling a new required input \"additive\"", ar: "تسمية input إجباري جديد «إضافة»" },
+          body: {
+            en: "A team added currency to the POST /orders body and marked it [Required]. They filed it as an additive change in the release notes, because nothing had been removed. Within an hour every old client was getting 400 responses on requests that had worked the previous day, and order creation dropped by a third. Adding an input is only safe while the server still accepts requests that leave it out.",
+            ar: "فريق أضاف currency إلى جسم POST /orders ووسمه بـ [Required]. سجّلوه في ملاحظات الإصدار كتغيير إضافي لأن شيئاً لم يُحذف. خلال ساعة صار كل client قديم يتلقى 400 على طلبات كانت تعمل بالأمس، وانخفض إنشاء الطلبات بمقدار الثلث. إضافة input تكون آمنة فقط ما دام الـ server يقبل الطلبات التي لا تحتوي عليه."
+          },
+          fix: "public class CreateOrderRequest\n{\n    public required List<OrderLine> Lines { get; init; }\n\n    // optional, with the previous implicit behaviour as the default\n    public string Currency { get; init; } = \"EUR\";\n}"
+        },
+        { t: "mistake",
+          title: { en: "Adding versioning without keeping the old route alive", ar: "إضافة versioning دون إبقاء المسار القديم يعمل" },
+          body: {
+            en: "An API had been live and unversioned for a year at /orders. The team introduced versioning by adding v{version:apiVersion} to the route template. Every existing caller was still requesting /orders, which now matched no route, so they all received 404. The 404s were logged as client errors, not server errors, so no alert fired and the outage lasted two hours. When you add versioning to a live API, the old unversioned route must keep working and must map to v1.",
+            ar: "كان هناك API يعمل بلا versions منذ سنة على /orders. أضاف الفريق الـ versioning بوضع v{version:apiVersion} في قالب المسار. كل الـ callers القدامى ظلّوا يطلبون /orders، الذي لم يعد يطابق أي مسار، فتلقّوا جميعاً 404. سُجّلت الـ 404 كأخطاء client لا server، فلم ينطلق أي تنبيه واستمر العطل ساعتين. عند إضافة versioning إلى API حيّ، يجب أن يبقى المسار القديم بلا نسخة يعمل وأن يُوجَّه إلى v1."
+          },
+          fix: "[ApiVersion(\"1.0\")]\n[ApiVersion(\"2.0\")]\n[Route(\"orders\")]                        // old callers, no version segment\n[Route(\"v{version:apiVersion}/orders\")]  // new callers\npublic class OrdersController : ControllerBase { }\n\n// and in Program.cs:\no.AssumeDefaultVersionWhenUnspecified = true;"
+        },
+        { t: "mistake",
+          title: { en: "Never turning an old version off", ar: "عدم إغلاق أي نسخة قديمة أبداً" },
+          body: {
+            en: "v1 shipped in 2021 and was never removed. By 2025 the service had five live versions, so every security fix had to be written and tested five times. A change to the pricing rule was applied to four of the five. The one missed was v2, still used by a payment partner. It billed the old price for eleven days before anyone noticed. A version you cannot retire is a version you pay for forever. Announce a removal date with the Sunset header on the day you release its replacement, not years later.",
+            ar: "صدرت v1 في 2021 ولم تُزل أبداً. بحلول 2025 كان لدى الـ service خمس نسخ حيّة، فصار كل إصلاح أمني يُكتب ويُختبر خمس مرات. طُبّق تغيير في قاعدة التسعير على أربع من الخمس. والمنسيّة كانت v2، وما زال يستخدمها شريك دفع. فحاسب بالسعر القديم أحد عشر يوماً قبل أن يلاحظ أحد. النسخة التي لا تستطيع إيقافها نسخة تدفع ثمنها إلى الأبد. أعلن تاريخ الإزالة عبر الـ Sunset header يوم تُطلق بديلها، لا بعد سنوات."
+          },
+          fix: "// returned on every v1 response from the day v2 ships\nSunset: Sat, 31 Jan 2026 23:59:59 GMT\nDeprecation: true\nLink: <https://docs.example.com/migrate-v2>; rel=\"deprecation\""
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What makes a change a breaking change?", ar: "ما الذي يجعل التغيير breaking change؟" },
+          a: {
+            en: "A change is breaking if a client that was written correctly against the old contract stops working. In practice that means four things: you removed a field, you renamed a field, you changed a field's type, or you started requiring an input that used to be optional. Everything else is usually safe, because clients ignore what they do not recognise. The test I apply is: could an old caller's code still produce the same result without being edited? If not, it is breaking.",
+            ar: "التغيير يكون breaking إذا توقّف client كُتب بشكل صحيح على العقد القديم عن العمل. عملياً هذا يعني أربعة أشياء: حذفت field، أو أعدت تسميته، أو غيّرت نوعه، أو صرت تشترط input كان اختيارياً. ما عدا ذلك آمن غالباً لأن الـ clients تتجاهل ما لا تعرفه. الاختبار الذي أطبّقه: هل يستطيع كود caller قديم أن ينتج نفس النتيجة دون تعديل؟ إذا لا، فهو breaking."
+          }
+        },
+        { t: "qa", level: "mid",
+          q: { en: "URL versioning or header versioning — how do you choose?", ar: "URL versioning أم header versioning — كيف تختار؟" },
+          a: {
+            en: "I choose by who the callers are. If the API is public or has outside partners, I put the version in the URL. It shows up in their logs and in mine. They can test it by pasting a link. And support conversations become one sentence. If the callers are internal teams and I care about stable URLs and clean caching, a header is nicer. The one thing I do not do is support both, because then two requests that look different are the same and every log query has to check two places.",
+            ar: "أختار حسب هوية الـ callers. إذا كان الـ API عاماً أو لديه شركاء خارجيون أضع النسخة في الـ URL. فهي تظهر في سجلاتهم وسجلاتي. ويستطيعون تجربتها بلصق رابط. وتصير محادثة الدعم جملة واحدة. أما إذا كان الـ callers فرقاً داخلية وأهتم بثبات الـ URLs ونظافة الـ caching فالـ header أفضل. الشيء الوحيد الذي لا أفعله هو دعم الاثنين معاً، لأن حينها يصير طلبان مختلفان في الشكل نفس الشيء، وكل استعلام logs يجب أن يفحص موضعين."
+          }
+        },
+        { t: "qa", level: "mid",
+          q: { en: "You need to rename a field. Do it without creating a new version.", ar: "تحتاج إلى إعادة تسمية field. افعل ذلك دون إنشاء نسخة جديدة." },
+          a: {
+            en: "I use expand then contract. First expand: I add totalAmount to the response and keep total, both filled from the same value. Nothing breaks, because old clients read the old name and new clients read the new one. Then I mark total deprecated in the OpenAPI document and put a Sunset date on it. Then I wait, and I watch which clients still call that endpoint on old app builds. Only when that number is effectively zero, or the announced date has passed, do I contract: remove total, and that removal is the change that needs a new major version. The rename itself never needed one.",
+            ar: "أستخدم expand ثم contract. أولاً التوسيع: أضيف totalAmount إلى الـ response وأُبقي total، ويُملأ الاثنان من نفس القيمة. لا شيء ينكسر، لأن الـ clients القدامى يقرأون الاسم القديم والجدد يقرأون الجديد. ثم أضع total كـ deprecated في مستند الـ OpenAPI وأضع له تاريخ Sunset. ثم أنتظر وأراقب أي clients ما زالت تستدعي الـ endpoint بنسخ تطبيق قديمة. وعندما يصير هذا الرقم صفراً عملياً، أو يمرّ التاريخ المعلن، أنفّذ التقليص: أحذف total، وهذا الحذف هو التغيير الذي يحتاج نسخة major جديدة. أما إعادة التسمية نفسها فلم تحتج واحدة أبداً."
+          }
+        },
+        { t: "qa", level: "senior",
+          q: { en: "How do you know it is safe to delete v1?", ar: "كيف تعرف أن حذف v1 آمن؟" },
+          a: {
+            en: "I do not decide it, I measure it. I need a counter of requests broken down by version and by client identity — an API key, a client id header, or at worst a user agent. That gives me a list: who is on v1, how much traffic, and whether it is growing or shrinking. Then I contact the top callers directly, because a changelog nobody reads is not notice. Then I run a brownout: return 410 Gone for v1 for ten minutes at a scheduled time, and see who calls me. If the brownout is quiet, the removal will be quiet. If it is not, I have found the client that never read the email, and I have found it without a real outage.",
+            ar: "لا أقرّر ذلك، بل أقيسه. أحتاج عدّاداً للطلبات مقسّماً حسب النسخة وحسب هوية الـ client — مفتاح API، أو header فيه client id، أو في أسوأ الأحوال الـ user agent. هذا يعطيني قائمة: من على v1، وكم حجم الحركة، وهل تنمو أم تتراجع. ثم أتواصل مع أكبر الـ callers مباشرة، لأن changelog لا يقرأه أحد ليس إشعاراً. ثم أنفّذ brownout: أُرجع 410 Gone لـ v1 لمدة عشر دقائق في وقت محدّد وأرى من يتصل بي. إذا كان الـ brownout هادئاً فالإزالة ستكون هادئة. وإذا لم يكن، أكون قد وجدت الـ client الذي لم يقرأ البريد، ووجدته دون عطل حقيقي."
+          }
+        },
+        { t: "qa", level: "senior",
+          q: { en: "How do you version an event on a message queue, where there is no URL and no Accept header?", ar: "كيف تُنسّخ event على message queue حيث لا يوجد URL ولا Accept header؟" },
+          a: {
+            en: "The version goes in the message itself. Every message carries an envelope, which is a small wrapper around the payload. That envelope holds a type name and a version number. Some teams put a schema id there instead, pointing at a schema registry — a service that stores the agreed shape of each message type. Consumers must be written to tolerate unknown fields, because producers will add them. The rule I enforce is simple: a producer never changes the meaning of an existing field in place. It adds a new field instead. Or it publishes a new message type and sends both for a while, until every consumer has moved. The hard part that is different from HTTP is that old messages live in the log forever, so a consumer replaying history must still understand every version ever published.",
+            ar: "النسخة توضع داخل الرسالة نفسها. كل رسالة تحمل envelope، وهو غلاف صغير حول الـ payload. هذا الغلاف يحمل اسم النوع ورقم النسخة. بعض الفرق تضع فيه schema id بدلاً من ذلك، يشير إلى schema registry — وهي خدمة تخزّن الشكل المتفق عليه لكل نوع رسالة. يجب أن يُكتب الـ consumers ليتحمّلوا fields غير معروفة، لأن الـ producers سيضيفونها. القاعدة التي أفرضها بسيطة: الـ producer لا يغيّر معنى field قائم في مكانه أبداً. بل يضيف field جديداً. أو ينشر نوع رسالة جديداً ويرسل الاثنين فترة، حتى ينتقل كل consumer. الجزء الصعب المختلف عن HTTP أن الرسائل القديمة تبقى في الـ log إلى الأبد، فأي consumer يعيد قراءة التاريخ يجب أن يفهم كل نسخة نُشرت يوماً."
+          }
+        },
+        { t: "qa", level: "staff",
+          q: { en: "Two teams keep breaking each other's clients. What do you change organizationally?", ar: "فريقان يكسران باستمرار clients بعضهما. ما الذي تغيّره تنظيمياً؟" },
+          a: {
+            en: "I make breakage detectable before deploy instead of after, because right now the only detector is a customer. Four changes. One: a written compatibility policy — one page listing exactly what counts as breaking, so the argument is settled once instead of per pull request. Two: consumer-driven contract tests in CI, where each consumer publishes the fields it actually reads and the provider's build fails if it removes one. Three: a real registry of who calls what, built from production traffic rather than from memory, so nobody says \"I think nothing uses that\". Four: deprecation as a process with a named owner and a date, not goodwill. And I would make the number of live versions a tracked metric per team, because until keeping five versions alive costs somebody something visible, nobody retires anything.",
+            ar: "أجعل الكسر قابلاً للاكتشاف قبل النشر لا بعده، لأن الكاشف الوحيد حالياً هو العميل. أربعة تغييرات. الأول: سياسة توافق مكتوبة — صفحة واحدة تحدّد بالضبط ما يُعدّ breaking، فيُحسم النقاش مرة واحدة بدل أن يتكرر مع كل pull request. الثاني: consumer-driven contract tests في الـ CI، حيث ينشر كل consumer الـ fields التي يقرأها فعلاً ويفشل بناء الـ provider إذا حذف واحداً منها. الثالث: سجلّ حقيقي لمن يستدعي ماذا، مبني على حركة الإنتاج لا على الذاكرة، حتى لا يقول أحد «أظن لا شيء يستخدم هذا». الرابع: الـ deprecation كعملية لها مالك محدّد وتاريخ محدّد، لا كحسن نية. وسأجعل عدد النسخ الحيّة مقياساً متابَعاً لكل فريق، لأنه ما لم يكلّف إبقاء خمس نسخ أحداً شيئاً مرئياً، لن يتقاعد أي شيء."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Changing a field's type in place", ar: "تغيير نوع الـ field في مكانه" },
+          bad: "public class OrderResponse\n{\n    public int Id { get; set; }\n\n    // was: public decimal Total { get; set; }\n    public string Total { get; set; }   // now formatted as \"249.50 EUR\"\n}",
+          good: "public class OrderResponse\n{\n    public int Id { get; set; }\n\n    public decimal Total { get; set; }          // unchanged: still a number\n    public string TotalFormatted { get; set; }  // new and optional: old clients ignore it\n}",
+          why: {
+            en: "A client that deserializes Total into a decimal property now fails on every single order, or silently gets zero, depending on its parser settings. There is no partial damage here — the field is on the main response of the main endpoint, so this is a total outage for older callers. Adding a second field costs about twenty bytes per response and breaks nobody. Remove Total in a later version, once you have measured that nothing reads it.",
+            ar: "الـ client الذي يحوّل Total إلى خاصية decimal صار يفشل مع كل طلب، أو يحصل على صفر بصمت، حسب إعدادات الـ parser لديه. لا يوجد ضرر جزئي هنا — الـ field في الـ response الرئيسي للـ endpoint الرئيسي، فهذا عطل كامل للـ callers القدامى. إضافة field ثانٍ تكلّف نحو عشرين بايت في الـ response ولا تكسر أحداً. احذف Total في نسخة لاحقة بعد أن تقيس أن لا شيء يقرأه."
+          }
+        },
+        { t: "review", severity: "medium",
+          title: { en: "Version checks leaking into the service layer", ar: "تسرّب فحص النسخة إلى طبقة الـ service" },
+          bad: "public async Task<object> GetOrder(int id, string apiVersion)\n{\n    var order = await _repo.GetAsync(id);\n    if (order is null) return null;\n\n    if (apiVersion == \"1.0\")\n        return new { order.Id, customerName = order.Customer.Name, total = order.Total };\n\n    return new { order.Id,\n                 customer = new { order.Customer.Id, order.Customer.Name },\n                 totalAmount = order.Total };\n}",
+          good: "// the service knows nothing about versions\npublic Task<Order?> GetOrder(int id) => _repo.GetAsync(id);\n\n// each versioned response type owns its own mapping\npublic sealed record OrderV1(int Id, string CustomerName, decimal Total)\n{\n    public static OrderV1 From(Order o) => new(o.Id, o.Customer.Name, o.Total);\n}\n\npublic sealed record OrderV2(int Id, CustomerV2 Customer, decimal TotalAmount)\n{\n    public static OrderV2 From(Order o) =>\n        new(o.Id, new CustomerV2(o.Customer.Id, o.Customer.Name), o.Total);\n}",
+          why: {
+            en: "Version if-statements spread. Once one service method branches on the version string, the next one does too, and a third version adds a branch to all of them. Two things then get hard: retiring v1 means hunting those branches across the whole codebase, and the return type object means the compiler cannot tell you what either version actually returns. Keeping version knowledge at the edge — in the controller and the response records — makes retiring v1 a matter of deleting one record and one action method.",
+            ar: "شروط النسخة تنتشر. بمجرد أن تتفرّع service method واحدة على نص النسخة، تتفرّع التالية أيضاً، ثم تضيف نسخة ثالثة فرعاً إلى كلها. عندها يصعب أمران: التخلّص من v1 يعني ملاحقة تلك الفروع في الكود كله، ونوع الإرجاع object يعني أن الـ compiler لا يستطيع إخبارك بما تُرجعه كل نسخة فعلاً. إبقاء معرفة النسخة عند الحافة — في الـ controller وفي records الـ response — يجعل إزالة v1 مجرد حذف record واحد و action method واحدة."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a real system the version is two decisions in two places. At the edge it is a routing decision. An API gateway is the single entry point sitting in front of your services. It reads /v1 or /v2 from the path and can send each to an entirely different deployment. That is how you run a risky v2 rewrite next to a stable v1 without one destabilising the other. It is also how you roll v2 out to 5% of traffic first. Inside the service it is a mapping decision: the same domain object, two response shapes.",
+          ar: "في نظام حقيقي، النسخة قراران في موضعين. عند الحافة هي قرار routing. الـ API gateway هو نقطة الدخول الواحدة أمام خدماتك. يقرأ /v1 أو /v2 من المسار ويستطيع توجيه كل منهما إلى deployment مختلف تماماً. هكذا تشغّل إعادة كتابة v2 المحفوفة بالمخاطر بجوار v1 المستقرة دون أن تزعزع إحداهما الأخرى. وهكذا أيضاً تطرح v2 على 5% من الحركة أولاً. وداخل الـ service هي قرار mapping: نفس الـ domain object بشكلَي response."
+        },
+        { t: "p",
+          en: "The retirement date is never an engineering preference. It is set by the slowest client you have, and the slowest client is almost always a mobile app or a partner integration that was written once and never touched again.",
+          ar: "تاريخ التقاعد ليس تفضيلاً هندسياً أبداً. يحدّده أبطأ client لديك، وأبطأ client هو غالباً تطبيق موبايل أو تكامل شريك كُتب مرة واحدة ولم يُمسّ بعدها."
+        },
+        { t: "ul",
           en: [
-            "You can make a breaking change without a coordinated release across every consumer",
-            "Old and new behaviour run side by side, so migration is per-client and reversible",
-            "An explicit version in the request makes support tickets and incident triage precise",
-            "URL-segment versions are routable at the gateway, so you can canary or rate-limit a version independently",
-            "A published sunset date converts an open-ended maintenance burden into a scheduled one"
+            "Public and partner APIs: versions are contractual. Retirement needs written notice, often six to twelve months ahead.",
+            "Mobile backends: the version is effectively the app build. Pick the retirement date from install statistics, not from a sprint plan.",
+            "Internal service-to-service: teams often skip versions entirely and rely on consumer-driven contract tests plus coordinated deploys, because both sides can ship on the same day.",
+            "Event streams: the version lives in the message envelope, and old events stay in the log forever, so consumers must handle every version ever published.",
+            "Gateways and CDNs: the version is part of the cache key, so launching v2 starts from a completely cold cache."
           ],
           ar: [
-            "تستطيع إجراء تغيير كاسر دون إصدار منسّق عبر كل المستهلكين",
-            "السلوك القديم والجديد يعملان جنباً إلى جنب، فيصبح الترحيل لكل client على حدة وقابلاً للرجوع",
-            "الإصدار الصريح في الـ request يجعل تذاكر الدعم وتصنيف الحوادث دقيقاً",
-            "الإصدارات في مسار الـ URL قابلة للتوجيه عند الـ gateway، فتستطيع عمل canary أو تحديد معدل لإصدار بشكل مستقل",
-            "تاريخ إغلاق مُعلن يحوّل عبء صيانة مفتوحاً إلى عبء مجدول"
+            "الـ APIs العامة والشركاء: النسخ تعاقدية. الإزالة تحتاج إشعاراً مكتوباً، غالباً قبل ستة إلى اثني عشر شهراً.",
+            "خلفيات تطبيقات الموبايل: النسخة هي عملياً نسخة التطبيق. اختر تاريخ الإزالة من إحصاءات التثبيت لا من خطة الـ sprint.",
+            "بين الخدمات الداخلية: كثير من الفرق تتجاوز الـ versions تماماً وتعتمد على consumer-driven contract tests مع نشر منسّق، لأن الطرفين يستطيعان النشر في اليوم نفسه.",
+            "تدفّقات الأحداث: النسخة داخل الـ envelope، والأحداث القديمة تبقى في الـ log إلى الأبد، فيجب أن يتعامل الـ consumers مع كل نسخة نُشرت.",
+            "الـ gateways والـ CDNs: النسخة جزء من مفتاح الـ cache، فإطلاق v2 يبدأ من cache بارد تماماً."
           ]
         },
-        cons: {
+        { t: "callout", kind: "tip",
+          en: "Put the resolved version into your log context and into your request metrics from day one. \"How much traffic is still on v1, and whose is it\" is the single number that decides every retirement conversation, and you cannot obtain it retroactively.",
+          ar: "ضع النسخة المُختارة في سياق الـ logs وفي مقاييس الطلبات من اليوم الأول. «كم من الحركة ما زال على v1 ولمن هي» هو الرقم الوحيد الذي يحسم كل نقاش إزالة، ولا يمكن الحصول عليه بأثر رجعي."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "CPU", ar: "CPU" },
+            v: { en: "Selecting the version is part of route matching — a dictionary lookup, well under a microsecond. It never appears in a profile. The real cost is mapping the domain object to a version-specific response, which is the same cost you already pay for any DTO.", ar: "اختيار النسخة جزء من مطابقة المسار — بحث في dictionary أقل بكثير من ميكروثانية. لا يظهر في أي profile. التكلفة الحقيقية هي تحويل الـ domain object إلى response خاص بالنسخة، وهي نفس تكلفة أي DTO تدفعها أصلاً." } },
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "Each live version keeps its own response classes and its own cached JSON serializer metadata. Five versions of forty endpoints is a few hundred extra types — tens of megabytes, not a problem, but not free either.", ar: "كل نسخة حيّة تحتفظ بـ classes الـ response الخاصة بها وبـ metadata الـ JSON serializer المخزّنة لها. خمس نسخ لأربعين endpoint تعني بضع مئات من الأنواع الإضافية — عشرات الميغابايت، ليست مشكلة لكنها ليست مجانية." } },
+          { k: { en: "Network", ar: "Network" },
+            v: { en: "With URL versioning, /v1/orders/1017 and /v2/orders/1017 are separate cache keys in the CDN and in every HTTP cache. A v2 launch therefore starts cold and can briefly double the traffic reaching your origin servers.", ar: "مع URL versioning يكون /v1/orders/1017 و /v2/orders/1017 مفتاحَي cache منفصلين في الـ CDN وفي كل HTTP cache. لذلك يبدأ إطلاق v2 بارداً وقد يضاعف مؤقتاً الحركة الواصلة إلى خوادم الأصل." } },
+          { k: { en: "Database", ar: "Database" },
+            v: { en: "Both versions read the same tables, so a version bump adds no database load by itself. It adds risk instead: two mappings can quietly disagree about which rows they filter, and the difference shows up as wrong data, not as slowness.", ar: "كلتا النسختين تقرأان نفس الجداول، فرفع النسخة لا يضيف حملاً على قاعدة البيانات بحد ذاته. لكنه يضيف مخاطرة: قد يختلف الـ mapping-ان بصمت في الصفوف التي يرشّحانها، ويظهر الفرق كبيانات خاطئة لا كبطء." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "Versions are the cheapest boundary to scale independently. Routing /v2 to its own deployment gives the rewrite its own instance count, its own limits, and its own failure domain — if v2 falls over, v1 traffic is untouched.", ar: "الـ versions أرخص حدّ يمكن توسيعه باستقلال. توجيه /v2 إلى deployment خاص يمنح الإعادة عدد instances خاصاً وحدوداً خاصة ونطاق فشل خاصاً — إذا سقطت v2 تبقى حركة v1 سليمة." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
           en: [
-            "Every live version multiplies the test matrix, the security patch surface and the on-call surface",
-            "Forked controllers drift: a bug fixed in v3 quietly stays broken in v2",
-            "Header and media-type versions require correct Vary handling or caches will serve the wrong shape",
-            "Version proliferation hides the real problem — an unstable domain model — behind a naming convention",
-            "Consumers treat a new version as optional forever unless you enforce a sunset, and enforcement is a political act"
+            "curl -i https://api.example.com/v1/orders/1017 — read the response headers, not just the body. api-supported-versions lists every version the server admits to; Sunset and Deprecation tell you whether this one is already scheduled to die.",
+            "A request counter split by version and client, such as http_requests_total{api_version=\"1.0\", client_id=\"...\"} in Prometheus — you are looking for the version whose count has reached zero, or the client that keeps it above zero.",
+            "Access logs filtered to one version: grep '/v1/' access.log | awk '{print $12}' | sort | uniq -c | sort -rn — the output is a ranked list of user agents, which is your list of who still needs to migrate.",
+            "An OpenAPI diff between two releases: openapi-diff old.json new.json — it prints removed fields and newly required inputs, which is almost exactly the definition of a breaking change. Run it in CI, not by hand.",
+            "A scheduled brownout: return 410 Gone for v1 for ten minutes at a known time and watch the error dashboard — you are looking for which clients start paging you, before you find out the permanent way."
           ],
           ar: [
-            "كل إصدار حيّ يضاعف مصفوفة الاختبار وسطح الترقيع الأمني وسطح الـ on-call",
-            "الـ controllers المشطّرة تنحرف: خطأ أُصلح في v3 يبقى مكسوراً بهدوء في v2",
-            "إصدارات الـ header والـ media type تستلزم معالجة Vary صحيحة وإلا قدّمت الـ caches الشكل الخاطئ",
-            "تكاثر الإصدارات يخفي المشكلة الحقيقية — موديل مجال غير مستقر — وراء اصطلاح تسمية",
-            "المستهلكون يعتبرون الإصدار الجديد اختيارياً للأبد إلا إذا فرضت إغلاقاً، والفرض عمل سياسي"
+            "curl -i https://api.example.com/v1/orders/1017 — اقرأ ترويسات الـ response لا الجسم فقط. الـ api-supported-versions تسرد كل نسخة يعترف بها الـ server؛ و Sunset و Deprecation تخبرانك إن كانت هذه النسخة مجدولة للإغلاق.",
+            "عدّاد طلبات مقسّم حسب النسخة والـ client، مثل http_requests_total{api_version=\"1.0\", client_id=\"...\"} في Prometheus — تبحث عن النسخة التي وصل عدّادها إلى صفر، أو عن الـ client الذي يُبقيه فوق الصفر.",
+            "سجلات الوصول مرشّحة على نسخة واحدة: grep '/v1/' access.log | awk '{print $12}' | sort | uniq -c | sort -rn — الناتج قائمة مرتّبة بالـ user agents، وهي قائمة من ما زال عليه الانتقال.",
+            "مقارنة مستندَي OpenAPI بين إصدارين: openapi-diff old.json new.json — تطبع الـ fields المحذوفة والـ inputs التي صارت إجبارية، وهذا تقريباً تعريف الـ breaking change. شغّلها في الـ CI لا يدوياً.",
+            "brownout مجدول: أرجِع 410 Gone لـ v1 عشر دقائق في وقت معروف وراقب لوحة الأخطاء — تبحث عن الـ clients الذين يبدأون بالاتصال بك، قبل أن تعرفهم بالطريقة الدائمة."
           ]
         },
-        limits: {
-          en: [
-            "Versioning cannot fix a behavioural break: same schema, new rate limit or new required scope, still broken",
-            "It does nothing for shared-state breaks — a database migration or changed enum in storage affects all versions at once",
-            "Two versions cannot disagree about persisted data; you can fork representations, not the source of truth",
-            "It buys time, not correctness: if you never delete a version, you have only deferred the cost with interest",
-            "Version-per-endpoint granularity sounds attractive and produces a support matrix nobody can reason about"
-          ],
-          ar: [
-            "الـ versioning لا يعالج كسراً سلوكياً: نفس الـ schema مع حدّ معدل جديد أو scope مطلوب جديد، والكسر باقٍ",
-            "لا يفعل شيئاً لكسور الحالة المشتركة — فترحيل قاعدة البيانات أو enum متغيّر في التخزين يصيب كل الإصدارات معاً",
-            "لا يمكن لإصدارين أن يختلفا حول البيانات المخزّنة؛ تستطيع تشطير التمثيلات لا مصدر الحقيقة",
-            "إنه يشتري وقتاً لا صواباً: فإن لم تحذف إصداراً أبداً فقد أجّلت التكلفة بفائدة",
-            "دقة إصدار لكل endpoint تبدو جاذبة وتنتج مصفوفة دعم لا يستطيع أحد استيعابها"
-          ]
+        { t: "callout", kind: "tip",
+          en: "When a client reports \"the amount is empty since your deploy\", ask for the raw response body, not a screenshot. A silent null from a renamed field and a genuinely empty value look identical in every UI, and only the body tells you which one you are dealing with.",
+          ar: "عندما يبلّغ client أن «المبلغ فارغ منذ نشرتكم»، اطلب جسم الـ response الخام لا لقطة شاشة. الـ null الصامت الناتج عن إعادة تسمية field والقيمة الفارغة الحقيقية يبدوان متطابقين في أي واجهة، وجسم الـ response وحده يخبرك أيهما لديك."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "Versioning matters exactly where the caller and the callee are deployed by different people on different schedules. The more independent those two release cycles are, the more formal the versioning has to be — and the longer old versions live.",
+          ar: "الـ versioning يهمّ بالضبط حيث يَنشر الـ caller والـ callee أشخاص مختلفون بجداول مختلفة. وكلما زاد استقلال دورتَي الإصدار، صار الـ versioning أكثر رسمية — وعاشت النسخ القديمة أطول."
         },
-        alts: {
+        { t: "ul",
           en: [
-            "Additive-only evolution: never break, only add — no versions at all, at the cost of a payload that accumulates dead fields",
-            "Date-pinned versions per consumer with a transformation chain, as large public APIs do",
-            "Feature flags or capability negotiation per field, when the variation is behavioural rather than structural",
-            "A new resource path instead of a new version (/orders-v2 becomes /purchase-orders) when the concept genuinely changed",
-            "GraphQL-style field-level deprecation, where clients pick fields and you retire them by usage metrics"
+            "Payment and banking platforms: a partner integrates once and rarely touches the code again, so old versions stay live for years and retirement becomes a legal notice rather than a ticket.",
+            "Mobile-first consumer products: the backend is versioned by app build, and the retirement date is chosen from install statistics — you cannot remove a version faster than users update.",
+            "Marketplace and platform APIs with third-party developers: usually date-based versions, with each developer account pinned to the version it signed up on and upgrading only when it opts in.",
+            "Internal microservice fleets: often no versions at all, replaced by contract tests in CI and deploying both sides together — versioning appears only at the boundary that faces outside."
           ],
           ar: [
-            "تطوّر إضافي فقط: لا تكسر أبداً بل أضف فقط — بلا إصدارات إطلاقاً، بثمن payload يتراكم فيه حقول ميتة",
-            "إصدارات مثبّتة بالتاريخ لكل مستهلك مع سلسلة تحويلات، كما تفعل APIs العامة الكبيرة",
-            "أعلام الميزات أو التفاوض على القدرات لكل حقل، حين يكون التنوّع سلوكياً لا بنيوياً",
-            "مسار مورد جديد بدل إصدار جديد (‏/orders-v2 تصبح /purchase-orders) حين يتغيّر المفهوم فعلاً",
-            "إيقاف تدريجي على مستوى الحقل بأسلوب GraphQL، حيث يختار العملاء الحقول وتُنهيها أنت بمقاييس الاستخدام"
+            "منصات الدفع والبنوك: الشريك يتكامل مرة واحدة ونادراً ما يعود إلى الكود، فتبقى النسخ القديمة حيّة سنوات وتصير الإزالة إشعاراً قانونياً لا تذكرة عمل.",
+            "المنتجات الاستهلاكية القائمة على الموبايل: الـ backend مُنسّخ حسب نسخة التطبيق، ويُختار تاريخ الإزالة من إحصاءات التثبيت — لا تستطيع حذف نسخة أسرع من تحديث المستخدمين.",
+            "منصات الأسواق والـ APIs المفتوحة لمطوّرين خارجيين: عادةً نسخ بالتاريخ، ويُثبَّت كل حساب مطوّر على النسخة التي سجّل عليها ولا يترقّى إلا باختياره.",
+            "أساطيل الـ microservices الداخلية: غالباً بلا versions إطلاقاً، وتُستبدل بـ contract tests في الـ CI ونشر الطرفين معاً — ولا يظهر الـ versioning إلا عند الحد المواجه للخارج."
           ]
         }
-      }
-    ]},
-
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "Copying the controller instead of the mapper", ar: "نسخ الـ controller بدل الـ mapper" },
-        body: { en: "v2 is created by copying OrdersController to OrdersV2Controller, which pulls in a copied service, a copied validator and a copied repository call. Two months later a discount-rounding bug is fixed in v2 only, and customers still on v1 are billed with the old rounding for another year. The version differed in three JSON property names; the fork duplicated 900 lines of business logic to express it.", ar: "يُنشأ v2 بنسخ OrdersController إلى OrdersV2Controller، فيجرّ معه خدمة منسوخة وvalidator منسوخاً واستدعاء repository منسوخاً. وبعد شهرين يُصلَح خطأ تقريب في الخصم في v2 فقط، ويظل العملاء على v1 يُفاتَرون بالتقريب القديم عاماً آخر. كان الفرق بين الإصدارين ثلاثة أسماء خصائص في JSON؛ وشطر التفريع 900 سطر من منطق العمل للتعبير عنه." },
-        fix: "// one domain call, version only at the representation boundary\nvar order = await _orders.GetAsync(id, ct);\nreturn Ok(version.MajorVersion == 1 ? OrderV1.From(order) : OrderV2.From(order));" },
-      { t: "mistake",
-        title: { en: "AssumeDefaultVersionWhenUnspecified left on", ar: "ترك AssumeDefaultVersionWhenUnspecified مفعّلاً" },
-        body: { en: "The default version is assumed when the caller sends none, which is convenient during the v1-only phase and dangerous afterwards. When the team later moves the default to 2.0 as part of \"encouraging migration\", every unversioned integration silently jumps a major version at deploy time — no client change, no warning, no rollback path except a config edit. The callers who never specified a version are precisely the least maintained ones.", ar: "يُفترض الإصدار الافتراضي حين لا يرسل المستدعي شيئاً، وهو مريح في مرحلة v1 وحده وخطير بعدها. وحين ينقل الفريق الافتراضي لاحقاً إلى 2.0 في إطار «تحفيز الترحيل»، تقفز كل التكاملات غير المحددة إصداراً رئيسياً بهدوء لحظة النشر — بلا تغيير من العميل ولا تحذير ولا مسار رجوع إلا تعديل إعداد. والمستدعون الذين لم يحددوا إصداراً هم بالضبط الأقل صيانةً." },
-        fix: "o.AssumeDefaultVersionWhenUnspecified = false; // 400 with a problem-details body\n// or: pin the default to the OLDEST supported version, forever, and never move it" },
-      { t: "mistake",
-        title: { en: "Header versioning without Vary", ar: "الإصدار بالـ header دون Vary" },
-        body: { en: "Version travels in an Api-Version header, and GET /orders/9 is cacheable for 60 seconds. The CDN keys on method plus URL, so the first v1 request populates the cache and the next v2 request gets the v1 body with a 200. It reproduces only under concurrency, only behind the cache, and never in staging where the CDN is disabled. Any request-varying dimension that is not in the URL must be declared in Vary, and every hop must respect it.", ar: "الإصدار يسافر في header باسم Api-Version، وGET /orders/9 قابل للتخزين ستين ثانية. والـ CDN يبني المفتاح من الـ method والـ URL، فيملأ أول request من v1 الـ cache ويحصل request v2 التالي على جسم v1 بحالة 200. ولا يتكرر ذلك إلا تحت التزامن، ولا إلا خلف الـ cache، ولا يظهر أبداً في الـ staging حيث الـ CDN معطّل. فأي بُعد يتغير بتغير الـ request وليس في الـ URL يجب إعلانه في Vary، وكل قفزة يجب أن تحترمه." },
-        fix: "Cache-Control: public, max-age=60\nVary: Api-Version, Accept, Accept-Encoding" },
-      { t: "mistake",
-        title: { en: "Changing meaning while keeping the shape", ar: "تغيير المعنى مع الحفاظ على الشكل" },
-        body: { en: "The field total was gross, and a pricing refactor makes it net. The JSON schema is byte-identical, every contract test passes, no version is bumped — and every consumer that displays or reconciles that number is now wrong by the VAT rate. Structural diffing cannot catch this class of break; only a written definition of each field's semantics, reviewed when the value's provenance changes, can.", ar: "كان الحقل total إجمالياً، ثم يجعله إعادة هيكلة للتسعير صافياً. والـ schema في JSON مطابق حرفياً، وتنجح كل اختبارات العقد، ولا يُرفع إصدار — وكل مستهلك يعرض ذلك الرقم أو يطابقه أصبح مخطئاً بمقدار نسبة الضريبة. والمقارنة البنيوية لا تستطيع التقاط هذا الصنف من الكسر؛ ولا يستطيعه إلا تعريف مكتوب لدلالة كل حقل يُراجَع حين يتغير منشأ القيمة." },
-        fix: "// add the new meaning as a new field; deprecate the old one in the schema\n{ \"total\": 249.90, \"totalNet\": 208.25, \"totalGross\": 249.90 }" },
-      { t: "mistake",
-        title: { en: "Deprecating with a blog post instead of headers", ar: "الإيقاف التدريجي بتدوينة بدل ترويسات" },
-        body: { en: "v1 is announced as deprecated in a changelog and an email to the addresses on file. Eleven months later v1 is switched off and two integrations break, because the engineer who received the email left, and the responses themselves never said a word. Deprecation has to be in-band: the machine calling you is the only reliable channel to the team that owns it. Deprecation and Sunset headers plus a Link to the migration guide put the notice in front of whoever reads the logs next.", ar: "يُعلَن إيقاف v1 في سجل تغييرات ورسالة بريد إلى العناوين المسجّلة. وبعد أحد عشر شهراً يُطفأ v1 وينكسر تكاملان، لأن المهندس الذي استلم البريد قد رحل، ولأن الاستجابات نفسها لم تقل حرفاً. فالإيقاف التدريجي يجب أن يكون داخل القناة: فالآلة التي تستدعيك هي القناة الوحيدة الموثوقة إلى الفريق الذي يملكها. وترويستا Deprecation و Sunset مع Link إلى دليل الترحيل تضعان الإشعار أمام من يقرأ السجلات تالياً." },
-        fix: "Deprecation: Tue, 01 Sep 2026 00:00:00 GMT\nSunset: Sun, 01 Mar 2027 00:00:00 GMT\nLink: <https://docs.acme.com/migrate/v2>; rel=\"deprecation\"; type=\"text/html\"\napi-supported-versions: 2.0" },
-      { t: "mistake",
-        title: { en: "Versioning per endpoint", ar: "إصدار لكل endpoint" },
-        body: { en: "To avoid \"unnecessary\" bumps, each endpoint gets its own version, so production runs orders v3, customers v2 and invoices v5. Now a client must know a version per route, the SDK generator produces a matrix nobody can document, and a change touching two resources has no coherent version to belong to. Version the API surface as one unit; if two resources really need independent lifecycles, they are two APIs and should be two deployables.", ar: "لتجنّب رفع الإصدار «بلا داعٍ» يحصل كل endpoint على إصداره، فيعمل الـ production بـ orders v3 و customers v2 و invoices v5. والآن يجب أن يعرف الـ client إصداراً لكل مسار، ويُنتج مولّد الـ SDK مصفوفة لا يستطيع أحد توثيقها، ولا يجد تغيير يمسّ موردين إصداراً متسقاً ينتمي إليه. أصدر سطح الـ API كوحدة واحدة؛ وإن احتاج موردان دورتَي حياة مستقلتين فعلاً فهما APIان ويجب أن يكونا وحدتَي نشر." } }
-    ]},
-
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "What counts as a breaking change to an HTTP API?", ar: "ما الذي يُعدّ تغييراً كاسراً في HTTP API؟" },
-        a: { en: "Anything that makes a correctly-written existing client stop working. Concretely: removing or renaming a field, changing its type, making an optional request field required, tightening validation, changing the status code returned for the same condition, or changing what an existing value means. Adding an optional response field or a new endpoint is not breaking, because a correct client ignores what it does not recognise.", ar: "أي شيء يجعل client قائماً مكتوباً بشكل صحيح يتوقف عن العمل. وبشكل ملموس: حذف حقل أو إعادة تسميته، أو تغيير نوعه، أو جعل حقل طلب اختياري مطلوباً، أو تشديد التحقق، أو تغيير الـ status code المُرجَع لنفس الحالة، أو تغيير معنى قيمة قائمة. أما إضافة حقل استجابة اختياري أو endpoint جديد فليست كسراً، لأن الـ client الصحيح يتجاهل ما لا يعرفه." } },
-      { t: "qa", level: "junior",
-        q: { en: "URL path, header, or media type — which do you pick and why?", ar: "مسار الـ URL أم header أم media type — ماذا تختار ولماذا؟" },
-        a: { en: "For most teams, the URL path, on operational grounds rather than purity: it is visible in access logs and traces, it is a distinct cache key so nothing can serve the wrong shape, it can be routed and rate-limited at the gateway without header parsing, and it is trivially reproducible with curl or a browser. The theoretical objection is valid — the same order now has two URIs — but I would trade URI purity for debuggability. Header or media-type versioning is defensible; it just obliges you to get Vary right at every hop and to add the version to your log fields deliberately.", ar: "لمعظم الفرق مسار الـ URL، لأسباب تشغيلية لا لأسباب نقاء: فهو مرئي في سجلات الوصول والتتبّع، وهو مفتاح cache مستقل فلا يستطيع شيء تقديم الشكل الخاطئ، وهو قابل للتوجيه وتحديد المعدل عند الـ gateway دون تحليل headers، وقابل للتكرار ببساطة بـ curl أو متصفح. والاعتراض النظري صحيح — فنفس الطلب له الآن URIان — لكني أقايض نقاء الـ URI بقابلية التشخيص. والإصدار بالـ header أو الـ media type يمكن الدفاع عنه؛ لكنه يُلزمك بضبط Vary في كل قفزة وبإضافة الإصدار إلى حقول سجلاتك عن قصد." } },
-      { t: "qa", level: "mid",
-        q: { en: "You must rename a field. Walk me through it without breaking anyone.", ar: "عليك إعادة تسمية حقل. اشرح لي كيف تفعل ذلك دون كسر أحد." },
-        a: { en: "Expand, migrate, contract. First release: emit both names with the same value and accept both on write, with the new one winning if both are present — nothing breaks and no version bump is needed. Then mark the old name deprecated in the OpenAPI document and add a counter tagged by client id that increments whenever a request reads or writes the old name. Watch that counter, and contact whoever is still on it. Only when it has been at zero for a full billing or reporting cycle — because monthly jobs are the classic straggler — do you remove the old name, and that removal is the change that needs the version bump. The whole point is that the expensive coordination happens against a metric rather than against a deadline you guessed.", ar: "توسيع ثم ترحيل ثم تقليص. في الإصدار الأول: أرسل الاسمين بنفس القيمة واقبل الاثنين عند الكتابة، مع تفوّق الجديد إن وُجد الاثنان — فلا ينكسر شيء ولا يلزم رفع إصدار. ثم علّم الاسم القديم كمُوقَف في مستند الـ OpenAPI وأضف counter موسوماً بمعرّف العميل يزيد كلما قرأ request الاسم القديم أو كتبه. راقب ذلك الـ counter، وتواصل مع من لا يزال عليه. ولا تحذف الاسم القديم إلا بعد أن يبقى صفراً دورة فوترة أو تقارير كاملة — فالمهام الشهرية هي المتأخر الكلاسيكي — وذلك الحذف هو التغيير الذي يحتاج رفع الإصدار. والمقصد كله أن التنسيق المكلف يحدث مقابل مقياس لا مقابل موعد خمّنته." } },
-      { t: "qa", level: "mid",
-        q: { en: "How do you avoid v1 and v2 becoming two forked codebases?", ar: "كيف تمنع v1 و v2 من أن يصبحا قاعدتَي كود مشطّرتين؟" },
-        a: { en: "Version at the edges only. Inbound: both request shapes are parsed into one canonical command object in the controller, so validators and handlers never see a version. Outbound: one domain result, two mappers. The rule I enforce in review is that no type below the controller may reference a version, and no v2 file may contain a business rule. When someone genuinely needs different behaviour rather than a different shape — v2 charges tax differently — that is a signal that the change belongs behind a feature flag on the account, not in the version, because otherwise you are shipping two products.", ar: "أصدر عند الحواف فقط. للداخل: يُحلَّل شكلا الطلب إلى أمر canonical واحد في الـ controller، فلا يرى الـ validators ولا الـ handlers إصداراً أبداً. وللخارج: نتيجة مجال واحدة وmapperان. والقاعدة التي أفرضها في المراجعة أن لا نوع أسفل الـ controller يجوز أن يشير إلى إصدار، وأن لا ملف v2 يجوز أن يحتوي قاعدة عمل. وحين يحتاج أحدهم سلوكاً مختلفاً فعلاً لا شكلاً مختلفاً — كأن يحسب v2 الضريبة بشكل آخر — فتلك إشارة إلى أن التغيير ينتمي إلى علم ميزة على الحساب لا إلى الإصدار، وإلا فأنت تُطلق منتجين." } },
-      { t: "qa", level: "mid",
-        q: { en: "A caller sends no version at all. What should happen?", ar: "مستدعٍ لا يرسل إصداراً إطلاقاً. ماذا يجب أن يحدث؟" },
-        a: { en: "Two acceptable answers, one unacceptable. Acceptable: reject with 400 and a problem-details body naming the supported versions — explicit, and it fails at integration time when someone is watching. Also acceptable: pin the implicit default to the oldest supported version and never move it, so old callers keep working indefinitely and only an explicit request gets new behaviour. Unacceptable: an implicit default that tracks 'latest', because then a server deploy silently migrates your least-maintained integrations across a breaking change, and the failure surfaces on their side with no correlated deploy on theirs.", ar: "جوابان مقبولان وواحد غير مقبول. المقبول: الرفض بـ 400 مع جسم problem details يسمّي الإصدارات المدعومة — صريح ويفشل وقت التكامل حين يكون أحد يراقب. والمقبول كذلك: تثبيت الافتراضي الضمني على أقدم إصدار مدعوم دون نقله أبداً، فيستمر المستدعون القدامى بلا حدّ ولا يحصل على السلوك الجديد إلا من يطلبه صراحةً. وغير المقبول: افتراضي ضمني يتبع «الأحدث»، لأن نشر السيرفر حينها يهاجر بأقلّ تكاملاتك صيانةً عبر تغيير كاسر بهدوء، ويظهر الفشل عندهم بلا نشر مرتبط لديهم." } },
-      { t: "qa", level: "senior",
-        q: { en: "How would you design versioning for a public API with thousands of integrators you cannot contact?", ar: "كيف تصمّم الـ versioning لـ API عام بآلاف المتكاملين الذين لا تستطيع الاتصال بهم؟" },
-        a: { en: "I would stop versioning the URL and start pinning consumers. Each account is pinned to the API date current when it integrated; internal code always speaks today's model; each historical break is a small frozen transformer applied on the way out (and inverted on the way in) to reach that account's pinned date. The properties this buys are the ones that matter at that scale: new features are written once against one shape, an integrator who never touches their code never breaks, and adding a break costs one tested transformer instead of one more copy of the service. The costs are honest — you need a transform framework, a golden-file test per transform, request-level pin resolution, and the discipline to keep transforms purely structural — plus the acceptance that transformers accumulate forever unless you eventually force-migrate the long tail. I would also make upgrading a one-line, self-service, reversible action so integrators can test the next date in a sandbox before pinning forward.", ar: "سأتوقف عن إصدار الـ URL وأبدأ بتثبيت المستهلكين. فيُثبَّت كل حساب على تاريخ الـ API الساري حين تكامل؛ ويتحدث الكود الداخلي دائماً بموديل اليوم؛ ويكون كل كسر تاريخي محوّلاً صغيراً مجمّداً يُطبَّق في طريق الخروج (ويُعكَس في طريق الدخول) للوصول إلى التاريخ المثبّت لذلك الحساب. والخصائص التي يشتريها ذلك هي المهمة عند هذا الحجم: تُكتب الميزات الجديدة مرة واحدة مقابل شكل واحد، والمتكامل الذي لا يمسّ كوده لا ينكسر أبداً، وإضافة كسر تكلّف محوّلاً مختبراً واحداً بدل نسخة إضافية من الخدمة. والتكاليف صادقة — تحتاج إطاراً للتحويلات، واختبار ملف مرجعي لكل تحويل، وحلّ التثبيت على مستوى الـ request، وانضباطاً بإبقاء التحويلات بنيوية خالصة — مع تقبّل أن المحوّلات تتراكم للأبد إلا إذا فرضت في النهاية ترحيل الذيل الطويل. وسأجعل الترقية كذلك إجراءً ذاتياً بسطر واحد وقابلاً للرجوع، ليستطيع المتكاملون اختبار التاريخ التالي في sandbox قبل التثبيت عليه." } },
-      { t: "qa", level: "senior",
-        q: { en: "Is 'never break anything, only add' a viable strategy?", ar: "هل استراتيجية «لا تكسر شيئاً أبداً، أضف فقط» قابلة للتطبيق؟" },
-        a: { en: "For a long time, yes, and it is usually the right default — but it is not free and it is not permanent. What it buys is enormous: zero migration coordination, one code path, no version matrix. What it costs is a payload and a schema that accumulate dead weight: three fields meaning almost the same thing, an enum with values that can no longer occur, validation that must stay permissive because someone might still send the old shape. Eventually the accumulated compatibility surface becomes its own defect source — new engineers cannot tell which of totalGross, total and amount is authoritative, and every one of them must keep working. My rule is: additive by default, and a break only when the compatibility layer itself has become the thing causing bugs. At that point the break is not laziness; it is paying down debt you took on deliberately.", ar: "لمدة طويلة نعم، وهي عادةً الافتراضي الصحيح — لكنها ليست مجانية وليست دائمة. فما تشتريه ضخم: صفر تنسيق للترحيل، ومسار كود واحد، وبلا مصفوفة إصدارات. وما تكلّفه هو payload وschema يتراكم فيهما وزن ميت: ثلاثة حقول تعني الشيء نفسه تقريباً، وenum بقيم لم تعد تحدث، وتحقق يجب أن يبقى متسامحاً لأن أحداً قد يرسل الشكل القديم. وفي النهاية يصبح سطح التوافق المتراكم مصدر عيوب بنفسه — فلا يستطيع المهندسون الجدد تمييز أي من totalGross و total و amount هو المرجع، وكلها يجب أن تستمر بالعمل. وقاعدتي: إضافي افتراضياً، والكسر فقط حين تصبح طبقة التوافق نفسها هي مصدر الأخطاء. وعندها لا يكون الكسر تكاسلاً؛ بل سداداً لدين أخذته عن قصد." } },
-      { t: "qa", level: "staff",
-        q: { en: "Nine teams, nine versioning conventions, and nothing has ever been deleted. What is your plan?", ar: "تسعة فرق وتسعة اصطلاحات إصدار، ولم يُحذف شيء قط. ما خطتك؟" },
-        a: { en: "The deletion problem is the real one, and it is organisational rather than technical. Three moves. First, make usage visible before mandating anything: a platform-level middleware that emits one counter per (service, version, consumer, day), and a dashboard any team can open. Deletion is impossible when nobody can answer who is still calling, and it becomes almost automatic once they can. Second, make the lifecycle a policy rather than a per-team negotiation: N and N-1 supported, twelve months minimum after deprecation, Deprecation and Sunset headers emitted automatically by the shared middleware from one attribute, and 410 with a problem-details body at sunset. Policy in shared code beats policy in a wiki, because it applies by default. Third, converge the scheme by making the good path the easy path — a service template and a shared package that does URL-segment versioning, header emission and metrics out of the box, plus a CI check that diffs each PR's OpenAPI document against the deployed one and fails on an undeclared break. I would not retrofit the existing nine; I would require the convention for new surface, and let the metrics create the pressure that retires the old surface. The measurable goal is that the number of live versions per service trends down, and that the oldest live version's age has a ceiling.", ar: "مشكلة الحذف هي المشكلة الحقيقية، وهي تنظيمية لا تقنية. ثلاث خطوات. أولاً، اجعل الاستخدام مرئياً قبل أن تُلزم بأي شيء: middleware على مستوى المنصة يُصدر counter واحداً لكل (خدمة، إصدار، مستهلك، يوم)، ولوحة يستطيع أي فريق فتحها. فالحذف مستحيل حين لا يستطيع أحد الإجابة عن من لا يزال يستدعي، ويصبح شبه تلقائي بمجرد أن يستطيعوا. ثانياً، اجعل دورة الحياة سياسة لا مفاوضة لكل فريق: دعم N و N-1، وحدّ أدنى اثنا عشر شهراً بعد الإيقاف، وترويستا Deprecation و Sunset تُصدَران تلقائياً من الـ middleware المشترك عبر attribute واحد، و410 بجسم problem details عند الإغلاق. فالسياسة في كود مشترك تتفوق على السياسة في wiki، لأنها تُطبَّق افتراضياً. ثالثاً، وحّد الأسلوب بجعل الطريق الصحيح هو الأسهل — قالب خدمة وحزمة مشتركة تعطي الإصدار في مسار الـ URL وإصدار الترويسات والمقاييس جاهزة، مع فحص CI يقارن مستند OpenAPI لكل PR بالمنشور ويفشل عند كسر غير معلن. ولن أعيد تهيئة التسعة القائمة؛ بل سأُلزم بالاصطلاح للسطح الجديد، وأترك المقاييس تصنع الضغط الذي يُنهي السطح القديم. والهدف القابل للقياس أن يتراجع عدد الإصدارات الحيّة لكل خدمة، وأن يكون لعمر أقدم إصدار حيّ سقف." } }
-    ]},
-
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Version forked through the whole stack", ar: "الإصدار مشطّر عبر الطبقات كلها" },
-        bad: "[Route(\"v2/orders\")]\npublic sealed class OrdersV2Controller : ControllerBase\n{\n    private readonly OrderServiceV2 _service;   // copy of OrderService\n\n    [HttpPost]\n    public async Task<IActionResult> Create(CreateOrderRequestV2 r, CancellationToken ct)\n    {\n        // copied validation, copied discount rules, copied tax rounding\n        if (r.Items.Count == 0) return BadRequest();\n        var total = r.Items.Sum(i => i.Price * i.Qty) * 0.95m;   // drifted from V1\n        var id = await _service.CreateAsync(r, total, ct);\n        return CreatedAtAction(nameof(Get), new { id }, null);\n    }\n}",
-        good: "[Route(\"v{version:apiVersion}/orders\")]\n[ApiVersion(1.0, Deprecated = true)]\n[ApiVersion(2.0)]\npublic sealed class OrdersController : ControllerBase\n{\n    private readonly IOrderService _service;    // ONE implementation\n\n    [HttpPost]\n    [MapToApiVersion(2.0)]\n    public Task<IActionResult> CreateV2(CreateOrderRequestV2 r, CancellationToken ct)\n        => Create(r.ToCommand(), ct);            // adapt shape, then converge\n\n    [HttpPost]\n    [MapToApiVersion(1.0)]\n    public Task<IActionResult> CreateV1(CreateOrderRequestV1 r, CancellationToken ct)\n        => Create(r.ToCommand(), ct);\n\n    private async Task<IActionResult> Create(CreateOrder cmd, CancellationToken ct)\n    {\n        var result = await _service.CreateAsync(cmd, ct);   // rules live once\n        return result.IsSuccess\n            ? CreatedAtAction(nameof(Get), new { id = result.Value }, null)\n            : Problem(result.Error);\n    }\n}",
-        why: { en: "The forked version duplicates validation, discount and rounding logic, so the two versions will disagree within a quarter — and the disagreement will be a billing difference discovered by a customer, not by a test. The discount factor in the bad sample has already drifted. Adapting each request shape to one canonical command keeps a single implementation of every rule; the only thing that forks is the DTO, which is exactly the part that was supposed to change.", ar: "الإصدار المشطّر يكرّر منطق التحقق والخصم والتقريب، فسيتخالف الإصداران خلال ربع سنة — وسيكون الخلاف فرقاً في الفاتورة يكتشفه عميل لا اختبار. وقد انحرف عامل الخصم في المثال السيئ بالفعل. وتكييف كل شكل طلب إلى أمر canonical واحد يحفظ تنفيذاً واحداً لكل قاعدة؛ والشيء الوحيد الذي يتشطّر هو الـ DTO، وهو بالضبط الجزء الذي كان يُفترض أن يتغير." }
-      },
-      { t: "review", severity: "medium",
-        title: { en: "Deprecation that is documented but not transmitted", ar: "إيقاف موثَّق لكنه غير مُرسَل" },
-        bad: "/// <summary>DEPRECATED - use v2. Will be removed in Q1.</summary>\n[HttpGet(\"{id:guid}\")]\n[MapToApiVersion(1.0)]\npublic async Task<IActionResult> GetV1(Guid id, CancellationToken ct)\n{\n    var order = await _orders.GetAsync(id, ct);\n    return order is null ? NotFound() : Ok(OrderV1.From(order));\n}",
-        good: "// Shared middleware turns [ApiVersion(Deprecated = true)] into on-the-wire notice\n// and records who is still calling, so the sunset is decided by data.\npublic async Task InvokeAsync(HttpContext ctx, RequestDelegate next)\n{\n    await next(ctx);\n\n    var meta = ctx.GetRequestedApiVersion();\n    if (meta is null || !_policy.IsDeprecated(meta)) return;\n\n    var sunset = _policy.SunsetOf(meta);\n    ctx.Response.Headers[\"Deprecation\"] = _policy.DeprecatedOn(meta).ToString(\"R\");\n    ctx.Response.Headers[\"Sunset\"]      = sunset.ToString(\"R\");\n    ctx.Response.Headers[\"Link\"]        = $\"<{_policy.MigrationGuide}>; rel=\\\"deprecation\\\"\";\n\n    _metrics.DeprecatedCall.Add(1,\n        new(\"version\", meta.ToString()),\n        new(\"client\",  ctx.User.ClientId() ?? \"anonymous\"));\n}",
-        why: { en: "A doc comment reaches the people who read your source, which is not the set of people calling your API. Deprecation and Sunset headers (RFC 8594) plus a Link to the migration guide reach whoever inspects a response or greps a log, and the per-client counter is what makes \"can we delete v1?\" a query instead of a debate. \"Removed in Q1\" is also not a date — a sunset without an exact timestamp will be missed by whoever plans against it.", ar: "تعليق التوثيق يصل إلى من يقرأ كودك، وهم ليسوا من يستدعي API لديك. أما ترويستا Deprecation و Sunset (‏RFC 8594) مع Link إلى دليل الترحيل فتصل إلى كل من يتفحّص استجابة أو يبحث في سجل، والـ counter لكل عميل هو ما يجعل سؤال «هل نحذف v1؟» استعلاماً لا جدلاً. كما أن «سيُحذف في الربع الأول» ليس تاريخاً — فالإغلاق بلا طابع زمني دقيق سيفوت من يخطّط على أساسه." }
-      }
-    ]},
-
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a design review, versioning is where the ownership of clients becomes explicit, and that single fact should drive the answer. If every consumer is inside your organisation and deployable within a sprint, you barely need versioning at all — expand/contract migrations and a shared contract test suite cover almost everything, and a version is reserved for the rare break you cannot express additively. If consumers are third parties, mobile apps installed on devices you do not control, or embedded clients that update yearly, you need an explicit scheme, a support window measured in months, and usage telemetry from day one, because the cost of a break is not a rollback but a support queue.", ar: "في مراجعة التصميم، الـ versioning هو الموضع الذي تتضح فيه ملكية العملاء، وتلك الحقيقة وحدها يجب أن تقود الإجابة. فإن كان كل مستهلك داخل مؤسستك وقابلاً للنشر خلال sprint فأنت لا تحتاج الـ versioning تقريباً — فترحيلات التوسيع والتقليص مع مجموعة اختبارات عقد مشتركة تغطي شبه كل شيء، ويُحفَظ الإصدار للكسر النادر الذي لا تستطيع التعبير عنه إضافياً. وإن كان المستهلكون أطرافاً ثالثة أو تطبيقات موبايل مثبّتة على أجهزة لا تتحكم بها أو عملاء مدمجين يتحدّثون سنوياً، فأنت تحتاج أسلوباً صريحاً ونافذة دعم بالأشهر وقياسات استخدام من اليوم الأول، لأن تكلفة الكسر ليست رجوعاً عن نشر بل طابور دعم." },
-      { t: "p", en: "The second design consequence people miss is that versioning stops at the storage boundary. Two API versions can present the same order differently, but they cannot disagree about what is stored — so a schema migration, a changed enum in the database, or a new invariant in the domain hits every version simultaneously. This is why the expand/contract pattern shows up on both sides of the service: the database gets a new nullable column, dual writes, a backfill, then a drop; the API gets a new field, dual emission, a usage counter, then a removal. If you can only remember one thing about evolving a running system, it is that shape changes must be additive in the middle and subtractive only at the ends.", ar: "والنتيجة التصميمية الثانية التي تفوت الناس أن الـ versioning يتوقف عند حدود التخزين. فيمكن لإصدارَي API تقديم نفس الطلب بشكل مختلف، لكنهما لا يستطيعان الاختلاف حول ما هو مخزّن — فترحيل schema أو enum متغيّر في قاعدة البيانات أو ثابت جديد في المجال يصيب كل الإصدارات معاً. ولهذا يظهر نمط التوسيع والتقليص على جانبَي الخدمة: تحصل قاعدة البيانات على عمود جديد قابل لأن يكون null، ثم كتابة مزدوجة، ثم إعادة تعبئة، ثم حذف؛ ويحصل الـ API على حقل جديد، ثم إصدار مزدوج، ثم counter استخدام، ثم إزالة. وإن حفظت شيئاً واحداً عن تطوير نظام يعمل، فليكن أن تغييرات الشكل يجب أن تكون إضافية في الوسط وطرحية عند الأطراف فقط." },
-      { t: "ul",
-        en: [
-          "Decide the support window before the first version ships: N and N-1, minimum months after deprecation, and who signs off on a sunset",
-          "Emit a counter per (version, consumer) from day one — you cannot retire what you cannot measure, and adding telemetry later loses the history you need",
-          "Put version routing at the gateway when the version is in the path, so a version can be canaried, throttled or shut off without a deploy",
-          "Version the API surface as one unit, and make a genuinely independent lifecycle a separate service rather than a separate endpoint version",
-          "Pair every API break with the equivalent database expand/contract plan, because storage cannot be versioned per consumer",
-          "Publish a machine-readable contract (OpenAPI) per version and diff it in CI — an undeclared break should fail the build, not the customer"
-        ],
-        ar: [
-          "احسم نافذة الدعم قبل إطلاق الإصدار الأول: N و N-1، وحدّ أدنى بالأشهر بعد الإيقاف، ومن يعتمد قرار الإغلاق",
-          "أصدر counter لكل (إصدار، مستهلك) من اليوم الأول — فلا تستطيع إنهاء ما لا تستطيع قياسه، وإضافة القياس لاحقاً تفقدك التاريخ الذي تحتاجه",
-          "ضع توجيه الإصدارات عند الـ gateway حين يكون الإصدار في المسار، ليمكن عمل canary لإصدار أو خنقه أو إطفاؤه دون نشر",
-          "أصدر سطح الـ API كوحدة واحدة، واجعل دورة الحياة المستقلة فعلاً خدمة منفصلة لا إصدار endpoint منفصلاً",
-          "اقرن كل كسر في الـ API بخطة توسيع وتقليص مكافئة في قاعدة البيانات، لأن التخزين لا يمكن إصداره لكل مستهلك",
-          "انشر عقداً قابلاً للقراءة آلياً (‏OpenAPI) لكل إصدار وقارنه في الـ CI — فالكسر غير المعلن يجب أن يُفشل البناء لا العميل"
-        ]
-      },
-      { t: "callout", kind: "warn", en: "Never let a version number encode a behavioural difference in business rules. \"v2 calculates tax the new way\" means two products behind one name: reconciliation, refunds and reporting now depend on which version created a record. Behavioural differences belong to an account-level flag or an effective date on the data, both of which are auditable; a URL segment is not.", ar: "لا تدع رقم إصدار يرمّز فرقاً سلوكياً في قواعد العمل أبداً. فعبارة «‏v2 يحسب الضريبة بالطريقة الجديدة» تعني منتجين تحت اسم واحد: فتصبح المطابقة والمبالغ المرتجعة والتقارير معتمدة على أي إصدار أنشأ السجل. والفروق السلوكية تنتمي إلى علم على مستوى الحساب أو تاريخ سريان على البيانات، وكلاهما قابل للتدقيق؛ أما قطعة في الـ URL فلا." }
-    ]},
-
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "Version resolution is negligible (microseconds); a per-consumer transformation chain adds real cost — budget 0.2–1 ms per transform on a mid-size payload and cap the chain depth", ar: "حلّ الإصدار مهمل (ميكروثوانٍ)؛ أما سلسلة تحويلات لكل مستهلك فتضيف تكلفة حقيقية — احسب 0.2–1 ملّي ثانية لكل تحويل على payload متوسط الحجم وضع سقفاً لعمق السلسلة" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "Additive-only evolution grows payloads permanently — three near-duplicate money fields on a 4 KB response is roughly 2% waste per call, and it never comes back", ar: "التطوّر الإضافي فقط يُكبر الـ payloads بشكل دائم — فثلاثة حقول مالية شبه مكررة في استجابة 4 كيلوبايت تعني نحو 2% هدراً لكل استدعاء، ولا يُستعاد أبداً" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "URL-path versions let you route a version to its own pool and canary or throttle it independently; header versions force one pool unless the gateway parses headers", ar: "الإصدارات في مسار الـ URL تتيح توجيه إصدار إلى مجموعة نسخ خاصة وعمل canary له أو خنقه بشكل مستقل؛ وإصدارات الـ header تفرض مجموعة واحدة إلا إذا حلّل الـ gateway الترويسات" } },
-        { k: { en: "Caching", ar: "الـ caching" }, v: { en: "A path version is a distinct cache key for free; a header version needs Vary: Api-Version, which splits the cache per version and can halve your hit ratio during a migration", ar: "الإصدار في المسار مفتاح cache مستقل بلا مقابل؛ وإصدار الـ header يحتاج Vary: Api-Version، وهو يشطر الـ cache لكل إصدار وقد يخفض نسبة الإصابات إلى النصف أثناء الترحيل" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Dual-emitting a field during expand/contract costs one extra serialized property; JSON transformation chains cost a parse plus a re-serialize, which is why they belong at the edge and not per internal hop", ar: "الإصدار المزدوج لحقل أثناء التوسيع والتقليص يكلّف خاصية مسلسلة إضافية واحدة؛ أما سلاسل تحويل JSON فتكلّف تحليلاً وإعادة تسلسل، ولهذا تنتمي إلى الحافة لا إلى كل قفزة داخلية" } },
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Every live version keeps its own DTO set and serializer metadata resident; the bigger cost is the build and test matrix, which grows linearly with live versions", ar: "كل إصدار حيّ يبقي مجموعة DTOs خاصة به وmetadata للـ serializer في الذاكرة؛ والتكلفة الأكبر هي مصفوفة البناء والاختبار التي تنمو خطياً مع عدد الإصدارات الحيّة" } }
-      ]}
-    ]},
-
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Add the resolved API version and the client id to every log line and trace span — without them, \"it broke for one customer\" is unanswerable",
-          "Query the per-version request counter grouped by consumer over 35 days, not 7: monthly batch integrations are invisible in a weekly window",
-          "Diff the OpenAPI document of two versions with a schema-diff tool (openapi-diff, oasdiff) in CI to catch removals, type changes and tightened validation you did not intend",
-          "curl the same resource with each version reader in turn — path, Api-Version header, and Accept media type — and confirm the same version resolves the same way through all three",
-          "Reproduce cache-mixing by sending v1 and v2 requests concurrently through the CDN and inspecting Age and X-Cache on the responses; a v1 body under a v2 request means Vary is missing",
-          "Replay a day of captured production traffic against the new build and diff responses field by field; this is the only reliable way to catch semantic changes that leave the schema intact"
-        ],
-        ar: [
-          "أضف الإصدار المحلول ومعرّف العميل إلى كل سطر سجل وكل trace span — فبدونهما لا يمكن الإجابة عن «انكسر لعميل واحد»",
-          "استعلم counter الـ requests لكل إصدار مجموعاً بالمستهلك على 35 يوماً لا 7: فالتكاملات الشهرية غير مرئية في نافذة أسبوعية",
-          "قارن مستند OpenAPI لإصدارين بأداة مقارنة schema (‏openapi-diff أو oasdiff) في الـ CI لاكتشاف الحذف وتغييرات الأنواع وتشديد التحقق التي لم تقصدها",
-          "استخدم curl لنفس المورد عبر كل قارئ إصدار بالتتابع — المسار وheader الـ Api-Version وmedia type في Accept — وتأكد أن نفس الإصدار يُحَلّ بنفس الطريقة في الثلاثة",
-          "أعد إنتاج خلط الـ cache بإرسال requests من v1 و v2 بالتزامن عبر الـ CDN وتفحّص Age و X-Cache في الاستجابات؛ فجسم v1 تحت request من v2 يعني أن Vary مفقود",
-          "أعد تشغيل يوم من حركة production ملتقطة مقابل البناء الجديد وقارن الاستجابات حقلاً بحقل؛ فهذه الطريقة الموثوقة الوحيدة لاكتشاف التغييرات الدلالية التي تُبقي الـ schema سليماً"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "When a consumer reports \"the API changed and broke us\", ask for a request id before asking for details. With the version and client id on every log line you can tell within a minute whether they moved version, whether their payload changed, or whether you shipped a semantic change — three very different investigations that otherwise look identical from the outside.", ar: "حين يُبلغ مستهلك بأن «الـ API تغيّر وكسرنا»، اطلب معرّف request قبل أن تطلب التفاصيل. فبوجود الإصدار ومعرّف العميل في كل سطر سجل تستطيع في دقيقة معرفة هل انتقلوا هم إصداراً، أم تغيّر payload لديهم، أم أطلقت أنت تغييراً دلالياً — وهي ثلاث تحقيقات مختلفة جداً تبدو من الخارج متطابقة." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "The pattern across industries is that versioning strategy is dictated by how fast the slowest consumer can move, not by engineering taste. Where consumers upgrade in days, teams converge on additive evolution and almost no versions; where consumers are contractual integrations or devices in the field, teams invest in pinning, transformation layers and multi-year support windows — and treat the deprecation process itself as a product feature with documentation, sandboxes and dashboards.", ar: "النمط عبر الصناعات أن استراتيجية الـ versioning تحددها سرعة أبطأ مستهلك، لا ذوق الهندسة. فحيث يترقّى المستهلكون في أيام تتقارب الفرق إلى تطوّر إضافي وبلا إصدارات تقريباً؛ وحيث يكون المستهلكون تكاملات تعاقدية أو أجهزة في الميدان تستثمر الفرق في التثبيت وطبقات التحويل ونوافذ دعم بالسنوات — وتتعامل مع عملية الإيقاف التدريجي نفسها كميزة منتج لها توثيق وبيئات تجريبية ولوحات." },
-      { t: "ul",
-        en: [
-          "Payment platforms: date-pinned versions per account, multi-year support, and transformation chains — a merchant's integration written years ago must keep settling money correctly",
-          "Mobile-first products: the installed base is the constraint; old app versions live for 18–24 months, so the server keeps serving the shapes those builds understand and forces upgrades only for security",
-          "Public developer platforms and marketplaces: deprecation is a published contract with sunset dates, migration guides and usage dashboards, because thousands of integrators cannot be individually contacted",
-          "Internal microservice meshes: usually no explicit versions at all — expand/contract migrations plus consumer-driven contract tests in CI, because every consumer is deployable this sprint"
-        ],
-        ar: [
-          "منصات الدفع: إصدارات مثبّتة بالتاريخ لكل حساب، ودعم بالسنوات، وسلاسل تحويل — فتكامل تاجر كُتب قبل سنوات يجب أن يستمر في تسوية الأموال بشكل صحيح",
-          "المنتجات التي يتقدمها الموبايل: القاعدة المثبّتة هي القيد؛ فنسخ التطبيق القديمة تعيش 18–24 شهراً، فيستمر السيرفر بتقديم الأشكال التي تفهمها تلك النسخ ولا يفرض الترقية إلا لأمر أمني",
-          "منصات المطوّرين العامة والأسواق: الإيقاف التدريجي عقد منشور بتواريخ إغلاق وأدلة ترحيل ولوحات استخدام، لأن آلاف المتكاملين لا يمكن التواصل معهم فرادى",
-          "شِبَك الخدمات المصغّرة الداخلية: غالباً بلا إصدارات صريحة إطلاقاً — ترحيلات توسيع وتقليص مع اختبارات عقد مدفوعة بالمستهلك في الـ CI، لأن كل مستهلك قابل للنشر هذا الـ sprint"
-        ]
-      }
-    ]},
-
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Take the last ten changes merged into an API you own and classify each as safe, breaking, or breaking-but-invisible-in-tests. For every one you classified as breaking, write the exact client symptom it would have produced in production.", ar: "خذ آخر عشرة تغييرات دُمجت في API تملكه وصنّف كل واحد كآمن أو كاسر أو كاسر لكنه غير مرئي في الاختبارات. ولكل ما صنّفته كاسراً، اكتب العَرَض الدقيق الذي كان سيُحدثه عند العميل في الـ production." },
-      { t: "ex", diff: "medium", en: "Implement a field rename with expand/contract: emit both names, accept both on write, add a counter tagged by client id for reads and writes of the old name, and write the query that answers \"is it safe to remove?\". Then simulate a straggler with a script that calls the old name once a day and confirm your query catches it.", ar: "نفّذ إعادة تسمية حقل بأسلوب التوسيع والتقليص: أرسل الاسمين، واقبل الاثنين عند الكتابة، وأضف counter موسوماً بمعرّف العميل لقراءات وكتابات الاسم القديم، واكتب الاستعلام الذي يجيب «هل الحذف آمن؟». ثم حاكِ متأخراً بسكربت يستدعي الاسم القديم مرة يومياً وتأكد أن استعلامك يلتقطه." },
-      { t: "ex", diff: "hard", en: "Add a second API version to a real service without duplicating a single business rule: both request shapes adapt to one canonical command, both responses come from one domain result, and no type below the controller mentions a version. Prove it with a test that runs the same scenario through both versions and asserts identical persisted state.", ar: "أضف إصداراً ثانياً إلى خدمة حقيقية دون تكرار قاعدة عمل واحدة: يتكيّف شكلا الطلب إلى أمر canonical واحد، وتأتي الاستجابتان من نتيجة مجال واحدة، ولا يذكر أي نوع أسفل الـ controller إصداراً. وأثبت ذلك باختبار يشغّل نفس السيناريو عبر الإصدارين ويتحقق من تطابق الحالة المخزّنة." },
-      { t: "ex", diff: "senior", en: "Write your team's API evolution policy on one page: the classification of safe versus breaking changes, the support window, the exact headers emitted on deprecation, the metric that authorises deletion, and who signs off. Then implement the enforceable half — an OpenAPI diff gate in CI and shared middleware that emits the deprecation headers and the per-consumer counter — and run it against one real service.", ar: "اكتب سياسة تطوّر الـ API لفريقك في صفحة واحدة: تصنيف التغييرات الآمنة مقابل الكاسرة، ونافذة الدعم، والترويسات المُصدَرة بدقة عند الإيقاف، والمقياس الذي يُجيز الحذف، ومن يعتمد القرار. ثم نفّذ النصف القابل للفرض — بوابة مقارنة OpenAPI في الـ CI و middleware مشترك يُصدر ترويسات الإيقاف وcounter لكل مستهلك — وشغّله على خدمة حقيقية واحدة." }
-    ]},
-
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "ASP.NET API Versioning (dotnet/aspnet-api-versioning)", ar: "‏ASP.NET API Versioning (‏dotnet/aspnet-api-versioning)" }, url: "https://github.com/dotnet/aspnet-api-versioning", meta: { en: "Library", ar: "مكتبة" } },
-      { t: "ref", label: { en: "Microsoft — Web API design: versioning a RESTful web API", ar: "Microsoft — تصميم Web API: إصدارات API على الويب" }, url: "https://learn.microsoft.com/azure/architecture/best-practices/api-design", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "Stripe — APIs as infrastructure: future-proofing with versioning", ar: "Stripe — الـ APIs كبنية تحتية: تحصين المستقبل بالـ versioning" }, url: "https://stripe.com/blog/api-versioning", meta: { en: "Article", ar: "مقال" } },
-      { t: "ref", label: { en: "Google — API design guide: versioning", ar: "Google — دليل تصميم الـ APIs: الإصدارات" }, url: "https://cloud.google.com/apis/design/versioning", meta: { en: "Guide", ar: "دليل" } },
-      { t: "ref", label: { en: "RFC 8594 — The Sunset HTTP Header Field", ar: "RFC 8594 — ترويسة Sunset في HTTP" }, url: "https://www.rfc-editor.org/rfc/rfc8594.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "Martin Fowler — Tolerant Reader", ar: "Martin Fowler — القارئ المتسامح" }, url: "https://martinfowler.com/bliki/TolerantReader.html", meta: { en: "Article", ar: "مقال" } }
-    ]}
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Take any endpoint you own and add one optional field to its response. Then call it with a deserializer class that does not know the new field. You are done when the old caller produces exactly the same result as before, which proves for yourself that additive changes are safe.",
+          ar: "خذ أي endpoint تملكه وأضف field اختيارياً واحداً إلى الـ response. ثم استدعِه بـ class deserializer لا يعرف الـ field الجديد. تكون قد انتهيت عندما ينتج الـ caller القديم نفس النتيجة تماماً، وهذا يثبت لك بنفسك أن التغييرات الإضافية آمنة."
+        },
+        { t: "ex", diff: "medium",
+          en: "Add Asp.Versioning.Mvc to an ASP.NET Core API, put v{version:apiVersion} in the route template, and serve the same endpoint at 1.0 and 2.0 with different response shapes. You are done when curl /v1/orders/1 and curl /v2/orders/1 return different JSON, and both responses carry api-supported-versions: 1.0, 2.0.",
+          ar: "أضف Asp.Versioning.Mvc إلى API في ASP.NET Core، وضع v{version:apiVersion} في قالب المسار، وقدّم نفس الـ endpoint على 1.0 و 2.0 بشكلَي response مختلفين. تكون قد انتهيت عندما يُرجع curl /v1/orders/1 و curl /v2/orders/1 نتيجتَي JSON مختلفتين، ويحمل الاثنان api-supported-versions: 1.0, 2.0."
+        },
+        { t: "ex", diff: "hard",
+          en: "Implement expand/contract for a renamed field: return both total and totalAmount, mark the old one deprecated in your OpenAPI document, and emit a Sunset header with a real date. Then write a CI check that fails the build when a field disappears from the OpenAPI document before its Sunset date has passed. You are done when a pull request deleting total is blocked by the build with a message naming the field.",
+          ar: "نفّذ expand/contract لإعادة تسمية field: أرجِع total و totalAmount معاً، وضع القديم كـ deprecated في مستند الـ OpenAPI، وأصدر Sunset header بتاريخ حقيقي. ثم اكتب فحص CI يُفشل البناء عندما يختفي field من مستند الـ OpenAPI قبل مرور تاريخ الـ Sunset الخاص به. تكون قد انتهيت عندما يوقف البناءُ pull request يحذف total برسالة تذكر اسم الـ field."
+        },
+        { t: "ex", diff: "senior",
+          en: "For a system with two live versions, write the full retirement plan: the traffic query that produces per-version, per-client volume; the notice you would send and to whom; the brownout schedule; and the condition that triggers a rollback. Then run the brownout in staging with one client pinned to v1. You are done when you can state, with numbers, how much traffic would break and which clients own it.",
+          ar: "لنظام فيه نسختان حيّتان، اكتب خطة التقاعد الكاملة: استعلام الحركة الذي ينتج الحجم حسب النسخة وحسب الـ client؛ والإشعار الذي سترسله ولمن؛ وجدول الـ brownout؛ والشرط الذي يُطلق التراجع. ثم نفّذ الـ brownout في بيئة staging مع client واحد مثبّت على v1. تكون قد انتهيت عندما تستطيع أن تقول بالأرقام كم من الحركة سينكسر ولأي clients يعود."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref",
+          label: { en: "ASP.NET Core API Versioning (Asp.Versioning)", ar: "ASP.NET Core API Versioning (حزمة Asp.Versioning)" },
+          url: "https://github.com/dotnet/aspnet-api-versioning",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        { t: "ref",
+          label: { en: "Microsoft REST API Guidelines — versioning and breaking changes", ar: "إرشادات Microsoft لـ REST API — الإصدارات والتغييرات الكاسرة" },
+          url: "https://github.com/microsoft/api-guidelines",
+          meta: { en: "Guide", ar: "دليل" }
+        },
+        { t: "ref",
+          label: { en: "Stripe: how we version our API without breaking users", ar: "Stripe: كيف نُصدر نسخ الـ API دون كسر المستخدمين" },
+          url: "https://stripe.com/blog/api-versioning",
+          meta: { en: "Article", ar: "مقال" }
+        },
+        { t: "ref",
+          label: { en: "RFC 8594 — the Sunset HTTP header field", ar: "RFC 8594 — ترويسة Sunset في HTTP" },
+          url: "https://www.rfc-editor.org/rfc/rfc8594.html",
+          meta: { en: "Spec", ar: "مواصفة" }
+        }
+      ]
+    }
   ],
-
   quiz: [
     {
-      q: { en: "Which of these is NOT a breaking change for a correctly-written client?", ar: "أي مما يلي ليس تغييراً كاسراً بالنسبة لـ client مكتوب بشكل صحيح؟" },
+      q: { en: "Which of these can you deploy without a new version?", ar: "أي من هذه تستطيع نشره دون نسخة جديدة؟" },
       options: [
-        { en: "Changing an id field from the string \"42\" to the number 42", ar: "تغيير حقل معرّف من النص \"42\" إلى الرقم 42" },
-        { en: "Adding a new optional field to the response body", ar: "إضافة حقل اختياري جديد إلى جسم الاستجابة" },
-        { en: "Returning 409 instead of 400 for a duplicate submission", ar: "إرجاع 409 بدل 400 لإرسال مكرر" },
-        { en: "Making an optional request field required", ar: "جعل حقل طلب اختياري مطلوباً" }
+        { en: "Renaming total to totalAmount in the response.", ar: "إعادة تسمية total إلى totalAmount في الـ response." },
+        { en: "Adding an optional deliveryEta field to the response.", ar: "إضافة field اختياري deliveryEta إلى الـ response." },
+        { en: "Making the optional currency input required.", ar: "جعل الـ input الاختياري currency إجبارياً." },
+        { en: "Changing total from a number to a string.", ar: "تغيير total من رقم إلى نص." }
       ],
       correct: 1,
-      why: { en: "A tolerant reader ignores fields it does not recognise, so adding an optional response field is additive and needs no version bump. The other three all break existing callers: a type change fails deserialization, a changed status code breaks branching on the status, and a newly-required field turns every existing request into a 400.", ar: "القارئ المتسامح يتجاهل الحقول التي لا يعرفها، فإضافة حقل استجابة اختياري تغيير إضافي لا يحتاج رفع إصدار. والثلاثة الأخرى تكسر المستدعين القائمين جميعاً: فتغيير النوع يُفشل فكّ التسلسل، وتغيير الـ status code يكسر التفرّع على الحالة، والحقل المطلوب الجديد يحوّل كل request قائم إلى 400." }
+      why: {
+        en: "Clients ignore fields they do not recognise, so a new optional response field breaks nobody. The other three all invalidate code that worked yesterday: two change what a field is called or contains, and one starts rejecting requests that used to succeed.",
+        ar: "الـ clients تتجاهل الـ fields التي لا تعرفها، فإضافة field اختياري في الـ response لا تكسر أحداً. أما الثلاثة الأخرى فتُبطل كوداً كان يعمل بالأمس: اثنان يغيّران اسم الـ field أو محتواه، وواحد يبدأ برفض طلبات كانت تنجح."
+      }
     },
     {
-      q: { en: "An API versions via an Api-Version request header and marks GET responses Cache-Control: public, max-age=60. What breaks and what fixes it?", ar: "‏API يُصدر عبر header باسم Api-Version ويضع للاستجابات Cache-Control: public, max-age=60. ما الذي ينكسر وما الذي يصلحه؟" },
+      q: { en: "What does AssumeDefaultVersionWhenUnspecified = true do?", ar: "ماذا يفعل AssumeDefaultVersionWhenUnspecified = true؟" },
       options: [
-        { en: "Nothing breaks — CDNs include all request headers in the cache key", ar: "لا شيء ينكسر — فالـ CDNs تُدخل كل ترويسات الطلب في مفتاح الـ cache" },
-        { en: "A v2 caller can receive a cached v1 body; add Vary: Api-Version", ar: "قد يستقبل مستدعي v2 جسم v1 مخزّناً؛ أضف Vary: Api-Version" },
-        { en: "The header is stripped by proxies; move the version into a cookie", ar: "الـ proxies تحذف الترويسة؛ انقل الإصدار إلى cookie" },
-        { en: "max-age must be 0 for any versioned API", ar: "يجب أن تكون max-age صفراً في أي API مُصدَّر" }
-      ],
-      correct: 1,
-      why: { en: "The default cache key is method plus URL, so two requests differing only in a header collide. Whichever version populates the entry first is served to the other for the remainder of the freshness window. Declaring Vary: Api-Version makes the header part of the key — at the cost of splitting the cache per version, which lowers hit ratio during a migration.", ar: "مفتاح الـ cache الافتراضي هو الـ method مع الـ URL، فيتصادم requestان لا يختلفان إلا في ترويسة. وأي إصدار يملأ المدخل أولاً يُقدَّم للآخر بقية نافذة الطزاجة. وإعلان Vary: Api-Version يجعل الترويسة جزءاً من المفتاح — بثمن شطر الـ cache لكل إصدار، وهو ما يخفض نسبة الإصابات أثناء الترحيل." }
-    },
-    {
-      q: { en: "What is the main argument against AssumeDefaultVersionWhenUnspecified pointing at the latest version?", ar: "ما الحجة الرئيسية ضد جعل AssumeDefaultVersionWhenUnspecified يشير إلى أحدث إصدار؟" },
-      options: [
-        { en: "It adds measurable latency to version resolution", ar: "يضيف زمن استجابة ملموساً لحلّ الإصدار" },
-        { en: "It prevents the OpenAPI document from being generated", ar: "يمنع توليد مستند الـ OpenAPI" },
-        { en: "A server deploy silently migrates unversioned callers across a breaking change", ar: "نشر السيرفر يهاجر بالمستدعين غير المحددين عبر تغيير كاسر بهدوء" },
-        { en: "It violates the stateless constraint", ar: "يخالف قيد انعدام الحالة" }
+        { en: "Rejects any request that does not carry a version.", ar: "يرفض أي request لا يحمل نسخة." },
+        { en: "Routes version-less requests to the newest version available.", ar: "يوجّه الطلبات بلا نسخة إلى أحدث نسخة متاحة." },
+        { en: "Routes version-less requests to the DefaultApiVersion you configured.", ar: "يوجّه الطلبات بلا نسخة إلى الـ DefaultApiVersion الذي ضبطته." },
+        { en: "Adds the api-supported-versions header to every response.", ar: "يضيف ترويسة api-supported-versions إلى كل response." }
       ],
       correct: 2,
-      why: { en: "Callers that never specify a version are typically the oldest and least maintained integrations. If the implicit default tracks the newest version, moving that default is a breaking change delivered by your deploy with no client change to correlate it to, no warning, and no rollback except a config edit. Either reject unversioned requests with 400, or pin the default to the oldest supported version permanently.", ar: "المستدعون الذين لا يحددون إصداراً هم عادةً أقدم التكاملات وأقلها صيانةً. فإن كان الافتراضي الضمني يتبع الأحدث، فنقل ذلك الافتراضي تغيير كاسر يوصّله نشرك أنت دون تغيير من العميل يُربَط به ودون تحذير ودون رجوع إلا بتعديل إعداد. فإما أن ترفض الـ requests غير المحددة بـ 400، أو تثبّت الافتراضي على أقدم إصدار مدعوم بشكل دائم." }
+      why: {
+        en: "It falls back to the DefaultApiVersion you set — usually the oldest version you still support — so callers who have never sent a version keep working. Routing to the newest version would break them on every release. Reporting supported versions is a separate setting called ReportApiVersions.",
+        ar: "يرجع إلى الـ DefaultApiVersion الذي حدّدته — عادةً أقدم نسخة ما زلت تدعمها — فيستمر عمل الـ callers الذين لم يرسلوا نسخة قط. التوجيه إلى الأحدث كان سيكسرهم مع كل إصدار. أما الإبلاغ عن النسخ المدعومة فإعداد منفصل اسمه ReportApiVersions."
+      }
     },
     {
-      q: { en: "Which change is a breaking change that a schema diff of your OpenAPI document will NOT catch?", ar: "أي تغيير يكون كاسراً ولا تلتقطه مقارنة schema لمستند الـ OpenAPI لديك؟" },
+      q: { en: "A team renamed a response field and deployed. Support tickets arrived, but the error logs stayed empty. Why?", ar: "فريق أعاد تسمية field في الـ response ونشر. وصلت تذاكر دعم لكن سجلات الأخطاء بقيت فارغة. لماذا؟" },
       options: [
-        { en: "Removing a response field", ar: "حذف حقل من الاستجابة" },
-        { en: "Changing a field's type from string to integer", ar: "تغيير نوع حقل من string إلى integer" },
-        { en: "Redefining total from gross to net while keeping the name and type", ar: "إعادة تعريف total من الإجمالي إلى الصافي مع الحفاظ على الاسم والنوع" },
-        { en: "Making an optional request property required", ar: "جعل خاصية طلب اختيارية مطلوبة" }
-      ],
-      correct: 2,
-      why: { en: "The first, second and fourth options are all structural and a diff tool flags them. A semantic redefinition is byte-identical in the schema, passes every contract test, and silently makes every consumer that displays or reconciles the value wrong. Catching this class needs written field semantics plus traffic replay with field-level response diffing — not schema tooling.", ar: "الخيارات الأول والثاني والرابع كلها بنيوية وتُشير إليها أداة المقارنة. أما إعادة التعريف الدلالية فهي مطابقة حرفياً في الـ schema، وتنجح في كل اختبارات العقد، وتجعل بهدوء كل مستهلك يعرض القيمة أو يطابقها مخطئاً. والتقاط هذا الصنف يحتاج دلالات حقول مكتوبة مع إعادة تشغيل الحركة ومقارنة الاستجابات على مستوى الحقل — لا أدوات schema." }
-    },
-    {
-      q: { en: "Which practice most directly makes it possible to actually delete an old API version?", ar: "أي ممارسة تجعل حذف إصدار API قديم ممكناً فعلاً بأكثر شكل مباشر؟" },
-      options: [
-        { en: "Documenting the deprecation in the changelog and emailing integrators", ar: "توثيق الإيقاف في سجل التغييرات ومراسلة المتكاملين" },
-        { en: "A request counter tagged by version and consumer, queried over a full month", ar: "counter للـ requests موسوم بالإصدار والمستهلك ويُستعلم على شهر كامل" },
-        { en: "Keeping the old version's controller in a separate project", ar: "إبقاء controller الإصدار القديم في مشروع منفصل" },
-        { en: "Using semantic versioning for the API surface", ar: "استخدام الـ semantic versioning لسطح الـ API" }
+        { en: "The logger was misconfigured for that endpoint.", ar: "كان الـ logger مضبوطاً بشكل خاطئ لذلك الـ endpoint." },
+        { en: "Most JSON deserializers ignore unknown fields and leave missing ones at their default value.", ar: "معظم الـ JSON deserializers تتجاهل الـ fields غير المعروفة وتترك المفقودة على قيمتها الافتراضية." },
+        { en: "The load balancer absorbed the 500 responses before they were logged.", ar: "امتصّ الـ load balancer استجابات 500 قبل تسجيلها." },
+        { en: "The clients were serving the old response from their cache.", ar: "كان الـ clients يقدّمون الـ response القديم من الـ cache لديهم." }
       ],
       correct: 1,
-      why: { en: "Deletion is blocked by not knowing who is still calling. Per-version, per-consumer counters turn \"can we remove v1?\" into a query, and a 30-plus-day window catches monthly batch integrations that a weekly window misses. Deprecation headers and announcements are necessary to give notice, but they do not tell you when the last caller left — and code organisation and version numbering do not help at all.", ar: "ما يعطّل الحذف هو عدم معرفة من لا يزال يستدعي. والعدّادات لكل إصدار ولكل مستهلك تحوّل سؤال «هل نحذف v1؟» إلى استعلام، ونافذة تتجاوز ثلاثين يوماً تلتقط التكاملات الشهرية التي تفوت النافذة الأسبوعية. وترويسات الإيقاف والإعلانات ضرورية لإعطاء الإشعار، لكنها لا تخبرك متى رحل آخر مستدعٍ — أما تنظيم الكود وترقيم الإصدارات فلا يفيدان إطلاقاً." }
+      why: {
+        en: "A typical JSON deserializer does not fail on a missing field; it leaves the property at 0, null or empty. The screen shows 0.00 and nothing throws anywhere. That is exactly why a rename is more dangerous than a change that crashes loudly — the damage is invisible to your monitoring.",
+        ar: "الـ JSON deserializer المعتاد لا يفشل عند غياب field؛ بل يترك الخاصية على 0 أو null أو فارغة. تعرض الشاشة 0.00 ولا يُرمى شيء في أي مكان. لهذا السبب بالذات تكون إعادة التسمية أخطر من تغيير ينهار بصوت عالٍ — الضرر غير مرئي لمراقبتك."
+      }
+    },
+    {
+      q: { en: "What is the strongest argument against putting the version in the URL path?", ar: "ما أقوى حجة ضد وضع النسخة في مسار الـ URL؟" },
+      options: [
+        { en: "A gateway cannot route on it.", ar: "لا يستطيع الـ gateway التوجيه بناءً عليها." },
+        { en: "It does not appear in server logs.", ar: "لا تظهر في سجلات الـ server." },
+        { en: "The same resource ends up with several URLs, and it tempts teams to bump every endpoint at once.", ar: "ينتهي نفس الـ resource بعدة URLs، وتُغري الفرق برفع نسخة كل endpoint دفعة واحدة." },
+        { en: "It requires the client to use a generated client library.", ar: "تتطلّب من الـ client استخدام client library مولَّدة." }
+      ],
+      correct: 2,
+      why: {
+        en: "Routing and log visibility are the strengths of URL versioning, not weaknesses, and no client library is needed. The real costs are different. One order now answers to two addresses. And because the version sits on the path prefix, teams tend to create v2 for all 47 endpoints when only one of them changed.",
+        ar: "التوجيه والظهور في الـ logs هما نقطتا قوة في URL versioning لا ضعف، ولا حاجة إلى client library. التكلفة الحقيقية مختلفة. الطلب الواحد صار يستجيب لعنوانين. ولأن النسخة في بداية المسار، تميل الفرق إلى إنشاء v2 لكل الـ 47 endpoint بينما تغيّر واحد منها فقط."
+      }
+    },
+    {
+      q: { en: "Before removing v1, the most useful thing to have is:", ar: "قبل إزالة v1، أكثر شيء مفيد أن يكون لديك هو:" },
+      options: [
+        { en: "A blog post announcing the removal.", ar: "منشور مدوّنة يعلن الإزالة." },
+        { en: "Per-version, per-client request counts taken from production traffic.", ar: "عدد الطلبات حسب النسخة وحسب الـ client مأخوذاً من حركة الإنتاج." },
+        { en: "A complete unit test suite for v2.", ar: "مجموعة اختبارات وحدة كاملة لـ v2." },
+        { en: "A feature flag that switches v1 off instantly.", ar: "feature flag يُطفئ v1 فوراً." }
+      ],
+      correct: 1,
+      why: {
+        en: "Retirement is a question about who is still calling you, and only production traffic answers it. The announcement matters, but without per-client counts you do not know who to address it to or whether the deadline is realistic. The flag and the tests are useful mechanics; they tell you nothing about impact.",
+        ar: "التقاعد سؤال عن من ما زال يستدعيك، وحركة الإنتاج وحدها تجيب عليه. الإعلان مهم، لكن دون أعداد لكل client لا تعرف لمن توجّهه ولا هل الموعد واقعي. أما الـ flag والاختبارات فأدوات مفيدة، لكنها لا تخبرك شيئاً عن الأثر."
+      }
     }
   ]
 };
-```
 
 NEXT: api-errors

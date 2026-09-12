@@ -4,103 +4,154 @@ const httpAnatomyLesson = {
   moduleId: "foundations",
   title: { en: "Anatomy of a request", ar: "تشريح الـ request" },
   summary: {
-    en: "What actually travels over the socket, how a server turns those bytes into an HttpContext, and where the framing rules bite you.",
-    ar: "ما الذي يسافر فعلياً عبر الـ socket، وكيف يحوّل السيرفر تلك الـ bytes إلى HttpContext، وأين تعضّك قواعد الـ framing."
+    en: "What an HTTP request and response are made of, byte by byte, and what ASP.NET Core does with those bytes before your handler runs.",
+    ar: "مما يتكوّن الـ HTTP request والـ response، بايت ببايت، وماذا يفعل ASP.NET Core بهذه البايتات قبل أن يعمل الـ handler الخاص بك."
   },
   mins: 14,
   sections: [
     { key: "why", blocks: [
-      { t: "p", en: "HTTP is a text-framed protocol invented so that two programs that know nothing about each other can agree on where one message ends and the next begins. Everything else — methods, status codes, caching, content negotiation — is built on top of that one primitive: framing. If you do not know how the server decides that the body finished, you cannot reason about streaming, about proxies, about request smuggling, or about why your upload hangs at 30 seconds.", ar: "الـ HTTP بروتوكول مؤطَّر نصياً، اخترع ليتفق برنامجان لا يعرف أحدهما الآخر على أين تنتهي رسالة وأين تبدأ التالية. كل ما عداه — الـ methods والـ status codes والـ caching والـ content negotiation — مبني فوق تلك البدائية الواحدة: الـ framing. إن لم تعرف كيف يقرر السيرفر أن الـ body قد انتهى، فلن تستطيع التفكير في الـ streaming ولا الـ proxies ولا الـ request smuggling ولا سبب تعليق رفع الملف عند الثانية الثلاثين." },
-      { t: "p", en: "The second reason to care is that almost every production incident that looks like \"the framework is broken\" is actually a layer below the framework: a header the proxy rewrote, a body that was already consumed, a connection the load balancer closed at 60 seconds while your origin was still writing at 75. The controller action is the last 5% of the request's life; the other 95% happens in the socket, the TLS layer, the reverse proxy, and the server's parser.", ar: "السبب الثاني للاهتمام أن معظم حوادث الـ production التي تبدو وكأن «الـ framework معطّل» تحدث فعلياً في طبقة تحت الـ framework: header أعاد الـ proxy كتابته، أو body استُهلك مرة واحدة بالفعل، أو connection أغلقه الـ load balancer عند الثانية 60 بينما السيرفر ما زال يكتب حتى 75. الـ controller action هو آخر 5% من عمر الـ request؛ الـ 95% الباقية تحدث في الـ socket وطبقة الـ TLS والـ reverse proxy وparser السيرفر." },
-      { t: "p", en: "A senior engineer should be able to type a raw request into a socket by hand and predict, byte for byte, what comes back. That skill is what turns a vague \"it returns 400 sometimes\" into \"the client is sending a header line longer than 8 KB and Kestrel rejects it before any of our code runs\".", ar: "المهندس الـ senior يجب أن يستطيع كتابة request خام يدوياً داخل socket ويتوقع، بايت ببايت، ما سيعود. هذه المهارة هي ما يحوّل «أحياناً يرجع 400» الغامضة إلى «الـ client يرسل header line أطول من 8 KB وKestrel يرفضه قبل أن يعمل أي سطر من كودنا»." },
-      { t: "callout", kind: "note", en: "HTTP/1.1, HTTP/2 and HTTP/3 share the same semantics (RFC 9110) but have completely different framing. \"The request\" you debug in the browser is a semantic view; the bytes on the wire differ radically between versions.", ar: "الـ HTTP/1.1 و HTTP/2 و HTTP/3 تتشارك نفس الـ semantics (RFC 9110) لكن الـ framing مختلف تماماً. «الـ request» الذي تراه في المتصفح هو عرض دلالي؛ أما الـ bytes على السلك فتختلف جذرياً بين الإصدارات." }
+      { t: "p",
+        en: "An HTTP request is a block of text your client sends to a server, and the response is the text that comes back. That is the whole protocol. Knowing the exact parts of that text is what lets you explain a 400 you did not expect, or why a header you set was ignored.",
+        ar: "الـ HTTP request هو كتلة نصية يرسلها الـ client إلى الـ server، والـ response هو النص الذي يعود. هذا هو البروتوكول كله. معرفة الأجزاء الدقيقة لهذا النص هي ما يجعلك تفسّر خطأ 400 لم تتوقعه، أو تفهم لماذا تم تجاهل header وضعته." },
+      { t: "kv", rows: [
+        { k: { en: "TCP connection", ar: "TCP connection" },
+          v: { en: "A two-way pipe of bytes between two machines. All the HTTP text travels inside it, in order.", ar: "أنبوب bytes ثنائي الاتجاه بين جهازين. كل نص الـ HTTP يمرّ داخله، بالترتيب." } },
+        { k: { en: "Request line", ar: "Request line" },
+          v: { en: "The first line of a request: method, path, protocol version. Example: GET /api/orders/1042 HTTP/1.1", ar: "أول سطر في الـ request: الـ method ثم الـ path ثم نسخة البروتوكول. مثال: GET /api/orders/1042 HTTP/1.1" } },
+        { k: { en: "Header", ar: "Header" },
+          v: { en: "One line shaped Name: value that carries information about the message — who sent it, what format the body is in, how long the body is.", ar: "سطر واحد بشكل Name: value يحمل معلومات عن الرسالة — من أرسلها، وما صيغة الـ body، وكم طوله." } },
+        { k: { en: "Body", ar: "Body" },
+          v: { en: "The optional bytes that come after the headers. A POST usually carries JSON here. A GET usually carries nothing.", ar: "الـ bytes الاختيارية التي تأتي بعد الـ headers. الـ POST عادةً يحمل JSON هنا، والـ GET عادةً لا يحمل شيئاً." } },
+        { k: { en: "Status line", ar: "Status line" },
+          v: { en: "The first line of a response: version, a three-digit code, a short text reason. Example: HTTP/1.1 200 OK", ar: "أول سطر في الـ response: النسخة، ثم كود من ثلاثة أرقام، ثم نص قصير. مثال: HTTP/1.1 200 OK" } },
+        { k: { en: "Middleware", ar: "Middleware" },
+          v: { en: "A piece of code in ASP.NET Core that sees every request in a fixed order, may change it, and decides whether to pass it to the next piece.", ar: "قطعة كود في ASP.NET Core ترى كل request بترتيب ثابت، ويمكنها تعديله، وتقرر هل تمرّره للقطعة التالية أم لا." } }
+      ]},
+      { t: "p",
+        en: "Think of a paper form in an envelope. The address written on the envelope is the request line: where it goes and what you want done there. The sticky notes on the front are the headers: what language you read, what format the form inside is in, who you are. The form inside the envelope is the body. The server opens the envelope, reads the notes, then reads the form.",
+        ar: "تخيّل استمارة ورقية داخل ظرف. العنوان المكتوب على الظرف هو الـ request line: إلى أين يذهب وماذا تريد أن يحدث هناك. الملاحظات الملصقة على الوجه هي الـ headers: بأي لغة تقرأ، وما صيغة الاستمارة بالداخل، ومن أنت. الاستمارة داخل الظرف هي الـ body. الـ server يفتح الظرف، ويقرأ الملاحظات، ثم يقرأ الاستمارة." },
+      { t: "p",
+        en: "HTTP was designed this way because two programs that have never met need one agreed format. A phone app written in Swift and a server written in C# share nothing except this text layout. Every rule in HTTP exists so the receiver can work out, from the bytes alone, where the headers stop, where the body starts, and where the body ends.",
+        ar: "صُمّم الـ HTTP بهذا الشكل لأن برنامجين لم يتعارفا أبداً يحتاجان صيغة واحدة متفق عليها. تطبيق هاتف مكتوب بـ Swift و server مكتوب بـ C# لا يشتركان في شيء إلا هذا الترتيب النصي. كل قاعدة في الـ HTTP موجودة لكي يستطيع المستقبِل أن يعرف، من الـ bytes وحدها، أين تنتهي الـ headers، وأين يبدأ الـ body، وأين ينتهي." },
+      { t: "callout", kind: "note",
+        en: "HTTP/1.1 is plain text you can read with your eyes. HTTP/2 and HTTP/3 send exactly the same information as compressed binary frames. The parts do not change — still a method, a path, headers, a body. Only the encoding on the wire changes, so everything in this lesson still applies.",
+        ar: "الـ HTTP/1.1 نص عادي تستطيع قراءته بعينك. أما HTTP/2 و HTTP/3 فيرسلان نفس المعلومات تماماً على شكل binary frames مضغوطة. الأجزاء لا تتغيّر — ما زال هناك method و path و headers و body. الذي يتغيّر هو طريقة الترميز على الشبكة فقط، لذلك كل ما في هذا الدرس يبقى صحيحاً." }
     ]},
 
     { key: "problem", blocks: [
-      { t: "p", en: "Before persistent connections, every request paid for a full TCP handshake plus a TLS handshake. On a 40 ms RTT link that is 1 RTT for TCP and 2 RTT for TLS 1.2 — about 120 ms of pure setup before a single application byte moves. For an API call whose server-side work is 8 ms, 94% of the latency is connection setup.", ar: "قبل الـ persistent connections، كل request كان يدفع ثمن TCP handshake كامل بالإضافة إلى TLS handshake. على وصلة بـ RTT = 40 ملّي ثانية، هذا يعني 1 RTT للـ TCP و2 RTT للـ TLS 1.2 — أي ~120 ملّي ثانية إعداد خالص قبل أن يتحرك بايت واحد من التطبيق. لـ API call عمله على السيرفر 8 ملّي ثانية، فإن 94% من زمن الاستجابة إعداد اتصال." },
-      { t: "p", en: "Keep-alive fixed the handshake cost but exposed a new one: header bloat. A typical authenticated browser request carries 700–900 bytes of headers (cookies, user-agent, accept-*, auth token). At 10,000 requests/second that is roughly 8 MB/s of inbound headers per node, repeated identically on every request, plus the CPU to parse them. HTTP/2's HPACK table compresses a repeated header set down to tens of bytes after the first request on a connection.", ar: "الـ keep-alive حلّ تكلفة الـ handshake لكنه كشف تكلفة أخرى: تضخّم الـ headers. الـ request المعتاد لمتصفح مُصادَق يحمل 700–900 بايت من الـ headers (cookies، user-agent، accept-*، auth token). عند 10,000 request/ثانية يعني ذلك ~8 ميغابايت/ثانية من الـ headers الواردة لكل node، مكررة حرفياً في كل request، إضافة إلى الـ CPU اللازم لتحليلها. جدول HPACK في HTTP/2 يضغط مجموعة headers مكررة إلى عشرات البايتات فقط بعد أول request على الاتصال." },
+      { t: "p",
+        en: "Here is the running example for this lesson. A mobile app calls GET /api/orders/1042 on an ASP.NET Core service. Locally it returns 200 with the order. In production the same call returns 404. Nothing in the C# code differs between the two.",
+        ar: "هذا هو المثال الذي سنتابعه في الدرس كله. تطبيق موبايل ينادي GET /api/orders/1042 على خدمة ASP.NET Core. محلياً يرجع 200 مع بيانات الـ order. في الإنتاج نفس النداء يرجع 404. ولا يوجد أي اختلاف في كود C# بين الحالتين." },
+      { t: "p",
+        en: "The team spent two days on it — three engineers, so about forty-eight working hours. They re-read the routing code, added logs inside the controller, and redeployed nine times. The controller logs never printed, which they read as a routing bug. The fix took five minutes once someone logged the raw request line that the server actually received.",
+        ar: "قضى الفريق يومين على المشكلة — ثلاثة مهندسين، أي حوالي ثمانٍ وأربعين ساعة عمل. أعادوا قراءة كود الـ routing، وأضافوا logs داخل الـ controller، وأعادوا النشر تسع مرات. الـ logs داخل الـ controller لم تُطبع أبداً، ففسّروا ذلك على أنه خطأ في الـ routing. الإصلاح استغرق خمس دقائق بعدما سجّل أحدهم الـ request line الخام الذي وصل الـ server فعلاً." },
       { t: "kv", rows: [
-        { k: { en: "New connection per request (TLS 1.2, 40 ms RTT)", ar: "اتصال جديد لكل request (TLS 1.2، RTT=40 مللي)" }, v: { en: "~120 ms setup + 8 ms work ≈ 128 ms end to end", ar: "~120 مللي إعداد + 8 مللي عمل ≈ 128 مللي من الطرف للطرف" } },
-        { k: { en: "Keep-alive, HTTP/1.1", ar: "keep-alive، HTTP/1.1" }, v: { en: "~0 ms setup + 8 ms work ≈ 48 ms with one round trip; ~800 B headers per request", ar: "~0 مللي إعداد + 8 مللي عمل ≈ 48 مللي مع round trip واحد؛ ~800 بايت headers لكل request" } },
-        { k: { en: "HTTP/2 on the same connection", ar: "HTTP/2 على نفس الاتصال" }, v: { en: "Headers ~40–80 B after HPACK; many requests multiplexed without head-of-line blocking at the HTTP layer", ar: "الـ headers ~40–80 بايت بعد HPACK؛ requests كثيرة متعددة الإرسال دون head-of-line blocking على طبقة الـ HTTP" } },
-        { k: { en: "Kestrel parse cost", ar: "تكلفة التحليل في Kestrel" }, v: { en: "Request line + 15 headers parsed from pooled buffers with zero string allocation until a header is read", ar: "سطر الـ request + 15 header يُحلَّلون من buffers مجمّعة بدون تخصيص string حتى تُقرأ قيمة header فعلياً" } }
-      ]}
+        { k: { en: "What the app sent", ar: "ما أرسله التطبيق" },
+          v: { en: "GET /api/orders/1042 HTTP/1.1 — the path the mobile client wrote.", ar: "GET /api/orders/1042 HTTP/1.1 — الـ path الذي كتبه الـ client." } },
+        { k: { en: "What nginx forwarded", ar: "ما مرّره nginx" },
+          v: { en: "GET /orders/1042 HTTP/1.1 — the reverse proxy in front of the service was configured to strip the /api prefix. A reverse proxy is a server that receives requests and passes them on to another server.", ar: "GET /orders/1042 HTTP/1.1 — الـ reverse proxy الموجود أمام الخدمة كان مضبوطاً ليحذف البادئة /api. والـ reverse proxy هو server يستقبل الـ requests ويمرّرها إلى server آخر." } },
+        { k: { en: "What the app routed", ar: "ما طابقه الـ routing" },
+          v: { en: "Nothing. The endpoint is registered as /api/orders/{id}, so /orders/1042 matched no route and ASP.NET Core answered 404 before any controller ran.", ar: "لا شيء. الـ endpoint مسجّل كـ /api/orders/{id}، لذلك /orders/1042 لم يطابق أي route وأجاب ASP.NET Core بـ 404 قبل أن يعمل أي controller." } },
+        { k: { en: "Why logs were silent", ar: "لماذا كانت الـ logs صامتة" },
+          v: { en: "The controller was never reached, so logs written inside it could not print. Logging one level lower — at the request line — showed the answer immediately.", ar: "لم يتم الوصول إلى الـ controller أصلاً، فالـ logs المكتوبة بداخله لا يمكن أن تُطبع. التسجيل على مستوى أدنى — عند الـ request line — أظهر الجواب فوراً." } }
+      ]},
+      { t: "p",
+        en: "The lesson is not about nginx. It is that a request is a concrete object with named parts, and each hop on the way can rewrite those parts. If you cannot say what the method, path, and headers looked like at the moment your code received them, you are guessing.",
+        ar: "الدرس ليس عن nginx. الدرس هو أن الـ request كائن ملموس له أجزاء معروفة بالاسم، وكل محطة في الطريق تستطيع تعديل هذه الأجزاء. إن لم تستطع أن تقول كيف كان شكل الـ method والـ path والـ headers لحظة وصولها إلى كودك، فأنت تخمّن." }
     ]},
 
     { key: "internals", blocks: [
-      { t: "p", en: "An HTTP/1.1 message is: a start line, zero or more header field lines, a CRLF that terminates the header block, and an optional body. Every line ends with CRLF (0x0D 0x0A). The parser is a state machine over a byte stream; it does not know anything about your routes until the header block is complete.", ar: "رسالة HTTP/1.1 تتكوّن من: سطر بداية، ثم صفر أو أكثر من أسطر الـ header fields، ثم CRLF ينهي كتلة الـ headers، ثم body اختياري. كل سطر ينتهي بـ CRLF (0x0D 0x0A). الـ parser عبارة عن state machine فوق تدفق bytes؛ ولا يعرف شيئاً عن الـ routes حتى تكتمل كتلة الـ headers." },
-      { t: "code", lang: "http", label: { en: "The literal bytes of a request", ar: "الـ bytes الحرفية للـ request" }, code: "POST /api/orders?expand=items HTTP/1.1\\r\\n\nHost: api.example.com\\r\\n\nContent-Type: application/json\\r\\n\nContent-Length: 27\\r\\n\nAuthorization: Bearer eyJhbGciOi...\\r\\n\nAccept: application/json\\r\\n\n\\r\\n\n{\"sku\":\"A-100\",\"qty\":2}" },
-      { t: "p", en: "The server knows where the body ends by exactly one of three rules, checked in this order: (1) a Transfer-Encoding: chunked header, in which case the body is a sequence of hex-length-prefixed chunks terminated by a zero-length chunk; (2) a Content-Length header giving an exact byte count; (3) neither, which for a request means there is no body at all. A request that sends both Content-Length and Transfer-Encoding is malformed — disagreement between a proxy and an origin about which one wins is the entire basis of request smuggling attacks, which is why RFC 9112 requires rejecting such messages.", ar: "السيرفر يعرف أين ينتهي الـ body بواحدة من ثلاث قواعد فقط، تُفحص بهذا الترتيب: (1) وجود Transfer-Encoding: chunked، فيكون الـ body سلسلة chunks مسبوقة بطول hexadecimal وتنتهي بـ chunk طوله صفر؛ (2) وجود Content-Length يعطي عدد bytes دقيق؛ (3) لا هذا ولا ذاك، وفي الـ request يعني عدم وجود body إطلاقاً. الـ request الذي يرسل Content-Length و Transfer-Encoding معاً مشوّه — واختلاف الـ proxy عن الـ origin حول أيهما يفوز هو أساس هجمات request smuggling، ولهذا يوجب RFC 9112 رفض مثل هذه الرسائل." },
-      { t: "code", lang: "http", label: { en: "A chunked body on the wire", ar: "body مقسّم إلى chunks على السلك" }, code: "POST /api/upload HTTP/1.1\\r\\n\nHost: api.example.com\\r\\n\nTransfer-Encoding: chunked\\r\\n\n\\r\\n\n1a\\r\\n\n<26 bytes of payload>\\r\\n\n9\\r\\n\n<9 bytes of payload>\\r\\n\n0\\r\\n\n\\r\\n" },
-      { t: "p", en: "In ASP.NET Core, Kestrel accepts the socket, then reads into a System.IO.Pipelines PipeReader backed by pooled memory. The parser scans the pooled buffer for CRLF using vectorized search, slices the request line into method / target / version without allocating, and stores header name-value pairs as slices. Well-known header names hit a precomputed lookup so that \"Content-Length\" never becomes a string. Only when your code reads `Request.Headers[\"X\"]` does a string materialize. This is why Kestrel can parse hundreds of thousands of requests per second per core.", ar: "في ASP.NET Core يقبل Kestrel الـ socket، ثم يقرأ إلى PipeReader من System.IO.Pipelines مدعوم بذاكرة مجمّعة (pooled). الـ parser يمسح الـ buffer بحثاً عن CRLF باستخدام بحث vectorized، ويقطع سطر الـ request إلى method / target / version دون تخصيص، ويخزّن أزواج الـ headers كشرائح (slices). أسماء الـ headers المعروفة تصطدم بجدول بحث مُسبق الحساب بحيث لا تتحوّل \"Content-Length\" إلى string أبداً. فقط عندما يقرأ كودك `Request.Headers[\"X\"]` يتجسّد الـ string. لهذا يستطيع Kestrel تحليل مئات الآلاف من الـ requests في الثانية لكل core." },
-      { t: "p", en: "Once the header block is parsed, Kestrel builds an HttpContext (pooled and reset between requests, not newly allocated) and hands it to the middleware pipeline. The body is deliberately *not* read: `HttpRequest.Body` is a forward-only, non-seekable stream that streams bytes off the socket on demand. That is why reading it twice fails, and why `EnableBuffering()` exists — it wraps the stream in one that spills to memory (30 KB by default) and then to a temp file on disk.", ar: "بعد تحليل كتلة الـ headers يبني Kestrel كائن HttpContext (مجمّع ويُعاد ضبطه بين الـ requests، لا يُخصَّص من جديد) ويسلّمه إلى الـ middleware pipeline. أما الـ body فلا يُقرأ عمداً: `HttpRequest.Body` هو stream أحادي الاتجاه غير قابل للـ seek يسحب الـ bytes من الـ socket عند الطلب. لهذا تفشل قراءته مرتين، ولهذا وُجد `EnableBuffering()` — فهو يغلّف الـ stream بآخر يخزّن في الذاكرة (30 كيلوبايت افتراضياً) ثم في ملف مؤقت على القرص." },
+      { t: "p",
+        en: "Follow one call to GET /api/orders/1042 from the socket up to your handler. A socket is the operating system object that represents one open network connection. Before any HTTP text exists, the client resolves the hostname to an IP address using DNS, opens a TCP connection to that address on port 443, and completes a TLS handshake so the bytes are encrypted. Only then does it write the request text into the connection.",
+        ar: "تابع نداءً واحداً لـ GET /api/orders/1042 من الـ socket حتى الـ handler. الـ socket هو كائن نظام التشغيل الذي يمثّل اتصالاً شبكياً مفتوحاً واحداً. قبل وجود أي نص HTTP، يحوّل الـ client اسم النطاق إلى IP address عبر الـ DNS، ثم يفتح TCP connection إلى هذا العنوان على المنفذ 443، ثم ينهي TLS handshake حتى تكون الـ bytes مشفّرة. بعد ذلك فقط يكتب نص الـ request داخل الاتصال." },
+      { t: "code", lang: "http", label: { en: "The exact bytes on the wire (\\r\\n shown as line breaks)", ar: "الـ bytes الفعلية على الشبكة (\\r\\n معروضة كأسطر)" },
+        code: "GET /api/orders/1042 HTTP/1.1\nHost: api.shop.example\nAccept: application/json\nAuthorization: Bearer eyJhbGciOi...\nUser-Agent: ShopApp/3.2 (iOS 17)\n\nHTTP/1.1 200 OK\nContent-Type: application/json; charset=utf-8\nContent-Length: 84\nDate: Mon, 06 Apr 2026 09:14:02 GMT\n\n{\"id\":1042,\"status\":\"Shipped\",\"total\":149.50,\"placedAt\":\"2026-04-01T10:22:00Z\"}" },
+      { t: "p",
+        en: "Every line ends with the two characters carriage-return and line-feed, written \\r\\n. The header section ends with one empty line, which is \\r\\n\\r\\n. That empty line is the only marker that says headers are finished. After it, the server counts exactly Content-Length bytes to read the body, or, if the header Transfer-Encoding: chunked is present instead, reads a series of size-prefixed chunks until a zero-size chunk arrives. A GET like ours has no body, so there is nothing after the blank line.",
+        ar: "كل سطر ينتهي بالحرفين carriage-return و line-feed، ويُكتبان \\r\\n. وقسم الـ headers ينتهي بسطر فارغ واحد، أي \\r\\n\\r\\n. هذا السطر الفارغ هو العلامة الوحيدة التي تقول إن الـ headers انتهت. بعده يقرأ الـ server عدد bytes مساوياً تماماً لقيمة Content-Length، أو — إذا وُجد بدلاً منه الـ header المسمّى Transfer-Encoding: chunked — يقرأ سلسلة قطع كل واحدة مسبوقة بحجمها حتى تصل قطعة حجمها صفر. الـ GET في مثالنا بلا body، فلا يوجد شيء بعد السطر الفارغ." },
+      { t: "p",
+        en: "Kestrel — the web server built into ASP.NET Core — is the code that reads those bytes. It parses the request line, then each header, and stops at the blank line. It does not read the body yet; it leaves the body as an unread stream so that a large upload does not have to sit in memory. It then fills an HttpContext object, which is simply a C# object holding the parsed request, a writable response, and per-request state.",
+        ar: "الـ Kestrel — وهو الـ web server المدمج في ASP.NET Core — هو الكود الذي يقرأ هذه الـ bytes. يحلّل الـ request line ثم كل header، ويتوقف عند السطر الفارغ. ولا يقرأ الـ body بعد؛ بل يتركه stream غير مقروء حتى لا يضطر ملف كبير للبقاء في الذاكرة. ثم يملأ كائن HttpContext، وهو ببساطة كائن C# يحمل الـ request بعد تحليله، و response قابلاً للكتابة، وحالة خاصة بهذا الـ request." },
+      { t: "p",
+        en: "Now the analogy for this part: a mail sorting office. The envelope is opened at the door (Kestrel parses the bytes), then handed down a row of desks. Each desk may stamp it, redirect it, or refuse it and send it straight back. Only if it survives every desk does it reach the person who actually answers it. Those desks are the middleware pipeline, and the person at the end is your endpoint handler.",
+        ar: "والآن التشبيه لهذا الجزء: مكتب فرز بريد. الظرف يُفتح عند الباب (Kestrel يحلّل الـ bytes)، ثم يُمرَّر على صفّ من المكاتب. كل مكتب قد يختمه أو يحوّله أو يرفضه ويعيده فوراً. وإن نجا من كل المكاتب فقط يصل إلى الشخص الذي يجيب عليه فعلاً. هذه المكاتب هي الـ middleware pipeline، والشخص في النهاية هو الـ endpoint handler." },
       { t: "kv", rows: [
-        { k: { en: "MaxRequestLineSize", ar: "MaxRequestLineSize" }, v: { en: "8 KB default — a very long query string is rejected with 414 before routing", ar: "8 كيلوبايت افتراضياً — الـ query string الطويل جداً يُرفض بـ 414 قبل الـ routing" } },
-        { k: { en: "MaxRequestHeadersTotalSize", ar: "MaxRequestHeadersTotalSize" }, v: { en: "32 KB default — oversized cookies produce 431, and your code never runs", ar: "32 كيلوبايت افتراضياً — الـ cookies الضخمة تنتج 431 ولا يعمل كودك أبداً" } },
-        { k: { en: "MaxRequestBodySize", ar: "MaxRequestBodySize" }, v: { en: "~30 MB default; enforced lazily as the body is read, so the 413 can surface mid-handler", ar: "~30 ميغابايت افتراضياً؛ يُطبَّق أثناء قراءة الـ body، لذا قد يظهر الـ 413 في منتصف الـ handler" } },
-        { k: { en: "RequestHeadersTimeout", ar: "RequestHeadersTimeout" }, v: { en: "30 s to finish sending headers — the built-in defence against Slowloris", ar: "30 ثانية لإنهاء إرسال الـ headers — الدفاع المدمج ضد Slowloris" } },
-        { k: { en: "KeepAliveTimeout", ar: "KeepAliveTimeout" }, v: { en: "~130 s idle before Kestrel closes an otherwise healthy connection", ar: "~130 ثانية خمول قبل أن يغلق Kestrel اتصالاً سليماً" } },
-        { k: { en: "MinRequestBodyDataRate", ar: "MinRequestBodyDataRate" }, v: { en: "240 bytes/s with a 5 s grace period — slow uploaders are dropped, which looks like a random client disconnect", ar: "240 بايت/ثانية مع مهلة سماح 5 ثوانٍ — الرافعون البطيئون يُقطعون، وهو ما يبدو كانقطاع عشوائي من الـ client" } }
+        { k: { en: "Socket read", ar: "قراءة الـ socket" },
+          v: { en: "Raw bytes arrive from the network card into a buffer.", ar: "تصل bytes خام من كرت الشبكة إلى buffer." } },
+        { k: { en: "Kestrel parser", ar: "محلّل Kestrel" },
+          v: { en: "Turns bytes into a method, a path, a query string, and a header collection. Rejects malformed text with 400 without calling your code.", ar: "يحوّل الـ bytes إلى method و path و query string ومجموعة headers. ويرفض النص المشوّه بـ 400 دون استدعاء كودك." } },
+        { k: { en: "HttpContext", ar: "HttpContext" },
+          v: { en: "The C# object every middleware and handler receives. Holds Request, Response, User, and Items.", ar: "كائن C# الذي يستقبله كل middleware و handler. يحمل Request و Response و User و Items." } },
+        { k: { en: "Middleware pipeline", ar: "Middleware pipeline" },
+          v: { en: "An ordered chain built in Program.cs. Runs top to bottom on the way in, bottom to top on the way out.", ar: "سلسلة مرتّبة تُبنى في Program.cs. تعمل من الأعلى للأسفل عند الدخول، ومن الأسفل للأعلى عند الخروج." } },
+        { k: { en: "Routing", ar: "Routing" },
+          v: { en: "Matches the path against registered endpoint patterns. No match means 404, decided before your controller exists.", ar: "يطابق الـ path مع أنماط الـ endpoints المسجّلة. عدم المطابقة يعني 404، ويُقرَّر قبل أن يوجد الـ controller أصلاً." } },
+        { k: { en: "Response writer", ar: "كاتب الـ response" },
+          v: { en: "Sends the status line and headers on the first body write, then streams the body bytes.", ar: "يرسل الـ status line والـ headers عند أول كتابة للـ body، ثم يبثّ bytes الـ body." } }
       ]},
-      { t: "p", en: "HTTP/2 keeps these semantics but replaces the text framing with binary frames on a single connection: HEADERS frames carrying an HPACK-compressed header block, then DATA frames, each tagged with a stream id. Header names are lowercase by design, the request line is split into pseudo-headers (:method, :path, :scheme, :authority), and Transfer-Encoding does not exist because DATA frames are already self-delimiting.", ar: "الـ HTTP/2 يحافظ على نفس الـ semantics لكنه يستبدل الـ framing النصي بـ frames ثنائية على اتصال واحد: frames من نوع HEADERS تحمل كتلة headers مضغوطة بـ HPACK، ثم frames من نوع DATA، كل منها موسوم بـ stream id. أسماء الـ headers صغيرة الحروف بالتصميم، وسطر الـ request يُقسَّم إلى pseudo-headers (:method, :path, :scheme, :authority)، ولا وجود لـ Transfer-Encoding لأن frames الـ DATA محدّدة الطول بذاتها." }
+      { t: "p",
+        en: "The last step matters more than people expect. Your status code and headers are held in memory, editable, until the first byte of the body is written. At that moment Kestrel sends them and marks the response as started. After that, setting a header or a status code throws, because those bytes are already gone down the wire and cannot be recalled.",
+        ar: "الخطوة الأخيرة أهم مما يتوقّع الناس. الـ status code والـ headers تبقى في الذاكرة وقابلة للتعديل حتى تُكتب أول بايت من الـ body. في تلك اللحظة يرسلها Kestrel ويعلّم الـ response بأنه بدأ. بعد ذلك، ضبط header أو status code يرمي exception، لأن تلك الـ bytes خرجت على الشبكة ولا يمكن استرجاعها." },
+      { t: "code", lang: "csharp", label: { en: "Where each part lands in C#", ar: "أين يقع كل جزء في C#" },
+        code: "app.Use(async (ctx, next) =>\n{\n    // request line\n    var method = ctx.Request.Method;          // \"GET\"\n    var path   = ctx.Request.Path;            // \"/api/orders/1042\"\n    var query  = ctx.Request.QueryString;     // \"\" here\n\n    // headers\n    var accept = ctx.Request.Headers.Accept;  // \"application/json\"\n\n    await next();  // hand it to the next desk\n\n    // on the way out the response is already decided\n    var code = ctx.Response.StatusCode;       // 200 or 404\n});" }
     ]},
 
     { key: "tradeoffs", blocks: [
       { t: "tradeoff",
         pros: {
           en: [
-            "Text framing is trivially debuggable — curl, telnet and a log file are enough",
-            "Self-describing messages let intermediaries cache, route and inspect without app knowledge",
-            "Stateless framing means any node can serve any request",
-            "Chunked encoding allows streaming a response of unknown length"
+            "Plain text means you can read a request with your eyes and reproduce it with curl.",
+            "Headers are open-ended, so proxies and caches can add information without breaking anyone.",
+            "Every language and device already speaks it, so no shared library is required.",
+            "Clear separation of metadata (headers) from payload (body) makes routing decisions cheap."
           ],
           ar: [
-            "الـ framing النصي سهل التشخيص — curl و telnet وملف log تكفي",
-            "الرسائل ذاتية الوصف تتيح للوسطاء الـ caching والتوجيه والفحص دون معرفة بالتطبيق",
-            "الـ framing عديم الحالة يعني أن أي node يخدم أي request",
-            "الـ chunked encoding يسمح ببث response مجهول الطول"
+            "كونه نصاً عادياً يعني أنك تقرأ الـ request بعينك وتعيد إنتاجه بـ curl.",
+            "الـ headers مفتوحة، فيستطيع الـ proxies والـ caches إضافة معلومات دون كسر أحد.",
+            "كل لغة وكل جهاز يتحدثه بالفعل، فلا حاجة لمكتبة مشتركة.",
+            "الفصل الواضح بين البيانات الوصفية (headers) والحمولة (body) يجعل قرارات الـ routing رخيصة."
           ]
         },
         cons: {
           en: [
-            "Headers are repeated verbatim on every HTTP/1.1 request — pure overhead at high rps",
-            "Parsing text is far more CPU-expensive than a binary length-prefixed protocol",
-            "Ambiguous framing rules created a whole attack class (request smuggling)",
-            "One connection = one in-flight request in HTTP/1.1; pipelining never worked in practice"
+            "Headers repeat in full on every request, so a chatty client wastes bandwidth on the same cookie a thousand times.",
+            "Parsing text costs more CPU than reading a fixed binary layout.",
+            "In HTTP/1.1 one connection handles one request at a time, so a slow response blocks the ones behind it.",
+            "Anything not in a header or the body has nowhere to live, which pushes teams into inventing custom headers."
           ],
           ar: [
-            "الـ headers تتكرر حرفياً في كل request على HTTP/1.1 — عبء خالص عند معدلات عالية",
-            "تحليل النص أغلى على الـ CPU بكثير من بروتوكول ثنائي مسبوق بالطول",
-            "غموض قواعد الـ framing أنشأ فئة هجمات كاملة (request smuggling)",
-            "اتصال واحد = request واحد قيد التنفيذ في HTTP/1.1؛ والـ pipelining لم ينجح عملياً"
+            "الـ headers تتكرر كاملة في كل request، فالـ client كثير النداءات يهدر bandwidth على نفس الـ cookie ألف مرة.",
+            "تحليل النص يكلّف CPU أكثر من قراءة تنسيق binary ثابت.",
+            "في HTTP/1.1 الاتصال الواحد يخدم request واحداً في كل مرة، فالـ response البطيء يعطّل ما خلفه.",
+            "أي شيء ليس في header أو body لا مكان له، وهذا يدفع الفرق لاختراع headers خاصة."
           ]
         },
         limits: {
           en: [
-            "The request body can be read exactly once unless you explicitly buffer it",
-            "Header size limits are enforced before any of your middleware runs",
-            "Trailers exist in the spec but are poorly supported outside gRPC",
-            "You cannot change status code or headers after the first response byte is flushed"
+            "Servers cap total header size, commonly 8 KB, and reject bigger requests with 431.",
+            "URLs have practical length limits around 2 KB in proxies, so data belongs in the body.",
+            "Header names are case-insensitive but values are raw bytes, so non-ASCII values need encoding.",
+            "Once the body starts, status and headers are frozen for that response."
           ],
           ar: [
-            "الـ request body يُقرأ مرة واحدة فقط ما لم تُفعّل الـ buffering صراحة",
-            "حدود حجم الـ headers تُطبَّق قبل تشغيل أي middleware لديك",
-            "الـ trailers موجودة في المواصفة لكن دعمها ضعيف خارج gRPC",
-            "لا يمكنك تغيير الـ status code أو الـ headers بعد إرسال أول بايت من الـ response"
+            "الـ servers تضع حداً لحجم الـ headers، غالباً 8 KB، وترفض ما هو أكبر بـ 431.",
+            "الـ URLs لها حد عملي حول 2 KB في الـ proxies، فالبيانات مكانها الـ body.",
+            "أسماء الـ headers لا تفرّق بين الحروف الكبيرة والصغيرة، لكن القيم bytes خام، فالقيم غير الـ ASCII تحتاج ترميزاً.",
+            "بمجرد أن يبدأ الـ body تتجمّد الـ status والـ headers لذلك الـ response."
           ]
         },
         alts: {
           en: [
-            "HTTP/2 — binary frames, HPACK, multiplexed streams over one TCP connection",
-            "HTTP/3 over QUIC — removes TCP-level head-of-line blocking",
-            "gRPC — HTTP/2 plus protobuf, for internal service-to-service calls",
-            "WebSockets / SSE — when the interaction is a long-lived stream, not a request/response"
+            "HTTP/2: same parts, binary frames, many requests share one connection.",
+            "HTTP/3 over QUIC: same again, but a lost packet does not stall the other streams.",
+            "gRPC: a fixed schema over HTTP/2, smaller and faster, but not readable by hand.",
+            "WebSocket: one upgraded connection kept open for two-way messages instead of request and response."
           ],
           ar: [
-            "HTTP/2 — frames ثنائية وHPACK وstreams متعددة على اتصال TCP واحد",
-            "HTTP/3 فوق QUIC — يزيل الـ head-of-line blocking على مستوى TCP",
-            "gRPC — HTTP/2 مع protobuf، للاستدعاءات الداخلية بين الخدمات",
-            "WebSockets / SSE — حين يكون التفاعل تدفقاً طويل العمر لا request/response"
+            "HTTP/2: نفس الأجزاء، لكن binary frames، وعدة requests تتشارك اتصالاً واحداً.",
+            "HTTP/3 فوق QUIC: نفس الشيء، لكن ضياع packet لا يعطّل بقية الـ streams.",
+            "gRPC: schema ثابت فوق HTTP/2، أصغر وأسرع، لكن غير قابل للقراءة يدوياً.",
+            "WebSocket: اتصال واحد يُرقّى ويبقى مفتوحاً لرسائل ثنائية الاتجاه بدل request و response."
           ]
         }
       }
@@ -108,219 +159,254 @@ const httpAnatomyLesson = {
 
     { key: "mistakes", blocks: [
       { t: "mistake",
+        title: { en: "Setting a header after the body has started", ar: "ضبط header بعد بدء الـ body" },
+        body: {
+          en: "A developer added an exception-handling middleware that writes a JSON error and sets Response.StatusCode = 500. It worked in tests. In production, when a controller failed halfway through streaming a large order list, the middleware threw InvalidOperationException with the text that headers are read-only once the response has started. The client got a truncated 200 body and no error at all. Always check HasStarted before touching the response.",
+          ar: "أضاف مطوّر middleware لمعالجة الأخطاء يكتب JSON للخطأ ويضبط Response.StatusCode = 500. عمل في الاختبارات. في الإنتاج، حين فشل controller في منتصف بثّ قائمة orders كبيرة، رمى الـ middleware استثناء InvalidOperationException نصه أن الـ headers للقراءة فقط بعد بدء الـ response. وصل الـ client body مبتوراً بكود 200 وبلا أي خطأ. تحقق دائماً من HasStarted قبل لمس الـ response."
+        },
+        fix: "if (!ctx.Response.HasStarted)\n{\n    ctx.Response.Clear();\n    ctx.Response.StatusCode = 500;\n    await ctx.Response.WriteAsJsonAsync(problem);\n}\nelse\n{\n    logger.LogError(ex, \"Failed after response started; connection aborted\");\n    ctx.Abort();\n}" },
+      { t: "mistake",
         title: { en: "Reading the request body twice", ar: "قراءة الـ request body مرتين" },
-        body: { en: "An audit middleware reads Request.Body to log the payload, then the model binder finds an empty stream and every property binds to null. In test the payload is 200 bytes and someone had left a StreamReader with leaveOpen, so it 'worked'; in production a 4 KB payload silently deserializes to an empty object and orders are created with quantity 0.", ar: "middleware للتدقيق يقرأ Request.Body لتسجيل الـ payload، ثم يجد الـ model binder الـ stream فارغاً فتُربط كل الخصائص إلى null. في بيئة الاختبار كان الـ payload 200 بايت وترك أحدهم StreamReader بـ leaveOpen فبدا أنه «يعمل»؛ وفي الـ production يتحوّل payload بحجم 4 كيلوبايت بصمت إلى كائن فارغ فتُنشأ طلبات بكمية 0." },
-        fix: "app.Use(async (ctx, next) =>\n{\n    ctx.Request.EnableBuffering();\n    using var reader = new StreamReader(ctx.Request.Body, leaveOpen: true);\n    var body = await reader.ReadToEndAsync();\n    ctx.Request.Body.Position = 0;\n    await next();\n});" },
+        body: {
+          en: "An audit middleware read Request.Body to log the incoming JSON of POST /api/orders. Every request after that produced a 400 saying the body was empty. Request.Body is a forward-only stream: it can be read once, and the reader consumed it, so model binding found zero bytes. EnableBuffering makes the stream re-readable by keeping a copy.",
+          ar: "قرأ middleware للتدقيق الـ Request.Body ليسجّل الـ JSON الوارد إلى POST /api/orders. بعدها صار كل request يعطي 400 يقول إن الـ body فارغ. الـ Request.Body هو stream للأمام فقط: يُقرأ مرة واحدة، وقد استهلكه القارئ، فوجد الـ model binding صفر bytes. الدالة EnableBuffering تجعل الـ stream قابلاً لإعادة القراءة عبر الاحتفاظ بنسخة."
+        },
+        fix: "ctx.Request.EnableBuffering();\nusing var reader = new StreamReader(ctx.Request.Body, leaveOpen: true);\nvar raw = await reader.ReadToEndAsync();\nctx.Request.Body.Position = 0;   // rewind for model binding\nawait next();" },
       { t: "mistake",
-        title: { en: "Building absolute URLs from the Host header", ar: "بناء URLs مطلقة من الـ Host header" },
-        body: { en: "Password-reset links are generated as $\"https://{Request.Host}/reset?token=...\". An attacker sends Host: evil.test, receives the mail on behalf of a victim, and the link ships the reset token to their own server. Host is attacker-controlled input; it is only trustworthy if the reverse proxy overwrites it and you configure allowed hosts.", ar: "روابط إعادة تعيين كلمة المرور تُبنى بـ $\"https://{Request.Host}/reset?token=...\". يرسل مهاجم Host: evil.test فيصل البريد نيابة عن ضحية، ويحمل الرابط الـ reset token إلى سيرفره هو. الـ Host مدخل يتحكم فيه المهاجم؛ ولا يُوثق به إلا إذا كتبه الـ reverse proxy فوقه وضبطت أنت قائمة الـ allowed hosts." },
-        fix: "// appsettings.json\n\"AllowedHosts\": \"api.example.com;www.example.com\"\n// and build links from a configured PublicBaseUrl option, not Request.Host" },
+        title: { en: "Trusting Host and X-Forwarded-For blindly", ar: "الثقة العمياء بـ Host و X-Forwarded-For" },
+        body: {
+          en: "A rate limiter keyed on Request.Headers[\"X-Forwarded-For\"] — a header a proxy adds to say which client it received the request from. Behind a load balancer that did not overwrite it, a caller sent the header themselves and rotated a fake value per request, so every request looked like a new client and the limit never triggered. Only headers written by infrastructure you control are trustworthy; ASP.NET Core's ForwardedHeaders middleware exists to apply them safely and only from known proxy addresses.",
+          ar: "استخدم rate limiter مفتاحاً من Request.Headers[\"X-Forwarded-For\"] — وهو header يضيفه الـ proxy ليقول من أي client استلم الـ request. خلف load balancer لا يعيد كتابته، أرسل أحد المنادين الـ header بنفسه وغيّر قيمته المزيّفة في كل مرة، فبدا كل request عميلاً جديداً ولم يُفعّل الحد أبداً. الـ headers الموثوقة هي فقط ما تكتبه بنية تحتية تتحكم بها، و ForwardedHeaders middleware في ASP.NET Core موجود ليطبّقها بأمان ومن عناوين proxy معروفة فقط."
+        },
+        fix: "builder.Services.Configure<ForwardedHeadersOptions>(o =>\n{\n    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;\n    o.KnownProxies.Add(IPAddress.Parse(\"10.0.4.7\"));\n});\napp.UseForwardedHeaders();   // must run before anything that reads the IP" },
       { t: "mistake",
-        title: { en: "Trusting X-Forwarded-For without ForwardedHeaders", ar: "الثقة في X-Forwarded-For دون ForwardedHeaders" },
-        body: { en: "Rate limiting keys on the raw X-Forwarded-For header. A client sends its own value and gets an unlimited quota per fabricated IP; meanwhile audit logs record whatever the attacker typed. Without UseForwardedHeaders (and a KnownProxies list) RemoteIpAddress is the proxy's IP and the header is unvalidated user input.", ar: "الـ rate limiting يعتمد على قيمة X-Forwarded-For الخام. يرسل الـ client قيمته بنفسه فيحصل على حصة غير محدودة لكل IP مزيّف؛ وفي الوقت نفسه تسجّل سجلات التدقيق ما كتبه المهاجم. بدون UseForwardedHeaders (وقائمة KnownProxies) يكون RemoteIpAddress هو IP الـ proxy ويظل الـ header مدخلاً غير موثوق." },
-        fix: "builder.Services.Configure<ForwardedHeadersOptions>(o =>\n{\n    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;\n    o.KnownProxies.Add(IPAddress.Parse(\"10.0.0.7\"));\n});\napp.UseForwardedHeaders();" },
-      { t: "mistake",
-        title: { en: "Assuming Content-Length is always present", ar: "افتراض وجود Content-Length دائماً" },
-        body: { en: "An upload endpoint pre-allocates a byte[] of Request.ContentLength.Value. A client streaming with Transfer-Encoding: chunked sends no Content-Length, ContentLength is null, and the endpoint throws InvalidOperationException — a 500 for a perfectly legal request. The mirror image is worse: allocating a 200 MB array because the client claimed 200 MB." , ar: "endpoint للرفع يخصّص مسبقاً byte[] بحجم Request.ContentLength.Value. الـ client الذي يبث بـ Transfer-Encoding: chunked لا يرسل Content-Length، فتكون ContentLength تساوي null ويُرمى InvalidOperationException — أي 500 لـ request قانوني تماماً. والحالة المعاكسة أسوأ: تخصيص مصفوفة 200 ميغابايت لأن الـ client ادّعى 200 ميغابايت." },
-        fix: "await using var fs = File.Create(path);\nawait Request.Body.CopyToAsync(fs, ct); // stream it; never trust the declared length" },
-      { t: "mistake",
-        title: { en: "Writing headers after the response has started", ar: "كتابة headers بعد بدء إرسال الـ response" },
-        body: { en: "An exception filter tries to set StatusCode = 500 after the action already wrote 8 KB of JSON. Kestrel flushed the status line the moment the first buffer filled, so the assignment throws and the client receives a 200 with a truncated, invalid JSON body — the worst possible failure, because clients parse it as success.", ar: "exception filter يحاول ضبط StatusCode = 500 بعد أن كتب الـ action بالفعل 8 كيلوبايت من الـ JSON. Kestrel أرسل سطر الحالة لحظة امتلاء أول buffer، فيُرمى استثناء عند الإسناد ويستقبل الـ client استجابة 200 بجسم JSON مبتور غير صالح — وهو أسوأ فشل ممكن لأن العملاء يفسّرونه نجاحاً." },
-        fix: "if (!context.Response.HasStarted)\n    context.Response.StatusCode = StatusCodes.Status500InternalServerError;" },
-      { t: "mistake",
-        title: { en: "Ignoring RequestAborted", ar: "تجاهل RequestAborted" },
-        body: { en: "A search endpoint runs a 6-second query. The user hits refresh three times; the first two connections are already closed but the server keeps all three queries running because no CancellationToken was passed down. Under a refresh storm the database sees 3× the load it should, and the extra work is guaranteed to be thrown away.", ar: "endpoint بحث ينفّذ استعلاماً مدته 6 ثوانٍ. يضغط المستخدم تحديث ثلاث مرات؛ الاتصالان الأولان أُغلقا بالفعل لكن السيرفر يُبقي الاستعلامات الثلاثة تعمل لأن الـ CancellationToken لم يُمرَّر للأسفل. تحت عاصفة تحديث ترى قاعدة البيانات ثلاثة أضعاف الحمل الواجب، والعمل الزائد مصيره الإهمال حتماً." },
-        fix: "public async Task<IResult> Search(string q, CancellationToken ct)\n    => Results.Ok(await _repo.SearchAsync(q, ct));" }
+        title: { en: "Putting large data in the URL", ar: "وضع بيانات كبيرة في الـ URL" },
+        body: {
+          en: "A reporting screen sent selected order ids as a query string: /api/orders/export?ids=1042&ids=1043 and so on. With 400 selected orders the URL passed 9 KB, and nginx returned 414 URI Too Long before the request ever reached the service. The team saw an error with no application log line anywhere, because the application never received the request. Large or variable-length input belongs in a POST body.",
+          ar: "أرسلت شاشة تقارير معرّفات الـ orders المختارة في الـ query string: ‎/api/orders/export?ids=1042&ids=1043‎ وهكذا. مع 400 order تجاوز الـ URL تسعة كيلوبايت، فأرجع nginx الخطأ 414 URI Too Long قبل أن يصل الـ request إلى الخدمة أصلاً. رأى الفريق خطأً بلا أي سطر log في التطبيق، لأن التطبيق لم يستلم الـ request إطلاقاً. المدخلات الكبيرة أو المتغيّرة الطول مكانها body في POST."
+        },
+        fix: "// POST /api/orders/export\n// Content-Type: application/json\n// { \"ids\": [1042, 1043, 1044] }\napp.MapPost(\"/api/orders/export\", async (ExportRequest req, IExporter e)\n    => Results.File(await e.BuildAsync(req.Ids), \"text/csv\", \"orders.csv\"));" }
     ]},
 
     { key: "interview", blocks: [
       { t: "qa", level: "junior",
-        q: { en: "What are the parts of an HTTP request message?", ar: "ما مكوّنات رسالة الـ HTTP request؟" },
-        a: { en: "A request line (method, request target, HTTP version), a block of header field lines, an empty CRLF line marking the end of headers, and an optional body. In HTTP/2 the same information is carried as pseudo-headers plus HEADERS and DATA frames rather than text lines.", ar: "سطر request (method وrequest target وإصدار HTTP)، ثم كتلة من أسطر الـ header fields، ثم سطر CRLF فارغ يعلّم نهاية الـ headers، ثم body اختياري. في HTTP/2 تُنقل نفس المعلومات كـ pseudo-headers مع frames من نوع HEADERS و DATA بدلاً من أسطر نصية." } },
-      { t: "qa", level: "junior",
-        q: { en: "Why is the Host header mandatory in HTTP/1.1?", ar: "لماذا الـ Host header إلزامي في HTTP/1.1؟" },
-        a: { en: "Because one IP address serves many sites. The request target is usually just a path, so the server needs Host to pick the virtual host, the certificate binding and the routing table. Without it the server cannot know which of fifty applications you meant, and must answer 400.", ar: "لأن عنوان IP واحداً يخدم مواقع كثيرة. الـ request target غالباً مجرد path، فيحتاج السيرفر الـ Host ليختار الـ virtual host وربط الشهادة وجدول التوجيه. بدونه لا يعرف السيرفر أياً من خمسين تطبيقاً تقصد، فيجب أن يرد بـ 400." } },
+        q: { en: "What are the parts of an HTTP request?", ar: "ما أجزاء الـ HTTP request؟" },
+        a: {
+          en: "Three parts. First the request line, which is the method, the path and the version — GET /api/orders/1042 HTTP/1.1. Then zero or more header lines, each Name: value, carrying things like Host, Accept and Authorization. Then a blank line, and after it an optional body. A GET normally has no body; a POST usually carries JSON. The response has the same shape, except the first line is a status line: version, a three-digit code, and a short reason like 200 OK.",
+          ar: "ثلاثة أجزاء. أولاً الـ request line، وهو الـ method والـ path والنسخة — GET /api/orders/1042 HTTP/1.1. ثم صفر أو أكثر من أسطر الـ headers، كل واحد Name: value، ويحمل أشياء مثل Host و Accept و Authorization. ثم سطر فارغ، وبعده body اختياري. الـ GET عادةً بلا body، والـ POST غالباً يحمل JSON. والـ response له نفس الشكل، إلا أن السطر الأول هو status line: النسخة وكود من ثلاثة أرقام ونص قصير مثل 200 OK."
+        } },
       { t: "qa", level: "mid",
-        q: { en: "How does the server know the request body has ended?", ar: "كيف يعرف السيرفر أن الـ request body قد انتهى؟" },
-        a: { en: "Exactly one of: Transfer-Encoding: chunked, where a zero-length chunk terminates the body; a Content-Length header giving a byte count; or neither, meaning no body. Sending both is malformed and must be rejected, because a proxy and an origin that disagree about precedence is precisely how request smuggling works.", ar: "بواحدة فقط من: Transfer-Encoding: chunked حيث يُنهي chunk بطول صفر الـ body؛ أو Content-Length يعطي عدد bytes؛ أو لا شيء منهما، ما يعني عدم وجود body. إرسال الاثنين معاً مشوّه ويجب رفضه، لأن اختلاف الـ proxy والـ origin حول الأولوية هو بالضبط آلية عمل request smuggling." } },
+        q: { en: "How does the server know where the body ends?", ar: "كيف يعرف الـ server أين ينتهي الـ body؟" },
+        a: {
+          en: "Two ways, and exactly one of them is used per message. Normally the sender includes Content-Length, a header giving the body size in bytes, and the server reads that many bytes and stops. If the sender does not know the size ahead of time — it is streaming a generated report, say — it sends Transfer-Encoding: chunked instead, and writes the body as a series of pieces where each piece is prefixed with its own size in hex. A piece of size zero means the body is finished. If neither header is present, there is no body.",
+          ar: "طريقتان، وتُستخدم واحدة فقط في كل رسالة. عادةً يضع المرسل الـ header المسمّى Content-Length ويعطي حجم الـ body بالـ bytes، فيقرأ الـ server هذا العدد ثم يتوقف. وإن كان المرسل لا يعرف الحجم مسبقاً — كأن يبثّ تقريراً يُولَّد أثناء الإرسال — يرسل بدلاً منه Transfer-Encoding: chunked، ويكتب الـ body كسلسلة قطع كل قطعة مسبوقة بحجمها بالنظام الست عشري. والقطعة بحجم صفر تعني أن الـ body انتهى. وإن لم يوجد أي من الـ header الاثنين فلا يوجد body."
+        } },
       { t: "qa", level: "mid",
-        q: { en: "Your endpoint returns 400 for some clients but the breakpoint in your controller never hits. Where do you look?", ar: "الـ endpoint يرجع 400 لبعض العملاء لكن نقطة التوقف في الـ controller لا تُصاب أبداً. أين تبحث؟" },
-        a: { en: "Below the framework. The server rejected the message during parsing: a request line over 8 KB (414), headers over 32 KB total, usually a bloated cookie (431), an invalid header character, or a malformed chunked body. Reproduce with curl -v against the origin directly to see whether the proxy or Kestrel produced the response, then check Kestrel's limits and the proxy's own header size caps.", ar: "تحت الـ framework. السيرفر رفض الرسالة أثناء التحليل: سطر request يتجاوز 8 كيلوبايت (414)، أو headers مجموعها فوق 32 كيلوبايت وغالباً cookie متضخم (431)، أو محرف غير صالح في header، أو body chunked مشوّه. أعد الإنتاج بـ curl -v ضد الـ origin مباشرة لتعرف هل الـ proxy أم Kestrel هو من ردّ، ثم راجع حدود Kestrel وحدود حجم الـ headers في الـ proxy." } },
-      { t: "qa", level: "mid",
-        q: { en: "Why can you not read Request.Body twice, and what does EnableBuffering change?", ar: "لماذا لا تستطيع قراءة Request.Body مرتين، وما الذي يغيّره EnableBuffering؟" },
-        a: { en: "Body is a forward-only, non-seekable stream reading directly off the socket; consumed bytes are gone. EnableBuffering wraps it in a stream that retains what it reads — in memory up to a threshold (30 KB by default), then spilling to a temp file — and makes it seekable, so you can reset Position to 0. The cost is real: on a 10 MB upload you now pay disk I/O and a temp file for every request, so buffer selectively, not globally.", ar: "الـ Body هو stream أحادي الاتجاه غير قابل للـ seek يقرأ مباشرة من الـ socket؛ والـ bytes المستهلكة تختفي. الـ EnableBuffering يغلّفه بـ stream يحتفظ بما يقرؤه — في الذاكرة حتى عتبة معينة (30 كيلوبايت افتراضياً) ثم ينسكب إلى ملف مؤقت — ويجعله قابلاً للـ seek فتستطيع إعادة Position إلى 0. والتكلفة حقيقية: مع رفع 10 ميغابايت تدفع الآن disk I/O وملفاً مؤقتاً لكل request، لذا فعّل الـ buffering انتقائياً لا عالمياً." } },
+        q: { en: "When do you put something in a header versus the query string versus the body?", ar: "متى تضع الشيء في header مقابل query string مقابل body؟" },
+        a: {
+          en: "Headers carry information about the message, not the thing you are asking for: who you are, what format you accept, what your correlation id is. The query string identifies or filters the resource: page number, a search term, a sort order — it is part of the URL, so it is cached, logged and bookmarked. The body carries the payload you are sending: the order you want created. Practical rule: if it changes which resource you get, it goes in the URL; if it describes how the message should be handled, it goes in a header; if it is the data itself, it goes in the body. Never put secrets in the query string, because URLs end up in access logs.",
+          ar: "الـ headers تحمل معلومات عن الرسالة نفسها لا عن الشيء المطلوب: من أنت، وما الصيغ التي تقبلها، وما الـ correlation id. والـ query string يحدّد المورد أو يرشّحه: رقم الصفحة، كلمة بحث، ترتيب — وهو جزء من الـ URL، لذلك يُخزَّن في الـ cache ويُسجَّل في الـ logs ويُحفظ كرابط. والـ body يحمل البيانات التي ترسلها: الـ order الذي تريد إنشاءه. القاعدة العملية: إن كان يغيّر أي مورد تحصل عليه فمكانه الـ URL، وإن كان يصف كيفية معالجة الرسالة فمكانه header، وإن كان البيانات نفسها فمكانه الـ body. ولا تضع أسراراً في الـ query string أبداً، لأن الـ URLs تنتهي في access logs."
+        } },
       { t: "qa", level: "senior",
-        q: { en: "What actually changes when you move an internal API from HTTP/1.1 to HTTP/2?", ar: "ما الذي يتغيّر فعلياً عند نقل API داخلي من HTTP/1.1 إلى HTTP/2؟" },
-        a: { en: "Semantics stay identical; framing and connection economics change. You get multiplexed streams on one TCP connection, HPACK header compression, mandatory lowercase header names, pseudo-headers instead of a request line, and no Transfer-Encoding. What you also get is fewer connections — which is a problem if you sit behind an L4 load balancer, because all traffic from one client now pins to one backend and connection-count-based balancing stops working. And TCP-level head-of-line blocking still exists: one lost packet stalls every stream on that connection, which is exactly what HTTP/3 over QUIC fixes.", ar: "الـ semantics تبقى كما هي؛ ما يتغيّر هو الـ framing واقتصاديات الاتصال. تحصل على streams متعددة على اتصال TCP واحد، وضغط headers بـ HPACK، وأسماء headers صغيرة الحروف إلزامياً، وpseudo-headers بدل سطر الـ request، وبلا Transfer-Encoding. وتحصل أيضاً على عدد اتصالات أقل — وهذه مشكلة إن كنت خلف load balancer من الطبقة الرابعة، لأن كل حركة الـ client تلتصق الآن بـ backend واحد ويتوقف التوزيع المبني على عدد الاتصالات عن العمل. كما أن head-of-line blocking على مستوى TCP ما زال قائماً: فقدان packet واحد يوقف كل الـ streams على ذلك الاتصال، وهو تحديداً ما يعالجه HTTP/3 فوق QUIC." } },
+        q: { en: "Why can't you change the status code after you have written to the body?", ar: "لماذا لا تستطيع تغيير الـ status code بعد الكتابة في الـ body؟" },
+        a: {
+          en: "Because HTTP is ordered bytes on a connection. The status line and headers physically come first, so the server has to send them before it can send any body byte. ASP.NET Core buffers them until the first write, then flushes and flips Response.HasStarted to true. Anything you set after that would have to travel back in time. The practical consequence is for streaming endpoints: once you have started writing a large JSON array and then hit an error on row 40,000, you cannot turn the 200 into a 500. Your only honest options are to abort the connection so the client sees a broken transfer, or to design the response so failure is representable inside the body.",
+          ar: "لأن الـ HTTP هو bytes مرتّبة على اتصال. الـ status line والـ headers تأتي أولاً فيزيائياً، فيجب على الـ server إرسالها قبل أن يرسل أي بايت من الـ body. و ASP.NET Core يحتفظ بها في الذاكرة حتى أول كتابة، ثم يرسلها ويجعل Response.HasStarted تساوي true. وأي شيء تضبطه بعد ذلك يحتاج للعودة بالزمن. الأثر العملي يظهر في الـ endpoints التي تبثّ: إذا بدأت كتابة مصفوفة JSON كبيرة ثم واجهت خطأ عند السطر أربعين ألفاً، لا تستطيع تحويل الـ 200 إلى 500. خياراك الصادقان هما إنهاء الاتصال فيرى الـ client نقلاً مقطوعاً، أو تصميم الـ response بحيث يكون الفشل قابلاً للتمثيل داخل الـ body."
+        } },
       { t: "qa", level: "senior",
-        q: { en: "Requests to one endpoint intermittently fail with a client-side 'connection reset'. Server logs show nothing. Explain a plausible mechanism.", ar: "requests إلى endpoint واحد تفشل متقطعاً بـ «connection reset» عند الـ client، وسجلات السيرفر لا تظهر شيئاً. اشرح آلية محتملة." },
-        a: { en: "Idle-timeout race on a pooled keep-alive connection. The client picks a connection from its pool at the same instant the server (or an intermediate NAT/idle-timeout, often 60–350 s) decides it is idle and closes it. The client's request lands on a half-closed socket and gets a reset before any server-side request object exists — hence no log line. Fixes: keep the client's connection lifetime shorter than the server's KeepAliveTimeout (PooledConnectionIdleTimeout on SocketsHttpHandler), and make idempotent requests retry once on a transport-level failure.", ar: "سباق مهلة الخمول على اتصال keep-alive من الـ pool. يختار الـ client اتصالاً من الـ pool في نفس اللحظة التي يقرر فيها السيرفر (أو NAT وسيط بمهلة خمول 60–350 ثانية غالباً) أنه خامل فيغلقه. فيهبط الـ request على socket نصف مغلق ويحصل على reset قبل وجود أي كائن request على السيرفر — ولذلك لا يوجد سطر log. الحل: اجعل عمر الاتصال عند الـ client أقصر من KeepAliveTimeout في السيرفر (PooledConnectionIdleTimeout في SocketsHttpHandler)، واجعل الـ requests الـ idempotent تعيد المحاولة مرة واحدة عند فشل على مستوى النقل." } },
+        q: { en: "A request works from curl but fails from the browser. Where do you look?", ar: "الـ request ينجح من curl ويفشل من المتصفح. أين تبحث؟" },
+        a: {
+          en: "The browser sends a different request, so compare them side by side rather than guessing. Three usual causes. First, CORS: for anything other than a simple GET the browser first sends an OPTIONS request, called a preflight, asking whether the origin is allowed; if the server does not answer it correctly the real request is never sent, and the failure appears in the browser console but nowhere in your server logs. Second, cookies: the browser attaches them automatically and curl does not, so an expired session cookie can produce a 401 only in the browser. Third, headers the browser adds on its own, like Origin, Referer and Sec-Fetch-Site, which a strict gateway rule may reject. Open the network tab, copy the failing request as curl, and diff it against your working one.",
+          ar: "المتصفح يرسل request مختلفاً، فقارن الاثنين جنباً إلى جنب بدل التخمين. الأسباب الشائعة ثلاثة. الأول الـ CORS: لأي شيء غير GET بسيط يرسل المتصفح أولاً request بالـ method المسمّى OPTIONS، يُسمّى preflight، ليسأل هل الـ origin مسموح؛ وإن لم يجب الـ server عليه بشكل صحيح لا يُرسل الـ request الحقيقي أبداً، ويظهر الفشل في console المتصفح ولا يظهر في logs الـ server إطلاقاً. الثاني الـ cookies: المتصفح يرفقها تلقائياً و curl لا يفعل، فقد يعطي session cookie منتهٍ خطأ 401 في المتصفح فقط. الثالث headers يضيفها المتصفح من نفسه مثل Origin و Referer و Sec-Fetch-Site، وقد ترفضها قاعدة صارمة في الـ gateway. افتح تبويب الشبكة، وانسخ الـ request الفاشل بصيغة curl، وقارنه بالناجح."
+        } },
       { t: "qa", level: "staff",
-        q: { en: "Three teams each hand-roll header handling — correlation IDs, forwarded headers, size limits — and each gets it subtly wrong. How do you fix this structurally?", ar: "ثلاثة فرق يكتب كل منها معالجة الـ headers يدوياً — correlation IDs، forwarded headers، حدود الحجم — وكل منها يخطئ بشكل دقيق. كيف تعالج ذلك هيكلياً؟" },
-        a: { en: "Move the concern out of application code entirely. Terminate the HTTP edge in one place — a gateway or an ingress layer that overwrites Host and X-Forwarded-*, strips client-supplied correlation headers and mints its own, and enforces body and header limits — so no service can be lied to. Then ship a single internal package that wires the standard middleware in a fixed order and fails startup if a service configures forwarded headers itself. Complement it with a conformance test suite every service runs in CI (oversized cookie, chunked body, double Content-Length, spoofed X-Forwarded-For) so the contract is verified, not documented. The measure of success is that a new service gets this right with zero HTTP knowledge, and the number of places that can get it wrong is one.", ar: "أخرِج الاهتمام من كود التطبيق كلياً. أنهِ حافة الـ HTTP في مكان واحد — gateway أو طبقة ingress تكتب فوق الـ Host و X-Forwarded-* وتحذف correlation headers القادمة من العميل وتصكّ واحداً خاصاً بها وتفرض حدود الـ body والـ headers — بحيث لا يمكن الكذب على أي خدمة. ثم أصدر حزمة داخلية واحدة تركّب الـ middleware القياسي بترتيب ثابت وتُفشل الإقلاع إذا ضبطت خدمة الـ forwarded headers بنفسها. وأكمل ذلك بمجموعة اختبارات مطابقة تشغّلها كل خدمة في الـ CI (cookie ضخم، body مقسّم، Content-Length مكرر، X-Forwarded-For مزيّف) ليصبح العقد مُتحقَّقاً منه لا موثّقاً فقط. مقياس النجاح أن تحصل خدمة جديدة على السلوك الصحيح بصفر معرفة بالـ HTTP، وأن يصبح عدد الأماكن التي يمكن أن تخطئ فيها واحداً." } }
+        q: { en: "Ten services log requests differently and incidents take hours to correlate. What do you change?", ar: "عشر خدمات تسجّل الـ requests بطرق مختلفة والحوادث تستغرق ساعات للربط. ماذا تغيّر؟" },
+        a: {
+          en: "This is an organisational problem, so a code fix in one service does not solve it. I would agree one request-log contract across the org — method, matched route template rather than the raw path, status, duration in milliseconds, and a correlation id — and ship it as a single internal NuGet package that every service adds in one line, so the default is correct without anyone thinking about it. I would standardise on the W3C traceparent header for the correlation id, because proxies and client libraries already propagate it. Then I would make it enforceable rather than aspirational: a startup check that fails the build if the middleware is missing, a dashboard listing services that have not adopted it, and a single owner for the package. The measure of success is a specific number — median time to find every hop of one failing request — and I would publish it before and after.",
+          ar: "هذه مشكلة تنظيمية، فإصلاح الكود في خدمة واحدة لا يحلّها. سأتفق على عقد واحد لتسجيل الـ requests عبر المؤسسة — الـ method، وقالب الـ route المطابق بدل الـ path الخام، والـ status، والمدة بالمللي ثانية، و correlation id — وأشحنه كحزمة NuGet داخلية واحدة تضيفها كل خدمة بسطر واحد، ليكون الوضع الافتراضي صحيحاً دون أن يفكر أحد. وسأوحّد الـ correlation id على الـ header المعياري traceparent من W3C، لأن الـ proxies ومكتبات الـ clients تمرّره أصلاً. ثم أجعله قابلاً للإلزام لا مجرد أمنية: فحص عند الإقلاع يُفشل البناء إن غاب الـ middleware، ولوحة تعرض الخدمات التي لم تعتمده، ومالك واحد للحزمة. ومقياس النجاح رقم محدد — الوقت الوسيط للعثور على كل محطة لـ request فاشل واحد — وسأنشره قبل وبعد."
+        } }
     ]},
 
     { key: "codereview", blocks: [
       { t: "review", severity: "high",
-        title: { en: "Consuming the body in middleware", ar: "استهلاك الـ body داخل middleware" },
-        bad: "app.Use(async (ctx, next) =>\n{\n    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();\n    _logger.LogInformation(\"Payload: {Body}\", body);\n    await next();\n});",
-        good: "app.Use(async (ctx, next) =>\n{\n    if (ctx.Request.ContentLength is > 0 and < 32_768)\n    {\n        ctx.Request.EnableBuffering();\n        using var reader = new StreamReader(ctx.Request.Body, leaveOpen: true);\n        _logger.LogDebug(\"Payload: {Body}\", await reader.ReadToEndAsync());\n        ctx.Request.Body.Position = 0;\n    }\n    await next();\n});",
-        why: { en: "The bad version disposes the request stream and leaves nothing for the model binder, so every downstream DTO binds to null while returning 200. It also logs unbounded payloads — a 50 MB upload becomes a 50 MB log line and likely an LOH allocation. The good version buffers only small bodies, rewinds the stream, keeps it open, and logs at Debug so production log volume does not explode.", ar: "النسخة السيئة تتخلّص من stream الـ request ولا تترك شيئاً للـ model binder، فتُربط كل الـ DTOs في الأسفل إلى null بينما تُرجع 200. كما تسجّل payloads بلا حدّ — رفع 50 ميغابايت يتحوّل إلى سطر log بحجم 50 ميغابايت وعلى الأرجح تخصيص على الـ LOH. النسخة الجيدة تخزّن الأجسام الصغيرة فقط، وتعيد لفّ الـ stream، وتبقيه مفتوحاً، وتسجّل على مستوى Debug حتى لا ينفجر حجم الـ logs في الـ production." },
-      },
+        title: { en: "Middleware consumes the body and breaks every handler behind it", ar: "middleware يستهلك الـ body ويكسر كل handler خلفه" },
+        bad: "app.Use(async (ctx, next) =>\n{\n    using var reader = new StreamReader(ctx.Request.Body);\n    var body = await reader.ReadToEndAsync();\n    logger.LogInformation(\"Body: {Body}\", body);\n    await next();          // body stream is now at the end\n});",
+        good: "app.Use(async (ctx, next) =>\n{\n    ctx.Request.EnableBuffering();\n    using var reader = new StreamReader(ctx.Request.Body, leaveOpen: true);\n    var body = await reader.ReadToEndAsync();\n    ctx.Request.Body.Position = 0;\n    logger.LogInformation(\"Body: {Body}\", Redact(body));\n    await next();\n});",
+        why: {
+          en: "Request.Body is a forward-only stream, meaning it can be read from start to end exactly once. The bad version reads it fully, so model binding downstream sees an empty body and every POST returns 400 with a message about a missing or invalid payload. EnableBuffering keeps a copy so the stream can be rewound, and leaveOpen stops the StreamReader from closing it. The good version also redacts, because request bodies routinely contain passwords and card numbers that must not reach a log store.",
+          ar: "الـ Request.Body هو stream للأمام فقط، أي يمكن قراءته من البداية إلى النهاية مرة واحدة بالضبط. النسخة السيئة تقرأه كاملاً، فيرى الـ model binding بعدها body فارغاً ويرجع كل POST بخطأ 400 يتحدث عن حمولة ناقصة أو غير صالحة. الدالة EnableBuffering تحتفظ بنسخة فيمكن إرجاع الـ stream للبداية، و leaveOpen تمنع الـ StreamReader من إغلاقه. والنسخة الجيدة تحجب البيانات الحساسة أيضاً، لأن الـ request bodies تحوي عادةً كلمات مرور وأرقام بطاقات يجب ألا تصل إلى مخزن الـ logs."
+        } },
       { t: "review", severity: "medium",
-        title: { en: "Hand-parsing a header instead of using the typed accessor", ar: "تحليل header يدوياً بدل استخدام الـ accessor المُنمَّط" },
-        bad: "var auth = ctx.Request.Headers[\"Authorization\"].ToString();\nvar token = auth.Split(\" \")[1];\nvar lang = ctx.Request.Headers[\"Accept-Language\"].ToString().Split(\",\")[0];",
-        good: "if (!AuthenticationHeaderValue.TryParse(ctx.Request.Headers.Authorization, out var auth)\n    || !string.Equals(auth.Scheme, \"Bearer\", StringComparison.OrdinalIgnoreCase)\n    || string.IsNullOrEmpty(auth.Parameter))\n{\n    return Results.Unauthorized();\n}\n\nvar lang = ctx.Request.GetTypedHeaders()\n                      .AcceptLanguage\n                      .OrderByDescending(x => x.Quality ?? 1)\n                      .FirstOrDefault()?.Value.Value;",
-        why: { en: "A missing Authorization header makes Split(\" \")[1] throw IndexOutOfRangeException — a 500 where the correct answer is 401, and an unauthenticated caller can trigger it at will. The Accept-Language line ignores q-values entirely, so a client sending 'en;q=0.2, ar;q=0.9' is served English. Typed header accessors handle absence, duplicates, casing and quality ordering, and they read from the parsed slices rather than allocating new strings on every request.", ar: "غياب الـ Authorization header يجعل Split(\" \")[1] يرمي IndexOutOfRangeException — أي 500 حيث الإجابة الصحيحة 401، ويستطيع متصل غير مُصادَق إطلاقه متى شاء. وسطر الـ Accept-Language يتجاهل قيم الـ q تماماً، فالـ client الذي يرسل 'en;q=0.2, ar;q=0.9' يُخدم بالإنجليزية. الـ accessors المُنمَّطة تعالج الغياب والتكرار وحالة الأحرف وترتيب الجودة، وتقرأ من الشرائح المحلَّلة بدل تخصيص strings جديدة في كل request." }
-      }
+        title: { en: "Building a URL by string concatenation", ar: "بناء URL بدمج النصوص" },
+        bad: "var url = $\"{baseUrl}/api/orders?status={status}&customer={name}\";\nvar res = await http.GetAsync(url);",
+        good: "var url = QueryHelpers.AddQueryString($\"{baseUrl}/api/orders\", new Dictionary<string, string?>\n{\n    [\"status\"]   = status,\n    [\"customer\"] = name\n});\nvar res = await http.GetAsync(url);",
+        why: {
+          en: "A query string is not free text: characters like &, =, ? and space have structural meaning and must be percent-encoded, meaning replaced by a % and two hex digits. A customer named \"Smith & Sons\" turns the value into a second parameter, so the server sees customer=Smith and an unknown parameter called Sons. That is a silent wrong result, not an error. QueryHelpers.AddQueryString encodes each value correctly, and skips keys whose value is null instead of sending the literal text null.",
+          ar: "الـ query string ليس نصاً حراً: رموز مثل & و = و ؟ والمسافة لها معنى بنيوي ويجب ترميزها بصيغة percent-encoding، أي استبدالها بعلامة % ورقمين ست عشريين. عميل اسمه \"Smith & Sons\" يحوّل القيمة إلى parameter ثانٍ، فيرى الـ server أن customer=Smith وأن هناك parameter مجهولاً اسمه Sons. وهذه نتيجة خاطئة صامتة لا خطأ ظاهر. والدالة QueryHelpers.AddQueryString ترمّز كل قيمة بشكل صحيح، وتتجاهل المفاتيح ذات القيمة null بدل إرسال كلمة null نصاً."
+        } }
     ]},
 
     { key: "sysdesign", blocks: [
-      { t: "p", en: "Request anatomy is what makes intermediaries possible. A CDN, an L7 load balancer, an API gateway and a WAF all work by reading the first few hundred bytes of a request — method, path, Host, a handful of headers — and making a routing or caching decision without understanding the application at all. Every design where you say 'the gateway will handle that' rests on the request being self-describing at the front.", ar: "تشريح الـ request هو ما يجعل الوسطاء ممكنين. الـ CDN والـ load balancer من الطبقة السابعة والـ API gateway والـ WAF جميعها تعمل بقراءة أول بضع مئات من bytes الـ request — الـ method والـ path والـ Host وحفنة headers — واتخاذ قرار توجيه أو caching دون أي فهم للتطبيق. كل تصميم تقول فيه «الـ gateway سيتولى ذلك» يستند إلى كون الـ request ذاتي الوصف من مقدمته." },
-      { t: "p", en: "It also determines where a boundary can exist. You can only put a cache in front of an endpoint if the cache key is derivable from the request line plus a declared Vary set. You can only stream a large export if the framing supports unknown length. And you can only fail over mid-flight if the request is idempotent and small enough to replay — all properties of the message, not of your code.", ar: "كما أنه يحدد أين يمكن أن يوجد حدّ. لا تستطيع وضع cache أمام endpoint إلا إذا كان مفتاح الـ cache مشتقاً من سطر الـ request مع مجموعة Vary معلنة. ولا تستطيع بثّ تصدير ضخم إلا إذا دعم الـ framing طولاً مجهولاً. ولا تستطيع التحويل إلى نسخة أخرى أثناء الطيران إلا إذا كان الـ request مثالياً (idempotent) وصغيراً بما يكفي لإعادة إرساله — وكلها خصائص للرسالة لا لكودك." },
+      { t: "p",
+        en: "In a real system your service is rarely the first thing to touch a request. A typical path is client, then CDN, then load balancer, then API gateway, then your service. Each hop parses the same request text, may rewrite the path, add or drop headers, and enforce its own size and time limits. Every one of them can return a response your application never sees, which is why an error with no application log line almost always means a hop in front of you answered.",
+        ar: "في نظام حقيقي نادراً ما تكون خدمتك أول من يلمس الـ request. المسار المعتاد هو client ثم CDN ثم load balancer ثم API gateway ثم خدمتك. وكل محطة تحلّل نفس نص الـ request، وقد تعيد كتابة الـ path، وتضيف أو تحذف headers، وتفرض حدودها الخاصة للحجم والوقت. وكل واحدة منها تستطيع إرجاع response لا تراه خدمتك أبداً، ولهذا فإن خطأً بلا أي سطر log في التطبيق يعني غالباً أن محطة أمامك هي التي أجابت." },
       { t: "ul",
         en: [
-          "Edge routing: path and Host prefixes decide which service cluster a request reaches, before authentication",
-          "Trust boundary: the gateway rewrites Host and X-Forwarded-*, so downstream services can treat them as trusted",
-          "Timeout budget: each hop must set a timeout shorter than its caller's, or the client gives up while three tiers keep working",
-          "Body size policy: enforce the maximum at the edge, so a 2 GB upload never reaches an application thread",
-          "Streaming endpoints: exports and log tails need chunked or HTTP/2 DATA framing, plus a proxy configured not to buffer the whole response"
+          "Decide once, org-wide, whether the /api prefix is stripped by the proxy or kept, and write it in the deployment template — this is exactly the bug in this lesson's example.",
+          "Set the maximum request body size deliberately at every hop; the smallest limit in the chain is the real limit, and a mismatch produces a 413 that your service cannot explain.",
+          "Generate a correlation id at the outermost hop and pass it down in the standard traceparent header, so all hops log the same id for one request.",
+          "Keep header budgets in mind: large auth tokens plus cookies can exceed the common 8 KB header limit and cause a 431 only for logged-in users.",
+          "Make timeouts shrink as you go inward, so an inner service never keeps working on a request the gateway has already given up on."
         ],
         ar: [
-          "التوجيه عند الحافة: بادئات الـ path والـ Host تقرر أي مجموعة خدمات يصلها الـ request، قبل المصادقة",
-          "حدّ الثقة: الـ gateway يعيد كتابة الـ Host و X-Forwarded-*، فتستطيع الخدمات في الأسفل اعتبارها موثوقة",
-          "ميزانية المهل: كل قفزة يجب أن تضبط مهلة أقصر من مهلة مستدعيها، وإلا استسلم الـ client بينما تواصل ثلاث طبقات العمل",
-          "سياسة حجم الـ body: افرض الحد الأقصى عند الحافة، فلا يصل رفع بحجم 2 غيغابايت إلى thread في التطبيق أبداً",
-          "نقاط الـ streaming: التصدير ومتابعة الـ logs تحتاج chunked أو DATA framing في HTTP/2، مع proxy مضبوط ألا يخزّن الاستجابة كاملة"
-        ]
-      },
-      { t: "callout", kind: "warn", en: "Any header a client can send, a client will send. Treat every inbound header as untrusted input unless a proxy you control overwrites it — and make that overwrite explicit in the proxy config, not an assumption in a wiki page.", ar: "أي header يستطيع الـ client إرساله سيرسله فعلاً. عامل كل header وارد كمدخل غير موثوق ما لم يكتب فوقه proxy تتحكم فيه — واجعل تلك الكتابة صريحة في إعدادات الـ proxy لا افتراضاً في صفحة wiki." }
+          "قرّر مرة واحدة على مستوى المؤسسة هل يحذف الـ proxy البادئة /api أم يبقيها، واكتب ذلك في قالب النشر — فهذا بالضبط هو الخلل في مثال هذا الدرس.",
+          "اضبط الحد الأقصى لحجم الـ request body بشكل مقصود في كل محطة؛ فأصغر حد في السلسلة هو الحد الفعلي، وعدم التوافق يُنتج خطأ 413 لا تستطيع خدمتك تفسيره.",
+          "ولّد correlation id عند المحطة الأبعد ومرّره للداخل في الـ header المعياري traceparent، فتسجّل كل المحطات نفس المعرّف للـ request الواحد.",
+          "انتبه لميزانية الـ headers: الـ auth tokens الكبيرة مع الـ cookies قد تتجاوز حد 8 KB الشائع فتسبّب خطأ 431 للمستخدمين المسجّلين فقط.",
+          "اجعل المُهل تتناقص كلما اتجهت للداخل، فلا تستمر خدمة داخلية في العمل على request تخلّى عنه الـ gateway بالفعل."
+        ] },
+      { t: "callout", kind: "tip",
+        en: "Add one middleware at the very top of the pipeline that logs method, path, status and duration for every request, and put it in a shared package. It costs microseconds and it is the single log line that answers most production questions about whether a request even arrived.",
+        ar: "أضف middleware واحداً في أعلى الـ pipeline يسجّل الـ method والـ path والـ status والمدة لكل request، وضعه في حزمة مشتركة. تكلفته ميكروثوانٍ، وهو سطر الـ log الوحيد الذي يجيب على معظم أسئلة الإنتاج حول ما إذا كان الـ request قد وصل أصلاً."
+      }
     ]},
 
     { key: "perf", blocks: [
       { t: "kv", rows: [
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Kestrel parses from pooled buffers with no string allocation until a header is read; EnableBuffering reverses that by copying up to 30 KB per request to memory and beyond that to a temp file", ar: "Kestrel يحلّل من buffers مجمّعة دون تخصيص string حتى تُقرأ قيمة header؛ والـ EnableBuffering يعكس ذلك بنسخ حتى 30 كيلوبايت لكل request إلى الذاكرة وما زاد إلى ملف مؤقت" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Text parsing is the dominant per-request cost at high rps; header count matters more than header size, since each field is a separate scan and lookup", ar: "تحليل النص هو التكلفة الغالبة لكل request عند المعدلات العالية؛ وعدد الـ headers أهم من حجمها لأن كل حقل مسح وبحث مستقل" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "~800 B of headers repeated on every HTTP/1.1 request ≈ 8 MB/s inbound at 10k rps; HPACK cuts this to tens of bytes after the first request on a connection", ar: "~800 بايت headers مكررة في كل request على HTTP/1.1 ≈ 8 ميغابايت/ثانية واردة عند 10 آلاف request/ثانية؛ وHPACK يخفضها إلى عشرات البايتات بعد أول request على الاتصال" } },
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "Connection setup dominates short requests: ~1 RTT TCP + 1–2 RTT TLS. Reusing a pooled connection removes 80–120 ms on a 40 ms RTT link", ar: "إعداد الاتصال يهيمن على الـ requests القصيرة: ~1 RTT للـ TCP + 1–2 RTT للـ TLS. إعادة استخدام اتصال من الـ pool تحذف 80–120 ملّي ثانية على وصلة RTT=40" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "Concurrency is bounded by connections and sockets, not CPU; HTTP/2 multiplexing raises the ceiling per connection but concentrates a client's load on one backend", ar: "التزامن محكوم بعدد الاتصالات والـ sockets لا بالـ CPU؛ وتعدد الإرسال في HTTP/2 يرفع السقف لكل اتصال لكنه يركّز حمل الـ client على backend واحد" } },
-        { k: { en: "Disk", ar: "القرص" }, v: { en: "Multipart uploads and buffered bodies above the memory threshold hit the temp directory — a silent per-request disk write that shows up as latency variance, not CPU", ar: "رفع الملفات multipart والأجسام المخزّنة فوق عتبة الذاكرة تصل إلى مجلد الملفات المؤقتة — كتابة قرص صامتة لكل request تظهر كتذبذب في زمن الاستجابة لا كحمل CPU" } }
+        { k: { en: "Network", ar: "Network" },
+          v: { en: "Headers are re-sent in full on every HTTP/1.1 request. A 4 KB cookie on 200 requests per page load costs 800 KB of pure overhead. HTTP/2 header compression removes most of it.", ar: "الـ headers تُعاد كاملة في كل request على HTTP/1.1. فـ cookie بحجم 4 KB مع 200 request لكل صفحة يكلّف 800 KB من الحمل الزائد وحده. وضغط الـ headers في HTTP/2 يزيل معظمه." } },
+        { k: { en: "Latency", ar: "Latency" },
+          v: { en: "A new HTTPS connection costs a DNS lookup plus a TCP handshake plus a TLS handshake — often 100-300 ms before a single byte of your request is sent. Reusing connections through a pooled HttpClient removes that cost from every call after the first.", ar: "الاتصال HTTPS الجديد يكلّف بحثاً في الـ DNS ثم TCP handshake ثم TLS handshake — غالباً بين 100 و300 مللي ثانية قبل إرسال بايت واحد من الـ request. وإعادة استخدام الاتصالات عبر HttpClient مُجمَّع تزيل هذه التكلفة من كل نداء بعد الأول." } },
+        { k: { en: "Memory", ar: "Memory" },
+          v: { en: "Reading a body with ReadToEndAsync allocates the whole payload as one string. A 10 MB upload on 50 concurrent requests is 500 MB of managed memory and repeated large-object-heap allocations. Stream or deserialise directly instead.", ar: "قراءة الـ body بـ ReadToEndAsync تحجز الحمولة كلها كنص واحد. رفع بحجم 10 MB على 50 request متزامناً يعني 500 MB من الذاكرة المُدارة وتخصيصات متكررة على large-object-heap. استخدم البثّ أو فكّ الترميز مباشرةً بدلاً من ذلك." } },
+        { k: { en: "CPU", ar: "CPU" },
+          v: { en: "Parsing the request line and headers is cheap — microseconds — but it happens on every request, so header-heavy traffic still shows up in profiles. Kestrel avoids most of it by not converting header bytes to strings until you ask for them.", ar: "تحليل الـ request line والـ headers رخيص — ميكروثوانٍ — لكنه يحدث في كل request، فالمرور المثقل بالـ headers يظهر في الـ profiles رغم ذلك. و Kestrel يتجنّب معظمه بعدم تحويل bytes الـ headers إلى نصوص حتى تطلبها." } },
+        { k: { en: "Scalability", ar: "Scalability" },
+          v: { en: "Each open connection holds a socket and buffers. Servers hit connection limits long before CPU limits, so keep-alive tuning and connection reuse decide how many clients one instance serves.", ar: "كل اتصال مفتوح يحجز socket و buffers. والـ servers تصطدم بحدود الاتصالات قبل حدود الـ CPU بكثير، لذلك ضبط الـ keep-alive وإعادة استخدام الاتصالات هما ما يحدّد كم client تخدمه النسخة الواحدة." } }
       ]}
     ]},
 
     { key: "debug", blocks: [
       { t: "ul",
         en: [
-          "curl -v --http1.1 https://api.example.com/orders — shows the exact request line, headers sent, and the raw response status line",
-          "curl --trace-ascii - to dump every byte in both directions, including chunk headers, when you suspect a framing problem",
-          "printf 'GET / HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n' | nc host 80 — hand-craft a raw request to prove whether the origin or a proxy produced a 400",
-          "dotnet-trace collect --providers Microsoft-AspNetCore-Server-Kestrel to see connection start/stop and request start/stop events with timings",
-          "Browser DevTools → Network → Timing, to separate DNS, TLS, 'waiting (TTFB)' and 'content download' rather than blaming the server for all of it",
-          "Wireshark or tcpdump -A -s0 'port 80' when TLS is terminated upstream and you need to see what the proxy actually forwarded"
+          "curl -v https://api.shop.example/api/orders/1042 — prints every request line and header it sends with >, and every response line with <. Compare the path here with what your service logs.",
+          "Kestrel debug logging: set Microsoft.AspNetCore.Server.Kestrel to Debug in appsettings, then look for the parsed request line and the reason a connection was closed.",
+          "Routing debug logging: set Microsoft.AspNetCore.Routing to Debug and look for the matched endpoint name, or its absence, which proves a 404 came from routing and not your handler.",
+          "mitmproxy or Fiddler between client and server — shows the request as it actually left the client, which is how you catch a header the SDK added or dropped.",
+          "tcpdump -A -s0 port 80 on the server for plain HTTP — shows the raw bytes when you suspect a proxy rewrote something and no application-level tool agrees."
         ],
         ar: [
-          "curl -v --http1.1 https://api.example.com/orders — يعرض سطر الـ request بدقة والـ headers المرسلة وسطر حالة الاستجابة الخام",
-          "curl --trace-ascii - لطباعة كل بايت في الاتجاهين، بما فيها ترويسات الـ chunks، عند الشك في مشكلة framing",
-          "printf 'GET / HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n' | nc host 80 — اصنع request خاماً يدوياً لتثبت هل الـ origin أم الـ proxy هو من أنتج الـ 400",
-          "dotnet-trace collect --providers Microsoft-AspNetCore-Server-Kestrel لرؤية أحداث بدء/إنهاء الاتصال وبدء/إنهاء الـ request مع أزمنتها",
-          "أدوات المتصفح ← Network ← Timing، للفصل بين DNS و TLS و«الانتظار (TTFB)» و«تنزيل المحتوى» بدل تحميل السيرفر المسؤولية كاملة",
-          "Wireshark أو tcpdump -A -s0 'port 80' حين يُنهى الـ TLS في الأعلى وتحتاج رؤية ما مرّره الـ proxy فعلاً"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "When a request fails only in production, reproduce it against the origin directly, bypassing the proxy. If the origin answers correctly, the bug is a header the proxy added, dropped or rewrote — compare the two header sets side by side before touching application code.", ar: "حين يفشل request في الـ production فقط، أعد إنتاجه ضد الـ origin مباشرة متجاوزاً الـ proxy. إن ردّ الـ origin بشكل صحيح، فالعطل header أضافه الـ proxy أو حذفه أو أعاد كتابته — قارن مجموعتَي الـ headers جنباً إلى جنب قبل لمس كود التطبيق." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "Wherever a request crosses an organizational boundary, someone is making a decision from the first few hundred bytes of it. Edge platforms route on Host and path; payment providers require an idempotency header on the request line's sibling fields; streaming APIs depend on chunked framing to send a response whose length nobody knows yet. These are not exotic cases — they are the ordinary shape of production traffic.", ar: "أينما عبر request حدّاً تنظيمياً، يتخذ أحدهم قراراً من أول بضع مئات من bytes منه. منصات الحافة توجّه اعتماداً على الـ Host والـ path؛ ومزودو الدفع يشترطون header للـ idempotency؛ وAPIs البث تعتمد على الـ chunked framing لإرسال استجابة لا يعرف أحد طولها بعد. هذه ليست حالات نادرة — بل هي الشكل المعتاد لحركة الـ production." },
-      { t: "ul",
-        en: [
-          "Payment platforms: an Idempotency-Key header on the request is the only thing standing between a retry and a double charge",
-          "Media and content delivery: CDNs serve from cache using only the method, path and Vary headers, never touching the origin",
-          "Chat and collaboration tools: long-lived connections upgraded from an ordinary HTTP request via Upgrade / :protocol negotiation",
-          "Data and reporting platforms: multi-gigabyte exports streamed with chunked framing because the row count is unknown when the response starts"
-        ],
-        ar: [
-          "منصات الدفع: header الـ Idempotency-Key على الـ request هو الشيء الوحيد الفاصل بين إعادة محاولة وخصم مزدوج",
-          "توصيل الوسائط والمحتوى: شبكات الـ CDN تخدم من الـ cache معتمدة على الـ method والـ path وheaders الـ Vary فقط، دون لمس الـ origin",
-          "أدوات المحادثة والتعاون: اتصالات طويلة العمر تُرقّى من request عادي عبر التفاوض بـ Upgrade / :protocol",
-          "منصات البيانات والتقارير: تصديرات بحجم غيغابايتات تُبثّ بـ chunked framing لأن عدد الصفوف مجهول لحظة بدء الاستجابة"
-        ]
+          "curl -v https://api.shop.example/api/orders/1042 — يطبع كل سطر و header يرسله بعلامة >، وكل سطر response بعلامة <. قارن الـ path هنا بما تسجّله خدمتك.",
+          "تفعيل logs الـ Kestrel: اضبط Microsoft.AspNetCore.Server.Kestrel على Debug في appsettings، ثم ابحث عن الـ request line بعد تحليله وعن سبب إغلاق الاتصال.",
+          "تفعيل logs الـ routing: اضبط Microsoft.AspNetCore.Routing على Debug وابحث عن اسم الـ endpoint المطابق، أو عن غيابه، وهو ما يثبت أن الـ 404 جاء من الـ routing لا من الـ handler.",
+          "استخدام mitmproxy أو Fiddler بين الـ client والـ server — يُظهر الـ request كما خرج فعلاً من الـ client، وهكذا تكتشف header أضافته أو حذفته الـ SDK.",
+          "الأمر tcpdump -A -s0 port 80 على الـ server لحركة HTTP غير المشفّرة — يُظهر الـ bytes الخام حين تشك أن proxy أعاد كتابة شيء ولا تتفق أدوات مستوى التطبيق معك."
+        ] },
+      { t: "callout", kind: "tip",
+        en: "In the browser network tab, right-click a failing request and choose Copy as cURL. You now have the exact request the browser sent, headers and cookies included. Run it in a terminal: if it fails there too the problem is server-side, and if it succeeds the problem is something the browser adds, usually CORS or a cookie.",
+        ar: "في تبويب الشبكة بالمتصفح، اضغط بالزر الأيمن على الـ request الفاشل واختر Copy as cURL. الآن لديك الـ request الذي أرسله المتصفح بالضبط، بما فيه الـ headers والـ cookies. شغّله في الطرفية: إن فشل هناك أيضاً فالمشكلة في جهة الـ server، وإن نجح فالمشكلة في شيء يضيفه المتصفح، غالباً CORS أو cookie."
       }
     ]},
 
+    { key: "realworld", blocks: [
+      { t: "p",
+        en: "Knowing the shape of a request stops being academic the moment a request crosses a boundary you do not own. Anywhere a third party generates the bytes, you cannot assume they look like what your own client sends, and the parts you must read carefully are the method, the exact path, the content type and the raw body.",
+        ar: "معرفة شكل الـ request تتوقّف عن كونها موضوعاً نظرياً في اللحظة التي يعبر فيها الـ request حدوداً لا تملكها. وحيثما ولّد طرف ثالث الـ bytes، لا يمكنك افتراض أنها تشبه ما يرسله client خاص بك، والأجزاء التي يجب قراءتها بدقة هي الـ method والـ path بالضبط ونوع المحتوى والـ body الخام." },
+      { t: "ul",
+        en: [
+          "Payment providers: webhook callbacks are signed over the exact raw body bytes, so any middleware that reads, reformats or re-serialises the body breaks signature verification and every payment notification is rejected.",
+          "Public API platforms: clients written in dozens of languages send subtly different requests, so servers must accept both Content-Type: application/json and application/json; charset=utf-8 rather than string-comparing the header.",
+          "File upload services: they read the Content-Length header up front to reject an oversized upload immediately, instead of buffering gigabytes only to fail at the end.",
+          "Mobile backends on poor networks: connection setup dominates, so these teams tune keep-alive and connection reuse far more aggressively than server-side handler time."
+        ],
+        ar: [
+          "مزوّدو الدفع: نداءات الـ webhook موقّعة على bytes الـ body الخام بالضبط، فأي middleware يقرأ الـ body أو يعيد تنسيقه أو يعيد ترميزه يكسر التحقق من التوقيع فتُرفض كل إشعارات الدفع.",
+          "منصات الـ API العامة: عملاؤها مكتوبون بعشرات اللغات ويرسلون requests مختلفة اختلافات دقيقة، لذلك يجب أن يقبل الـ server كلاً من Content-Type: application/json و application/json; charset=utf-8 بدل مقارنة الـ header كنص.",
+          "خدمات رفع الملفات: تقرأ الـ header المسمّى Content-Length مسبقاً لترفض الرفع الكبير فوراً، بدل تخزين جيجابايتات ثم الفشل في النهاية.",
+          "الخدمات الخلفية للموبايل على شبكات ضعيفة: زمن تأسيس الاتصال هو المهيمن، لذلك تضبط هذه الفرق الـ keep-alive وإعادة استخدام الاتصالات بجدّية أكبر بكثير من ضبط زمن الـ handler."
+        ] }
+    ]},
+
     { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Using nc or telnet, hand-type a raw GET request (request line, Host header, blank line) against a local ASP.NET Core app and read the raw response. Then repeat it omitting the Host header and record exactly what the server returns.", ar: "باستخدام nc أو telnet، اكتب يدوياً request خاماً من نوع GET (سطر الـ request، وHost header، وسطر فارغ) ضد تطبيق ASP.NET Core محلي واقرأ الاستجابة الخام. ثم كرّر المحاولة بحذف الـ Host header وسجّل بدقة ما يرجعه السيرفر." },
-      { t: "ex", diff: "medium", en: "Write a middleware that logs method, path, request byte count and elapsed milliseconds without breaking model binding. Prove it with an integration test that POSTs a 5 KB JSON body and asserts the bound DTO is fully populated.", ar: "اكتب middleware يسجّل الـ method والـ path وعدد bytes الـ request والزمن المنقضي بالمللي ثانية دون كسر الـ model binding. أثبت ذلك باختبار تكامل يرسل POST بجسم JSON حجمه 5 كيلوبايت ويتحقق أن الـ DTO المربوط مكتمل تماماً." },
-      { t: "ex", diff: "hard", en: "Build an endpoint that accepts an upload streamed with Transfer-Encoding: chunked (no Content-Length), writes it to disk without buffering the whole body in memory, honours RequestAborted, and returns 413 when the stream exceeds 10 MB. Verify with curl -T - and confirm memory stays flat for a 500 MB upload.", ar: "ابنِ endpoint يقبل رفعاً مبثوثاً بـ Transfer-Encoding: chunked (بلا Content-Length)، ويكتبه إلى القرص دون تخزين الـ body كاملاً في الذاكرة، ويحترم RequestAborted، ويرجع 413 عند تجاوز الـ stream حدّ 10 ميغابايت. تحقق بـ curl -T - وأكّد أن استهلاك الذاكرة يبقى ثابتاً مع رفع 500 ميغابايت." },
-      { t: "ex", diff: "senior", en: "Write a one-page HTTP edge contract for your services: which headers the gateway overwrites, which inbound headers are stripped, the maximum body and header sizes, the timeout budget per hop, and the correlation-ID policy. Then write three failing conformance tests (oversized cookie, double Content-Length, spoofed X-Forwarded-For) and make one existing service pass them.", ar: "اكتب صفحة واحدة تمثّل عقد حافة الـ HTTP لخدماتك: أي headers يكتب الـ gateway فوقها، وأي headers واردة تُحذف، والحد الأقصى لحجم الـ body والـ headers، وميزانية المهل لكل قفزة، وسياسة الـ correlation ID. ثم اكتب ثلاثة اختبارات مطابقة فاشلة (cookie ضخم، Content-Length مكرر، X-Forwarded-For مزيّف) واجعل خدمة قائمة واحدة تجتازها." }
+      { t: "ex", diff: "easy",
+        en: "Run curl -v against any endpoint of your own service and copy the output into a file. Label every line as request line, request header, blank line, status line, response header or body. You are done when you can point at the exact character sequence that separates headers from body.",
+        ar: "شغّل curl -v على أي endpoint في خدمتك وانسخ المخرجات إلى ملف. ثم صنّف كل سطر: request line أو request header أو سطر فارغ أو status line أو response header أو body. تكون قد أنجزت حين تستطيع الإشارة إلى تسلسل الحروف الذي يفصل الـ headers عن الـ body بالضبط." },
+      { t: "ex", diff: "medium",
+        en: "Write a middleware that logs method, path, status code and elapsed milliseconds for every request, and register it as the very first middleware. Prove it works by hitting a URL that does not exist: the log line must appear with status 404 even though no controller ran.",
+        ar: "اكتب middleware يسجّل الـ method والـ path والـ status code وعدد المللي ثوانٍ لكل request، وسجّله كأول middleware على الإطلاق. أثبت أنه يعمل بمناداة URL غير موجود: يجب أن يظهر سطر الـ log بحالة 404 رغم أنه لم يعمل أي controller." },
+      { t: "ex", diff: "hard",
+        en: "Write a middleware that reads and logs the raw request body without breaking model binding. Prove it with a POST endpoint that binds a model: the endpoint must still receive the full object after your middleware has already read the body once. Then add redaction so a field named password never reaches the log.",
+        ar: "اكتب middleware يقرأ ويسجّل الـ request body الخام دون كسر الـ model binding. أثبت ذلك عبر endpoint من نوع POST يربط نموذجاً: يجب أن يستقبل الـ endpoint الكائن كاملاً بعد أن قرأ الـ middleware الـ body مرة. ثم أضف حجباً بحيث لا يصل حقل اسمه password إلى الـ log أبداً." },
+      { t: "ex", diff: "senior",
+        en: "Open a raw TCP connection to your service with netcat and type an HTTP/1.1 request by hand, including Host and a correct Content-Length for a small JSON body. Then repeat it with a Content-Length one byte too large and describe exactly what the server does and why. Write up what that tells you about how the server finds the end of a body.",
+        ar: "افتح TCP connection خاماً إلى خدمتك باستخدام netcat واكتب request بصيغة HTTP/1.1 يدوياً، مع Host و Content-Length صحيح لـ body صغير بصيغة JSON. ثم كرّر التجربة بقيمة Content-Length أكبر ببايت واحد وصف بالضبط ما يفعله الـ server ولماذا. واكتب ما يخبرك به ذلك عن طريقة عثور الـ server على نهاية الـ body." }
     ]},
 
     { key: "refs", blocks: [
       { t: "ref", label: { en: "RFC 9110 — HTTP Semantics", ar: "RFC 9110 — دلالات الـ HTTP" }, url: "https://www.rfc-editor.org/rfc/rfc9110.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 9112 — HTTP/1.1 message framing", ar: "RFC 9112 — تأطير رسائل HTTP/1.1" }, url: "https://www.rfc-editor.org/rfc/rfc9112.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 9113 — HTTP/2", ar: "RFC 9113 — HTTP/2" }, url: "https://www.rfc-editor.org/rfc/rfc9113.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "Kestrel configuration options and limits", ar: "خيارات وحدود إعداد Kestrel" }, url: "https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/options", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "ASP.NET Core middleware pipeline", ar: "خط الـ middleware في ASP.NET Core" }, url: "https://learn.microsoft.com/aspnet/core/fundamentals/middleware/", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "System.IO.Pipelines — high-performance I/O", ar: "System.IO.Pipelines — إدخال/إخراج عالي الأداء" }, url: "https://learn.microsoft.com/dotnet/standard/io/pipelines", meta: { en: "Docs", ar: "توثيق" } }
+      { t: "ref", label: { en: "RFC 9112 — HTTP/1.1 message syntax", ar: "RFC 9112 — بنية رسالة HTTP/1.1" }, url: "https://www.rfc-editor.org/rfc/rfc9112.html", meta: { en: "Spec", ar: "مواصفة" } },
+      { t: "ref", label: { en: "MDN — HTTP messages", ar: "MDN — رسائل الـ HTTP" }, url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Messages", meta: { en: "Docs", ar: "توثيق" } },
+      { t: "ref", label: { en: "ASP.NET Core middleware", ar: "Middleware في ASP.NET Core" }, url: "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/", meta: { en: "Docs", ar: "توثيق" } }
     ]}
   ],
-
   quiz: [
     {
-      q: { en: "A request arrives with both Content-Length: 40 and Transfer-Encoding: chunked. What should a conforming server do?", ar: "يصل request يحمل Content-Length: 40 و Transfer-Encoding: chunked معاً. ما الذي يجب أن يفعله سيرفر مطابق للمواصفة؟" },
+      q: { en: "What exactly marks the end of the header section in an HTTP message?", ar: "ما الذي يحدّد بالضبط نهاية قسم الـ headers في رسالة HTTP؟" },
       options: [
-        { en: "Use Content-Length and ignore Transfer-Encoding", ar: "يستخدم Content-Length ويتجاهل Transfer-Encoding" },
-        { en: "Reject the message as malformed", ar: "يرفض الرسالة باعتبارها مشوّهة" },
-        { en: "Read whichever produces the larger body", ar: "يقرأ أيهما ينتج body أكبر" },
-        { en: "Buffer the body and let the application decide", ar: "يخزّن الـ body ويترك القرار للتطبيق" }
+        { en: "The Content-Length header", ar: "الـ header المسمّى Content-Length" },
+        { en: "An empty line, that is \\r\\n\\r\\n", ar: "سطر فارغ، أي \\r\\n\\r\\n" },
+        { en: "A header named End-Of-Headers", ar: "header اسمه End-Of-Headers" },
+        { en: "The first opening brace of the JSON body", ar: "أول قوس فتح في الـ JSON body" }
       ],
       correct: 1,
-      why: { en: "The combination is ambiguous, and a proxy and origin that resolve it differently is exactly the request smuggling primitive. RFC 9112 requires rejecting such messages rather than picking a winner.", ar: "الجمع بينهما غامض، واختلاف الـ proxy عن الـ origin في حلّه هو بالضبط أساس هجوم request smuggling. يوجب RFC 9112 رفض هذه الرسائل بدلاً من ترجيح أحدهما." }
+      why: { en: "Headers end at one blank line. Content-Length only says how many body bytes follow that blank line; it does not mark where headers stop.", ar: "الـ headers تنتهي عند سطر فارغ واحد. أما Content-Length فيقول فقط كم بايت من الـ body تأتي بعد ذلك السطر، ولا يحدّد أين تتوقف الـ headers." }
     },
     {
-      q: { en: "A logging middleware reads Request.Body, then the controller receives a DTO with all properties null. Why?", ar: "middleware للتسجيل يقرأ Request.Body، ثم يستقبل الـ controller كائن DTO بكل خصائصه null. لماذا؟" },
+      q: { en: "Your middleware reads Request.Body, then the controller reports an empty payload. Why?", ar: "الـ middleware يقرأ Request.Body، ثم يبلّغ الـ controller أن الحمولة فارغة. لماذا؟" },
       options: [
-        { en: "The JSON serializer needs an explicit content type", ar: "الـ JSON serializer يحتاج content type صريحاً" },
-        { en: "Middleware runs after model binding, so ordering is wrong", ar: "الـ middleware يعمل بعد الـ model binding، فالترتيب خاطئ" },
-        { en: "Request.Body is forward-only and was already consumed", ar: "الـ Request.Body أحادي الاتجاه واستُهلك بالفعل" },
-        { en: "The DTO is missing a parameterless constructor", ar: "الـ DTO ينقصه constructor بلا معاملات" }
+        { en: "The controller runs before middleware, so it read nothing yet", ar: "الـ controller يعمل قبل الـ middleware، فلم يقرأ شيئاً بعد" },
+        { en: "Request.Body is forward-only and was already consumed", ar: "الـ Request.Body للأمام فقط وقد استُهلك بالفعل" },
+        { en: "Reading the body clears the Content-Length header", ar: "قراءة الـ body تمسح الـ header المسمّى Content-Length" },
+        { en: "Model binding ignores bodies larger than 1 KB", ar: "الـ model binding يتجاهل الـ bodies الأكبر من 1 KB" }
+      ],
+      correct: 1,
+      why: { en: "The body is a stream that can be read from start to end once. After the middleware reads it the position is at the end, so binding sees zero bytes. EnableBuffering plus resetting Position fixes it.", ar: "الـ body هو stream يُقرأ من البداية للنهاية مرة واحدة. وبعد قراءة الـ middleware له يكون المؤشر عند النهاية، فيرى الـ binding صفر bytes. والحل هو EnableBuffering مع إعادة ضبط Position." }
+    },
+    {
+      q: { en: "Why does setting Response.StatusCode fail after you have written part of the body?", ar: "لماذا يفشل ضبط Response.StatusCode بعد كتابة جزء من الـ body؟" },
+      options: [
+        { en: "Because the status line and headers were already sent on the wire", ar: "لأن الـ status line والـ headers أُرسلت بالفعل على الشبكة" },
+        { en: "Because ASP.NET Core allows only one status code per application", ar: "لأن ASP.NET Core يسمح بـ status code واحد لكل تطبيق" },
+        { en: "Because the garbage collector has already reclaimed the response", ar: "لأن الـ garbage collector استرجع الـ response بالفعل" },
+        { en: "Because status codes are immutable value types", ar: "لأن الـ status codes أنواع قيمة غير قابلة للتغيير" }
+      ],
+      correct: 0,
+      why: { en: "HTTP sends the status line and headers before any body byte. Once the first body write flushes them, Response.HasStarted is true and they cannot be changed.", ar: "الـ HTTP يرسل الـ status line والـ headers قبل أي بايت من الـ body. وبمجرد أن ترسلها أول كتابة للـ body تصبح Response.HasStarted تساوي true ولا يمكن تغييرها." }
+    },
+    {
+      q: { en: "A request returns 404 and no controller log line appears anywhere. What is the most likely cause?", ar: "الـ request يرجع 404 ولا يظهر أي سطر log من الـ controller في أي مكان. ما السبب الأرجح؟" },
+      options: [
+        { en: "The controller threw an exception that was swallowed", ar: "الـ controller رمى استثناءً تم ابتلاعه" },
+        { en: "The database returned no rows for that id", ar: "قاعدة البيانات لم ترجع أي صفوف لذلك الـ id" },
+        { en: "The path never matched a route, so routing answered before any controller ran", ar: "الـ path لم يطابق أي route، فأجاب الـ routing قبل أن يعمل أي controller" },
+        { en: "The logging provider was misconfigured for that class only", ar: "مزوّد الـ logging مضبوط بشكل خاطئ لهذا الـ class فقط" }
       ],
       correct: 2,
-      why: { en: "The body streams off the socket once. Once the middleware read it to the end, the model binder sees an empty stream. EnableBuffering plus resetting Position to 0 is the fix.", ar: "الـ body يُبثّ من الـ socket مرة واحدة. بعد أن قرأه الـ middleware حتى النهاية يجد الـ model binder stream فارغاً. الحل هو EnableBuffering مع إعادة Position إلى 0." }
+      why: { en: "Routing decides the endpoint before the controller is created. A path that matches nothing produces a 404 with no application code executed, which is exactly why the logs are silent — as in this lesson's stripped /api prefix.", ar: "الـ routing يقرّر الـ endpoint قبل إنشاء الـ controller. والـ path الذي لا يطابق شيئاً يُنتج 404 دون تنفيذ أي كود تطبيق، وهذا بالضبط سبب صمت الـ logs — كما في مثال هذا الدرس حيث حُذفت البادئة /api." }
     },
     {
-      q: { en: "Clients get 431 responses and your controller breakpoint never hits. What is the most likely cause?", ar: "العملاء يتلقّون استجابات 431 ونقطة التوقف في الـ controller لا تُصاب أبداً. ما السبب الأرجح؟" },
+      q: { en: "Which statement about HTTP/2 is correct?", ar: "أي عبارة عن HTTP/2 صحيحة؟" },
       options: [
-        { en: "Authentication middleware short-circuits the pipeline", ar: "middleware المصادقة يقطع المسار مبكراً" },
-        { en: "The total header block exceeds the server's limit, so parsing fails before your code runs", ar: "مجموع كتلة الـ headers يتجاوز حد السيرفر، فيفشل التحليل قبل تشغيل كودك" },
-        { en: "The route template does not match the request path", ar: "قالب الـ route لا يطابق مسار الـ request" },
-        { en: "The request body is larger than MaxRequestBodySize", ar: "حجم الـ request body أكبر من MaxRequestBodySize" }
+        { en: "It removes headers entirely and sends only the body", ar: "يزيل الـ headers تماماً ويرسل الـ body فقط" },
+        { en: "It keeps the same parts — method, path, headers, body — but encodes them as compressed binary frames", ar: "يحتفظ بنفس الأجزاء — method و path و headers و body — لكنه يرمّزها كـ binary frames مضغوطة" },
+        { en: "It replaces status codes with error strings", ar: "يستبدل الـ status codes بنصوص أخطاء" },
+        { en: "It requires a new connection for every request", ar: "يتطلب اتصالاً جديداً لكل request" }
       ],
       correct: 1,
-      why: { en: "431 is emitted by the server's parser when the header block (32 KB by default in Kestrel) is exceeded — usually an oversized cookie. The rejection happens before an HttpContext reaches the pipeline, so no application code executes and no route is evaluated.", ar: "الـ 431 يصدر من parser السيرفر عند تجاوز كتلة الـ headers (32 كيلوبايت افتراضياً في Kestrel) — وغالباً بسبب cookie متضخم. يحدث الرفض قبل وصول HttpContext إلى الـ pipeline، فلا يعمل أي كود تطبيقي ولا يُقيَّم أي route." }
-    },
-    {
-      q: { en: "Why is generating a password-reset link from Request.Host a security bug?", ar: "لماذا يُعدّ توليد رابط إعادة تعيين كلمة المرور من Request.Host ثغرة أمنية؟" },
-      options: [
-        { en: "Request.Host omits the port, breaking non-standard deployments", ar: "الـ Request.Host يحذف رقم المنفذ فيكسر النشر غير القياسي" },
-        { en: "Host is client-controlled input, so an attacker can point the link at their own domain", ar: "الـ Host مدخل يتحكم فيه الـ client، فيستطيع مهاجم توجيه الرابط إلى نطاقه" },
-        { en: "Request.Host is null under HTTP/2 because there is no Host header", ar: "الـ Request.Host يساوي null على HTTP/2 لعدم وجود Host header" },
-        { en: "It forces an extra DNS lookup per request", ar: "يفرض استعلام DNS إضافياً لكل request" }
-      ],
-      correct: 1,
-      why: { en: "Host is sent by the caller and is only trustworthy when a proxy you control overwrites it and allowed-hosts filtering is configured. Otherwise the reset token is delivered to an attacker-chosen origin. (HTTP/2 carries the same value as the :authority pseudo-header, so option 3 is wrong too.)", ar: "الـ Host يرسله المتصل ولا يُوثق به إلا إذا كتب فوقه proxy تتحكم فيه وضُبط تصفية الـ allowed hosts. وإلا يُسلَّم الـ reset token إلى نطاق يختاره المهاجم. (وفي HTTP/2 تُنقل نفس القيمة في pseudo-header اسمه :authority، فالخيار الثالث خاطئ أيضاً.)" }
-    },
-    {
-      q: { en: "After moving an internal API from HTTP/1.1 to HTTP/2, one backend node receives far more traffic than the others. What is the most likely explanation?", ar: "بعد نقل API داخلي من HTTP/1.1 إلى HTTP/2، بدأ node واحد يستقبل حركة أكثر بكثير من غيره. ما التفسير الأرجح؟" },
-      options: [
-        { en: "HPACK compression makes some requests cheaper to route", ar: "ضغط HPACK يجعل توجيه بعض الـ requests أرخص" },
-        { en: "HTTP/2 multiplexes many requests onto one connection, so connection-based L4 balancing pins a client to one node", ar: "الـ HTTP/2 يعدّد الـ requests على اتصال واحد، فيثبّت التوزيع على الطبقة الرابعة القائم على الاتصالات كل client على node واحد" },
-        { en: "HTTP/2 requires sticky sessions by specification", ar: "الـ HTTP/2 يوجب sticky sessions بحسب المواصفة" },
-        { en: "Pseudo-headers bypass the load balancer's routing table", ar: "الـ pseudo-headers تتجاوز جدول توجيه الـ load balancer" }
-      ],
-      correct: 1,
-      why: { en: "An L4 balancer distributes connections, not requests. Under HTTP/1.1 a busy client opened many connections and spread naturally; under HTTP/2 it opens one long-lived connection carrying all its streams, so every request lands on the same backend. The fix is an L7 balancer that distributes per stream, or bounding connection lifetime so clients periodically rebalance.", ar: "الـ load balancer من الطبقة الرابعة يوزّع الاتصالات لا الـ requests. تحت HTTP/1.1 كان الـ client المزدحم يفتح اتصالات كثيرة فيتوزّع طبيعياً؛ أما تحت HTTP/2 فيفتح اتصالاً واحداً طويل العمر يحمل كل streams، فتهبط كل الـ requests على نفس الـ backend. الحل هو موازن من الطبقة السابعة يوزّع لكل stream، أو تحديد عمر الاتصال ليعيد العملاء التوازن دورياً." }
+      why: { en: "HTTP/2 changes only the encoding on the wire. The semantics are identical, which is why everything you know about methods, headers and bodies still applies, and why many requests can share one connection.", ar: "الـ HTTP/2 يغيّر الترميز على الشبكة فقط. أما الدلالات فمطابقة، ولهذا يبقى كل ما تعرفه عن الـ methods والـ headers والـ bodies صحيحاً، ولهذا تستطيع عدة requests أن تتشارك اتصالاً واحداً." }
     }
   ]
 };
 ```
+
+NEXT: http-methods

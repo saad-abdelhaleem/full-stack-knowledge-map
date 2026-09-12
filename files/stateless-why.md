@@ -3,325 +3,378 @@ const statelessWhyLesson = {
   id: "stateless-why",
   moduleId: "foundations",
   title: { en: "Why stateless scales", ar: "لماذا يتوسّع الـ stateless" },
-  summary: {
-    en: "Statelessness is not architectural purity — it is the property that lets any request land on any instance, and it is what deploys, autoscaling and failover silently depend on.",
-    ar: "الـ statelessness ليس نقاءً معمارياً — بل هو الخاصية التي تتيح لأي request أن يهبط على أي instance، وهو ما تعتمد عليه بصمت عمليات النشر والتوسّع التلقائي وتجاوز الأعطال."
-  },
+  summary: { en: "A stateless server keeps nothing about you between requests, which is what lets you add or remove servers without breaking anyone.", ar: "الـ server الـ stateless لا يحتفظ بأي شيء عنك بين request وآخر، وهذا ما يسمح بإضافة أو إزالة servers دون أن ينكسر أي مستخدم." },
   mins: 12,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "Every operational capability a modern backend takes for granted rests on one assumption: that request number two can be handled by a different process than request number one. Rolling deploys work because you can kill an instance and its share of traffic goes elsewhere. Autoscaling works because a new instance can start serving immediately with no warm-up handshake. Failover works because a dead node is simply removed from the pool. Statelessness is not a design preference — it is the precondition for all three, and the moment a request can only be served by one specific process, you lose all three at once.", ar: "كل قدرة تشغيلية يعتبرها أي backend حديث أمراً مسلّماً به تقوم على افتراض واحد: أن الطلب رقم اثنين يمكن أن تعالجه عملية غير التي عالجت الطلب رقم واحد. فالنشر التدريجي ينجح لأنك تستطيع قتل instance فتذهب حصته من الحركة إلى غيره. والتوسّع التلقائي ينجح لأن instance جديداً يستطيع بدء الخدمة فوراً بلا مصافحة تسخين. وتجاوز الأعطال ينجح لأن العقدة الميتة تُزال ببساطة من المجمّع. فالـ statelessness ليس تفضيلاً تصميمياً — بل هو الشرط المسبق للثلاثة جميعاً، وفي اللحظة التي لا يستطيع فيها إلا عملية واحدة بعينها خدمة طلب ما، تخسر الثلاثة دفعة واحدة." },
-      { t: "p", en: "The confusion in most discussions is that \"stateless\" is heard as \"has no state\", which is obviously false — every useful application has state. The claim is narrower and more precise: no state that is required to serve a request lives exclusively in the memory of one server process. State still exists; it moves to a place all instances can reach, either the client (a signed cookie, a token) or a shared store (Redis, SQL, a distributed cache). What you are buying is that the set of servers able to answer a given request goes from one to all of them.", ar: "والالتباس في معظم النقاشات أن كلمة «stateless» تُسمَع كـ«لا حالة له»، وهو ادعاء خاطئ بداهةً — فكل تطبيق مفيد له حالة. والادعاء أضيق وأدقّ: لا توجد حالة لازمة لخدمة طلب تعيش حصراً في ذاكرة عملية سيرفر واحدة. فالحالة ما زالت موجودة؛ لكنها تنتقل إلى موضع تصل إليه كل الـ instances، إما العميل (كوكي موقّع، أو token) وإما مخزن مشترك (Redis، أو SQL، أو distributed cache). وما تشتريه هو أن مجموعة السيرفرات القادرة على الإجابة عن طلب معيّن تنتقل من واحد إلى كلها." },
-      { t: "p", en: "This was a deliberate choice in HTTP's design, not an accident. Fielding lists \"stateless\" as one of the six REST constraints precisely because it makes intermediaries possible: a proxy, a CDN or a load balancer can route, cache and retry a self-describing request without maintaining a session table. The whole layered internet architecture — every hop between the browser and your handler — is only cheap because each hop is allowed to forget everything after it forwards the bytes. Sticky sessions do not merely inconvenience your load balancer; they revoke that permission.", ar: "وكان هذا خياراً مقصوداً في تصميم الـ HTTP لا مصادفة. فـFielding يسرد «stateless» كأحد قيود الـ REST الستة تحديداً لأنه يجعل الوسطاء ممكنين: إذ يستطيع proxy أو CDN أو load balancer توجيه request واصف لنفسه وتخزينه وإعادة محاولته دون الاحتفاظ بجدول جلسات. وبنية الإنترنت الطبقية كلها — كل قفزة بين المتصفح ومعالجك — رخيصة فقط لأنه يُسمح لكل قفزة أن تنسى كل شيء بعد تمرير البايتات. والجلسات اللاصقة لا تزعج الـ load balancer فحسب؛ بل تسحب ذلك الإذن." },
-      { t: "callout", kind: "note", en: "Stateless is a property of the request-handling path, not of your system. A shopping cart is state, a user session is state, an idempotency record is state — and all of them are fine. The question is only ever: if the process that handled the last request disappeared right now, can another process serve the next one with no loss and no warm-up?", ar: "الـ stateless خاصية لمسار معالجة الطلب، لا لنظامك ككل. فسلة التسوق حالة، وجلسة المستخدم حالة، وسجل الـ idempotency حالة — وكلها لا بأس بها. والسؤال دائماً واحد فقط: لو اختفت الآن العملية التي عالجت الطلب الأخير، هل تستطيع عملية أخرى خدمة الطلب التالي بلا فقد وبلا تسخين؟" }
-    ]},
-
-    { key: "problem", blocks: [
-      { t: "p", en: "Take a service that stores session data in the in-process ASP.NET Core memory cache and enables cookie-based affinity on the load balancer so each user keeps hitting the same node. It works flawlessly on one instance, works in staging, and works in production until the first Tuesday deploy. Rolling out four instances one at a time terminates a quarter of all sessions per step; by the end of a four-minute deploy every logged-in user has been signed out and every half-filled form has been lost. The team's conclusion is usually \"we should deploy at night\", which converts a design defect into a permanent operational tax.", ar: "خذ خدمة تخزّن بيانات الجلسة في الـ memory cache داخل عملية ASP.NET Core وتفعّل الانتماء بالكوكي على الـ load balancer كي يظل كل مستخدم يصيب العقدة نفسها. فهي تعمل بلا عيب على instance واحد، وتعمل في الـ staging، وتعمل في الإنتاج إلى أول نشر يوم الثلاثاء. فإصدار أربعة instances واحداً تلو الآخر ينهي ربع كل الجلسات في كل خطوة؛ وبنهاية نشر مدته أربع دقائق يكون كل مستخدم مسجّل الدخول قد خرج وكل نموذج نصف ممتلئ قد ضاع. واستنتاج الفريق عادةً «ينبغي أن ننشر ليلاً»، فيحوّل عيباً تصميمياً إلى ضريبة تشغيلية دائمة." },
-      { t: "p", en: "The second failure is quieter and shows up as a load graph nobody can explain. Affinity distributes sessions, not work. If 3% of users are power users generating 40% of the requests, and affinity happens to land several of them on the same node, that node runs at 90% CPU while its three siblings sit at 30%. Autoscaling reacts to the fleet average, so it does not add capacity; the hot node's p99 doubles while the cluster looks healthy. Worse, scaling out does nothing for existing traffic — new instances only receive new sessions, so the relief arrives with the natural session churn rate, which on a long-session product can be hours.", ar: "والعطل الثاني أهدأ ويظهر كرسم حمل لا يستطيع أحد تفسيره. فالانتماء يوزّع الجلسات لا العمل. فإن كان 3% من المستخدمين مستخدمين مكثّفين يولّدون 40% من الطلبات، وصادف أن هبط عدد منهم على العقدة نفسها، عملت تلك العقدة عند 90% من المعالج بينما تجلس أخواتها الثلاث عند 30%. والتوسّع التلقائي يستجيب لمتوسط الأسطول، فلا يضيف سعة؛ فيتضاعف p99 للعقدة الساخنة بينما تبدو المجموعة سليمة. والأسوأ أن التوسّع لا يفعل شيئاً للحركة القائمة — إذ لا تستقبل الـ instances الجديدة إلا الجلسات الجديدة، فيصل الفرَج بمعدل تبدّل الجلسات الطبيعي، وهو في منتج ذي جلسات طويلة قد يساوي ساعات." },
-      { t: "kv", rows: [
-        { k: { en: "In-memory session + rolling deploy", ar: "جلسة في الذاكرة + نشر تدريجي" }, v: { en: "Every instance restart destroys its sessions. Across a 4-instance rolling deploy that is 100% of logged-in users signed out, plus a login stampede against the identity provider concentrated in a 4-minute window", ar: "كل إعادة تشغيل لـ instance تدمّر جلساته. وعبر نشر تدريجي لأربعة instances يعني ذلك خروج 100% من المستخدمين المسجّلين، مع اندفاع تسجيل دخول نحو مزوّد الهوية مركّز في نافذة أربع دقائق" } },
-        { k: { en: "Session affinity + uneven users", ar: "انتماء الجلسة + مستخدمون غير متجانسين" }, v: { en: "Affinity balances sessions, not requests. A node holding a few heavy users can sit at 90% CPU while siblings run at 30%, and fleet-average autoscaling never sees a reason to act", ar: "الانتماء يوازن الجلسات لا الطلبات. فعقدة تحتضن قلّة من المستخدمين الثقال قد تجلس عند 90% من المعالج بينما تعمل أخواتها عند 30%، ولا يرى التوسّع التلقائي القائم على متوسط الأسطول سبباً للتحرك أبداً" } },
-        { k: { en: "Scale-out with affinity", ar: "التوسّع الأفقي مع الانتماء" }, v: { en: "New instances only receive new sessions, so added capacity relieves the existing load at the session-churn rate. On a product with 2-hour sessions, a scale-out during an incident is close to a no-op for the first 20 minutes", ar: "الـ instances الجديدة لا تستقبل إلا جلسات جديدة، فتخفّف السعة المضافة الحملَ القائم بمعدل تبدّل الجلسات. وفي منتج بجلسات مدتها ساعتان، يكاد التوسّع أثناء حادثة يكون بلا أثر في العشرين دقيقة الأولى" } },
-        { k: { en: "Unshared Data Protection key ring", ar: "حلقة مفاتيح Data Protection غير مشتركة" }, v: { en: "Each ASP.NET Core instance generates its own keys, so an auth cookie or antiforgery token issued by node A fails to decrypt on node B. The symptom is intermittent 400s and random sign-outs at a rate of roughly (N-1)/N of cross-node requests", ar: "كل instance من ASP.NET Core يولّد مفاتيحه، فيفشل فكّ تشفير كوكي مصادقة أو antiforgery token أصدرته العقدة A على العقدة B. والعرَض 400 متقطعة وخروج عشوائي بمعدل نحو (N-1)/N من الطلبات العابرة للعقد" } },
-        { k: { en: "In-process cache assumed coherent", ar: "cache داخل العملية يُفترض تماسكه" }, v: { en: "A feature flag or price is cached in IMemoryCache with a 5-minute TTL. After an update, instances disagree for up to 5 minutes, so the same user refreshing sees two different prices depending on which node answered", ar: "feature flag أو سعر يُخزَّن في IMemoryCache بعمر خمس دقائق. وبعد تحديث تختلف الـ instances مدة تصل إلى خمس دقائق، فيرى المستخدم نفسه عند التحديث سعرين مختلفين حسب العقدة التي أجابت" } },
-        { k: { en: "Singleton background job per instance", ar: "مهمة خلفية singleton في كل instance" }, v: { en: "A hosted service running a nightly billing sweep is a singleton per process, not per cluster. Scaling from 1 to 6 instances silently turns one sweep into six concurrent sweeps racing over the same rows", ar: "خدمة مستضافة تنفّذ مسح فوترة ليلياً هي singleton لكل عملية لا لكل مجموعة. فالتوسّع من instance واحد إلى ستة يحوّل مسحاً واحداً بصمت إلى ستة عمليات مسح متزامنة تتسابق على الصفوف نفسها" } }
-      ]}
-    ]},
-
-    { key: "internals", blocks: [
-      { t: "p", en: "The useful move is to stop asking \"is my app stateless\" and start classifying state by lifetime and reachability, because the four categories have completely different rules. Per-request state — locals, the DI scope, the HttpContext — lives on the stack and in a scoped container for the duration of one request and is inherently fine. Per-connection state — the TLS session, HTTP/2 stream state, a WebSocket — is genuinely pinned to one socket and therefore to one process, and no amount of architecture removes that. Per-user state — session, cart, wizard progress — is the category that must move out. Per-instance derived state — an IMemoryCache entry, a compiled regex, a warmed connection pool — is soft state: losing it costs latency, never correctness.", ar: "والحركة المفيدة هي أن تكفّ عن سؤال «هل تطبيقي stateless» وتبدأ بتصنيف الحالة حسب العمر وقابلية الوصول، لأن للفئات الأربع قواعد مختلفة تماماً. فحالة كل طلب — المتغيرات المحلية، ونطاق الـ DI، والـ HttpContext — تعيش على الـ stack وفي حاوية scoped طوال مدة طلب واحد وهي سليمة بطبيعتها. وحالة كل اتصال — جلسة TLS، وحالة stream في HTTP/2، وWebSocket — مثبّتة فعلاً بمقبس واحد وبالتالي بعملية واحدة، ولا تزيل ذلك أي كمية من العمارة. وحالة كل مستخدم — الجلسة، والسلة، وتقدّم المعالج — هي الفئة التي يجب أن تخرج. وحالة كل instance المشتقّة — مدخلة IMemoryCache، أو regex مترجَم، أو مجمّع اتصالات مسخَّن — حالة لينة: فقدانها يكلّف زمن استجابة لا صحّة." },
-      { t: "kv", rows: [
-        { k: { en: "Per-request state", ar: "حالة لكل طلب" }, v: { en: "Locals, scoped services, HttpContext, the current DbContext. Created and destroyed inside one request. Always safe — this is the state statelessness is about keeping, not removing.", ar: "المتغيرات المحلية، والخدمات scoped، وHttpContext، وDbContext الحالي. تُنشأ وتُدمَّر داخل طلب واحد. آمنة دائماً — وهذه هي الحالة التي يدور الـ statelessness حول إبقائها لا إزالتها." } },
-        { k: { en: "Per-connection state", ar: "حالة لكل اتصال" }, v: { en: "TLS session, HTTP/2 streams, WebSocket and SignalR connections. Physically bound to one socket and one process. Cannot be made stateless — it is made survivable instead, with reconnection plus a backplane.", ar: "جلسة TLS، وstreams الـ HTTP/2، واتصالات WebSocket وSignalR. مرتبطة فيزيائياً بمقبس واحد وعملية واحدة. ولا يمكن جعلها stateless — بل تُجعل قابلة للنجاة، بإعادة اتصال مع backplane." } },
-        { k: { en: "Per-user (session) state", ar: "حالة لكل مستخدم (الجلسة)" }, v: { en: "Login session, cart, multi-step form progress, feature assignment. This is the category that breaks scaling when kept in process. Must live in the client (signed cookie / token) or a shared store.", ar: "جلسة الدخول، والسلة، وتقدّم نموذج متعدد الخطوات، وتخصيص الميزات. وهذه هي الفئة التي تكسر التوسّع حين تُحفظ داخل العملية. ويجب أن تعيش في العميل (كوكي موقّع / token) أو في مخزن مشترك." } },
-        { k: { en: "Per-instance soft state", ar: "حالة لينة لكل instance" }, v: { en: "IMemoryCache entries, JIT-compiled code, warmed connection pools, DNS caches. Losing it costs a cold start — typically tens to hundreds of ms — but never correctness, as long as nothing treats it as authoritative.", ar: "مدخلات IMemoryCache، والكود المترجَم بالـ JIT، ومجمّعات الاتصالات المسخَّنة، وذاكرات DNS. وفقدانها يكلّف بداية باردة — عادةً عشرات إلى مئات المللي ثانية — لكنه لا يكلّف الصحّة أبداً، ما دام لا شيء يعاملها كمرجع." } },
-        { k: { en: "Cluster-singleton state", ar: "حالة singleton على مستوى المجموعة" }, v: { en: "Scheduled jobs, leader election, sequence generators. A C# singleton is per process, not per cluster — this is the category people forget exists until they scale from 1 to N and everything runs N times.", ar: "المهام المجدولة، وانتخاب القائد، ومولّدات التسلسل. فالـ singleton في C# لكل عملية لا لكل مجموعة — وهذه الفئة ينساها الناس حتى يتوسّعوا من واحد إلى N فيعمل كل شيء N مرة." } }
-      ]},
-      { t: "p", en: "ASP.NET Core has one specific trap here that is worth knowing by name, because it produces bugs that look like anything but a state problem. The Data Protection stack encrypts auth cookies, antiforgery tokens and TempData with a key ring. On a single machine with no configuration, that key ring is generated per process and stored locally — under the user profile, or nowhere at all in a container. Scale to N instances and a cookie encrypted by node A cannot be decrypted by node B, so roughly (N-1)/N of cross-node requests fail. Because the browser silently re-authenticates on some paths and hard-fails on others, the reported symptom is \"random 400 Bad Request on form posts\" and \"users get logged out sometimes\", which sends people looking at the identity provider for a week.", ar: "ولـASP.NET Core فخّ محدد هنا يستحق أن تعرفه بالاسم، لأنه ينتج عللاً تبدو كأي شيء إلا مشكلة حالة. فمكدّس Data Protection يشفّر كوكيز المصادقة وtokens الـ antiforgery وTempData بحلقة مفاتيح. وعلى جهاز واحد بلا ضبط، تُولَّد تلك الحلقة لكل عملية وتُخزَّن محلياً — تحت ملف المستخدم الشخصي، أو في لا مكان داخل حاوية. وبالتوسّع إلى N من الـ instances لا تستطيع العقدة B فكّ تشفير كوكي شفّرته العقدة A، فيفشل نحو (N-1)/N من الطلبات العابرة للعقد. ولأن المتصفح يعيد المصادقة بصمت في بعض المسارات ويفشل بقسوة في غيرها، يكون العرَض المبلَّغ عنه «400 Bad Request عشوائية عند إرسال النماذج» و«يخرج المستخدمون أحياناً»، فيُرسل الناس للبحث في مزوّد الهوية أسبوعاً." },
-      { t: "code", lang: "csharp", label: { en: "The three lines that make a web farm actually work", ar: "الأسطر الثلاثة التي تجعل الـ web farm يعمل فعلاً" }, code: "// 1. One key ring, shared by every instance, or auth cookies are per-node.\n//    SetApplicationName must match across the whole farm.\nbuilder.Services.AddDataProtection()\n    .SetApplicationName(\"orders-api\")\n    .PersistKeysToStackExchangeRedis(redis, \"DataProtection-Keys\");\n\n// 2. Session state out of process. Note IDistributedCache is the storage;\n//    ISession is just a per-request facade over it.\nbuilder.Services.AddStackExchangeRedisCache(o =>\n    o.Configuration = builder.Configuration.GetConnectionString(\"redis\"));\nbuilder.Services.AddSession(o =>\n{\n    o.IdleTimeout        = TimeSpan.FromMinutes(30);\n    o.Cookie.IsEssential = true;\n});\n\n// 3. Cluster-singleton work must be elected, not assumed.\n//    A C# singleton is per PROCESS; scaling to 6 pods runs this 6 times.\npublic sealed class NightlyBilling(ILeaseProvider leases) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        while (!ct.IsCancellationRequested)\n        {\n            await using var lease = await leases.TryAcquireAsync(\"nightly-billing\", ct);\n            if (lease is not null) await SweepAsync(ct);   // exactly one pod wins\n            await Task.Delay(TimeSpan.FromMinutes(1), ct);\n        }\n    }\n}" },
-      { t: "p", en: "It is worth being honest about what moving session out of process costs, because \"just use Redis\" hides a real trade. An IMemoryCache lookup is a dictionary hit: roughly 20-100 nanoseconds, no allocation beyond the entry. A Redis GET over the network in the same availability zone is roughly 0.3-1 millisecond round trip, plus serialisation of the session payload on both sides. That is a factor of several thousand. It is almost always the right trade — a millisecond is invisible next to the 40 ms your database query already costs — but it stops being invisible if a handler touches session eight times, which is why ISession loads the whole session once per request rather than per key.", ar: "ويجدر أن نكون صادقين بشأن كلفة إخراج الجلسة من العملية، لأن عبارة «استخدم Redis فحسب» تخفي مقايضة حقيقية. فبحث في IMemoryCache إصابة قاموس: نحو 20 إلى 100 نانوثانية، بلا تخصيص يتجاوز المدخلة نفسها. أما GET من Redis عبر الشبكة في نفس منطقة الإتاحة فنحو 0.3 إلى 1 مللي ثانية ذهاباً وإياباً، زائد تسلسل حمولة الجلسة على الطرفين. وذلك عامل بعدة آلاف. وهي شبه دائماً المقايضة الصحيحة — فالمللي ثانية غير مرئية بجانب الأربعين مللي ثانية التي يكلّفها استعلام قاعدة بياناتك أصلاً — لكنها تكفّ عن كونها غير مرئية إن لمس معالجٌ الجلسةَ ثماني مرات، ولهذا يحمّل ISession الجلسة كاملة مرة واحدة لكل طلب لا لكل مفتاح." },
-      { t: "p", en: "The alternative to a shared store is pushing state to the client, which is what a JWT or a signed cookie does — and it has a symmetric set of costs that are easy to underestimate. Every request now carries the state, so a 4 KB token is 4 KB added to every single request, which matters on mobile networks and hits real limits: many reverse proxies default to an 8 KB total header cap, and exceeding it produces a 431 or a bare connection reset that looks like a network fault. More importantly, client-held state cannot be revoked. Nothing you do server-side invalidates a token you already signed, which is why every \"fully stateless auth\" design eventually adds a revocation list — and a revocation list is server-side session state wearing a different hat.", ar: "والبديل عن المخزن المشترك هو دفع الحالة إلى العميل، وهو ما يفعله JWT أو كوكي موقّع — وله مجموعة كلفات متناظرة يسهل الاستهانة بها. فكل طلب صار يحمل الحالة، فـtoken بحجم 4 كيلوبايت يعني 4 كيلوبايت مضافة إلى كل طلب على حدة، وهذا مهم على شبكات الموبايل ويصطدم بحدود حقيقية: فكثير من الـ reverse proxies تفترض سقفاً إجمالياً للترويسات مقداره 8 كيلوبايت، وتجاوزه ينتج 431 أو إعادة تعيين اتصال مجردة تبدو كعطل شبكة. والأهم أن الحالة المحفوظة لدى العميل لا يمكن إبطالها. فلا شيء تفعله على السيرفر يُبطِل token وقّعته أصلاً، ولهذا ينتهي كل تصميم «مصادقة stateless بالكامل» إلى إضافة قائمة إبطال — وقائمة الإبطال هي حالة جلسة على السيرفر بقبّعة مختلفة." },
-      { t: "callout", kind: "warn", en: "Sticky sessions are not a scaling strategy, they are a deferral. They keep working right up to the first rolling deploy, the first spot-instance eviction, or the first autoscale event during an incident — which is to say, they fail exactly when you most needed them to work.", ar: "الجلسات اللاصقة ليست استراتيجية توسّع بل تأجيل. فهي تظل تعمل حتى أول نشر تدريجي، أو أول إزاحة لـ spot instance، أو أول حدث توسّع تلقائي أثناء حادثة — أي أنها تفشل بالضبط حين كنت أحوج ما تكون إلى أن تعمل." }
-    ]},
-
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
-          en: [
-            "Any instance can serve any request, so rolling deploys, spot evictions and node failures become invisible to users instead of visible logouts",
-            "Horizontal scaling is linear and immediate — a new instance is useful the moment it passes its health check, with no session migration",
-            "The load balancer can use least-connections or round-robin and actually balance work rather than merely distributing session ownership",
-            "Capacity planning becomes arithmetic: measured throughput per instance × instance count, with no per-node hot-spotting to model",
-            "Local development, integration tests and blue/green cutovers all behave the same as production, because nothing depends on which process you hit"
-          ],
-          ar: [
-            "أي instance يستطيع خدمة أي طلب، فتصير عمليات النشر التدريجي وإزاحات الـ spot وأعطال العقد غير مرئية للمستخدمين بدل أن تكون خروجاً مرئياً",
-            "التوسّع الأفقي خطي وفوري — فالـ instance الجديد نافع لحظة اجتيازه فحص الصحة، بلا ترحيل جلسات",
-            "يستطيع الـ load balancer استخدام least-connections أو round-robin وأن يوازن العمل فعلاً بدل مجرد توزيع ملكية الجلسات",
-            "تخطيط السعة يصير حساباً: الإنتاجية المقيسة لكل instance × عدد الـ instances، بلا نقاط ساخنة لكل عقدة تحتاج نمذجة",
-            "التطوير المحلي واختبارات التكامل والتحويلات الزرقاء/الخضراء كلها تتصرف كالإنتاج، لأن لا شيء يعتمد على أي عملية أصبتها"
-          ]
-        },
-        cons: {
-          en: [
-            "Every session read becomes a network hop: ~0.3-1 ms to Redis instead of ~50 ns to a local dictionary, plus serialisation on both sides",
-            "The shared store becomes a new single point of failure and a new capacity dimension you must monitor, scale and patch",
-            "Client-held state inflates every request — a 4 KB token on 3,000 req/s is 12 MB/s of pure header traffic, and can trip 8 KB proxy header limits",
-            "You lose the ability to keep expensive per-user objects warm in memory, so some workloads genuinely get slower",
-            "Serialising session objects introduces versioning problems: a deploy that changes a session DTO must tolerate both shapes in the store simultaneously"
-          ],
-          ar: [
-            "كل قراءة جلسة تصير قفزة شبكة: نحو 0.3 إلى 1 مللي ثانية إلى Redis بدل نحو 50 نانوثانية إلى قاموس محلي، زائد التسلسل على الطرفين",
-            "المخزن المشترك يصير نقطة فشل مفردة جديدة وبُعد سعة جديداً عليك مراقبته وتوسيعه وترقيعه",
-            "الحالة المحفوظة لدى العميل تضخّم كل طلب — فـtoken بـ4 كيلوبايت عند ثلاثة آلاف طلب/ثانية يعني 12 ميغابايت/ثانية من حركة ترويسات محضة، وقد يتجاوز سقف ترويسات الـ proxy البالغ 8 كيلوبايت",
-            "تفقد القدرة على إبقاء كائنات باهظة لكل مستخدم ساخنة في الذاكرة، فتصير بعض أحمال العمل أبطأ فعلاً",
-            "تسلسل كائنات الجلسة يُدخل مشاكل إصدارات: فنشرٌ يغيّر DTO للجلسة يجب أن يتحمّل الشكلين في المخزن في آنٍ واحد"
-          ]
-        },
-        limits: {
-          en: [
-            "Connection-oriented protocols — WebSockets, SignalR, gRPC streams — are inherently pinned to one process for the life of the connection",
-            "Statelessness does not remove state, it relocates it; the consistency questions follow it into the shared store",
-            "It cannot make a scheduled job or a leader-elected task safe to run N times; that needs a separate lease or election mechanism",
-            "Very large per-user working sets (a loaded ML model, a big in-memory graph) may be genuinely impractical to fetch per request",
-            "A shared store adds a failure mode the sticky design did not have: when Redis is down, every instance is down, not just one"
-          ],
-          ar: [
-            "البروتوكولات الموجّهة بالاتصال — WebSockets وSignalR وgRPC streams — مثبّتة بطبيعتها بعملية واحدة طوال عمر الاتصال",
-            "الـ statelessness لا يزيل الحالة بل ينقلها؛ وأسئلة الاتساق تتبعها إلى المخزن المشترك",
-            "لا يستطيع جعل مهمة مجدولة أو مهمة ذات قائد منتخَب آمنة للتشغيل N مرة؛ فذلك يحتاج آلية lease أو انتخاب منفصلة",
-            "مجموعات العمل الضخمة لكل مستخدم (نموذج ML محمّل، أو رسم كبير في الذاكرة) قد يكون جلبها لكل طلب غير عملي فعلاً",
-            "المخزن المشترك يضيف نمط فشل لم يكن في التصميم اللاصق: فحين يسقط Redis تسقط كل الـ instances لا واحد فقط"
-          ]
-        },
-        alts: {
-          en: [
-            "Client-held state: signed cookies or JWTs, removing the store entirely at the cost of size on every request and no revocation",
-            "Sticky sessions with a shared store as backup — affinity for cache warmth, correctness if the node disappears",
-            "Consistent hashing on a stable key (user id) rather than a cookie, so scale-out only reshuffles a fraction of users instead of all of them",
-            "Stateful services with explicit partitioning and replication (actor frameworks, Orleans-style grains) when per-user working sets really are large",
-            "Externalising only the small, hot part of the session and re-deriving the rest from the database on demand"
-          ],
-          ar: [
-            "حالة محفوظة لدى العميل: كوكيز موقّعة أو JWTs، فيزول المخزن كلياً بثمن الحجم على كل طلب واستحالة الإبطال",
-            "جلسات لاصقة مع مخزن مشترك احتياطي — انتماء من أجل دفء الـ cache، وصحّة إن اختفت العقدة",
-            "تجزئة متسقة على مفتاح ثابت (معرّف المستخدم) بدل كوكي، فلا يعيد التوسّع خلط إلا جزء من المستخدمين بدل كلهم",
-            "خدمات ذات حالة بتقسيم وتكرار صريحين (أطر actor، أو grains بأسلوب Orleans) حين تكون مجموعات العمل لكل مستخدم كبيرة فعلاً",
-            "إخراج الجزء الصغير الساخن من الجلسة فقط، وإعادة اشتقاق الباقي من قاعدة البيانات عند الطلب"
-          ]
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "A server is stateless when it forgets you the moment it finishes answering. Everything it needed to answer came with the request, or came from a shared store like a database. Nothing important is left sitting in that one server's memory. This matters because it means any server can answer any request, so you can run ten copies of your app and it behaves like one.",
+          ar: "الـ server يكون stateless عندما ينسى المستخدم لحظة انتهائه من الرد. كل ما احتاجه للرد جاء مع الـ request نفسه، أو جاء من مخزن مشترك مثل database. لا شيء مهم يبقى في ذاكرة ذلك الـ server وحده. وهذا مهم لأنه يعني أن أي server يستطيع الرد على أي request، فتشغّل عشر نسخ من التطبيق وتتصرف كأنها نسخة واحدة." },
+        { t: "kv", rows: [
+          { k: { en: "State", ar: "State" },
+            v: { en: "Any data the server remembers about a user between two requests — a cart, a login, a wizard step.", ar: "أي بيانات يتذكرها الـ server عن المستخدم بين request وآخر — سلة شراء، تسجيل دخول، خطوة في wizard." } },
+          { k: { en: "Stateless", ar: "Stateless" },
+            v: { en: "The server stores none of that in its own memory. It reads what it needs per request and forgets after.", ar: "الـ server لا يخزّن أياً من ذلك في ذاكرته. يقرأ ما يحتاجه لكل request ثم ينسى." } },
+          { k: { en: "Instance", ar: "Instance" },
+            v: { en: "One running copy of your application — one process, usually on one machine or in one container.", ar: "نسخة واحدة تعمل من تطبيقك — process واحد، عادةً على جهاز واحد أو داخل container واحد." } },
+          { k: { en: "Load balancer", ar: "Load balancer" },
+            v: { en: "A component in front of your instances that picks which one receives each incoming request.", ar: "مكوّن يقف أمام الـ instances ويختار أيها يستقبل كل request قادم." } },
+          { k: { en: "Horizontal scaling", ar: "Horizontal scaling" },
+            v: { en: "Handling more traffic by adding more instances, instead of making one machine bigger.", ar: "استيعاب حمل أكبر بإضافة instances أكثر، بدل تكبير جهاز واحد." } },
+          { k: { en: "Sticky session", ar: "Sticky session" },
+            v: { en: "A load balancer rule that keeps sending the same user back to the same instance.", ar: "قاعدة في الـ load balancer تُبقي المستخدم نفسه يذهب دائماً إلى نفس الـ instance." } }
+        ]},
+        { t: "p",
+          en: "The rule came from a practical accident. Early web apps stored the shopping cart in a dictionary in memory, keyed by a session id. That works perfectly while there is one server. The day traffic grows and you start a second copy, half of each user's requests land on a machine that never saw their cart. The app was correct; it just quietly depended on there being exactly one of it.",
+          ar: "القاعدة جاءت من حادث عملي. تطبيقات الويب الأولى كانت تخزّن سلة الشراء في dictionary في الذاكرة، مفهرسة بـ session id. هذا يعمل تماماً ما دام هناك server واحد. وفي اليوم الذي يزيد فيه الحمل وتشغّل نسخة ثانية، يذهب نصف requests كل مستخدم إلى جهاز لم يرَ سلته أبداً. التطبيق كان صحيحاً، لكنه كان يعتمد بصمت على وجود نسخة واحدة منه فقط." },
+        { t: "p",
+          en: "Think of a coffee shop. A stateful barista remembers your usual order, so you must always come back to that same person — if they are on break, you are stuck waiting. A stateless shop writes your order on the cup: any barista can take the cup and finish it. The cup is the request carrying everything needed. Adding a second barista helps immediately, because no knowledge is trapped in one person's head.",
+          ar: "تخيّل مقهى. الـ barista الـ stateful يحفظ طلبك المعتاد، فيجب أن تعود دائماً إلى نفس الشخص — وإن كان في استراحة تبقى تنتظر. أما المقهى الـ stateless فيكتب طلبك على الكوب: أي barista يستطيع أخذ الكوب وإكماله. الكوب هنا هو الـ request الذي يحمل كل ما يلزم. وإضافة barista ثانٍ تنفع فوراً، لأن لا معرفة محبوسة في رأس شخص واحد." },
+        { t: "callout", kind: "note",
+          en: "Stateless does not mean your system has no state. The state moves out of the instance and into a place all instances share — a database, Redis, or the request itself. Someone still stores it; it is just no longer one server's private memory.",
+          ar: "Stateless لا يعني أن نظامك بلا state. الـ state ينتقل من داخل الـ instance إلى مكان مشترك بين كل الـ instances — database أو Redis أو الـ request نفسه. أحدهم ما زال يخزّنه، لكنه لم يعد ذاكرة خاصة بـ server واحد." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Here is the concrete case used through this lesson. A shop API has two endpoints: POST /cart/items adds a product, GET /cart returns the cart. The first version keeps carts in a static dictionary inside the process. With one instance, every test passes and production is fine for a year.",
+          ar: "هذه هي الحالة الملموسة المستخدمة في الدرس كله. API لمتجر فيه endpoint اثنان: POST /cart/items يضيف منتجاً، و GET /cart يعيد السلة. النسخة الأولى تحتفظ بالسلات في static dictionary داخل الـ process. مع instance واحد تنجح كل الاختبارات ويعمل الإنتاج سنة كاملة." },
+        { t: "code", lang: "csharp",
+          label: { en: "The version that only works when there is exactly one instance", ar: "النسخة التي تعمل فقط عندما يوجد instance واحد" },
+          code: "// carts live in this process's memory only\nstatic readonly ConcurrentDictionary<string, Cart> Carts = new();\n\napp.MapPost(\"/cart/items\", (string sessionId, Item item) =>\n{\n    var cart = Carts.GetOrAdd(sessionId, _ => new Cart());\n    cart.Items.Add(item);\n    return Results.Ok(cart);\n});\n\napp.MapGet(\"/cart\", (string sessionId) =>\n    Carts.TryGetValue(sessionId, out var cart)\n        ? Results.Ok(cart)\n        : Results.Ok(new Cart()));   // silently returns an empty cart" },
+        { t: "p",
+          en: "Black Friday arrives and one instance becomes three behind a load balancer that spreads requests evenly. Now each request has about a one in three chance of reaching the instance holding that cart. Support tickets say \"my cart keeps emptying\". Nothing throws, nothing logs an error: GET /cart on the wrong instance returns an empty cart with status 200, which looks like a successful answer.",
+          ar: "يأتي موسم الذروة فيصبح الـ instance الواحد ثلاثة خلف load balancer يوزّع الـ requests بالتساوي. الآن لكل request احتمال واحد من ثلاثة تقريباً أن يصل إلى الـ instance الذي يحمل تلك السلة. تصل شكاوى «سلتي تفرغ باستمرار». لا استثناء يُرمى ولا خطأ يُسجّل: فـ GET /cart على الـ instance الخطأ يعيد سلة فارغة بحالة 200، وهو ما يبدو كرد ناجح." },
+        { t: "kv", rows: [
+          { k: { en: "One instance", ar: "instance واحد" },
+            v: { en: "Cart found on 100% of reads. Peak capacity is whatever that single machine can do — about 800 requests per second here.", ar: "السلة تُوجد في 100% من القراءات. والسعة القصوى هي ما يقدر عليه ذلك الجهاز وحده — حوالي 800 request في الثانية هنا." } },
+          { k: { en: "Three instances, in-memory carts", ar: "ثلاثة instances، سلات في الذاكرة" },
+            v: { en: "Cart found on roughly 33% of reads — two out of three reads look empty to the user. Capacity tripled, correctness broke.", ar: "السلة تُوجد في حوالي 33% من القراءات — قراءتان من كل ثلاث تبدوان فارغتين للمستخدم. السعة تضاعفت ثلاث مرات لكن الصحة انكسرت." } },
+          { k: { en: "Three instances, carts in Redis", ar: "ثلاثة instances، السلات في Redis" },
+            v: { en: "Cart found on 100% of reads, and capacity is about 2,400 requests per second. One extra network hop of roughly 1 ms per read.", ar: "السلة تُوجد في 100% من القراءات، والسعة حوالي 2,400 request في الثانية. مقابل قفزة شبكة إضافية بحدود 1 ms لكل قراءة." } }
+        ]},
+        { t: "p",
+          en: "The fix is one line of thinking: move the cart out of the process into a store that all three instances can read. Redis here is an in-memory key/value database that runs as its own service, so every instance talks to the same copy of the data.",
+          ar: "الحل فكرة واحدة: انقل السلة من داخل الـ process إلى مخزن تستطيع الـ instances الثلاثة قراءته. و Redis هنا هو key/value database يعمل في الذاكرة كخدمة مستقلة، فتتحدث كل الـ instances إلى نفس نسخة البيانات." }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "Follow one request end to end. The browser sends POST /cart/items to a single public address. That address belongs to the load balancer, not to any instance. The load balancer picks a healthy instance — commonly by round robin, meaning it hands out requests in turn: first to A, then B, then C, then A again — and forwards the request there. The instance answers, the load balancer returns that answer, and the connection is done. The next request from the same browser starts the choice over from scratch.",
+          ar: "تابع request واحداً من أوله إلى آخره. المتصفح يرسل POST /cart/items إلى عنوان عام واحد. هذا العنوان يخص الـ load balancer وليس أي instance. يختار الـ load balancer instance سليماً — غالباً بطريقة round robin، أي يوزّع الـ requests بالتناوب: الأول لـ A ثم B ثم C ثم A مجدداً — ويمرّر الـ request إليه. يردّ الـ instance، ويعيد الـ load balancer الرد، وتنتهي العملية. والـ request التالي من نفس المتصفح يبدأ الاختيار من الصفر." },
+        { t: "kv", rows: [
+          { k: { en: "Load balancer", ar: "Load balancer" },
+            v: { en: "Picks an instance per request and checks each instance is alive before sending traffic to it.", ar: "يختار instance لكل request، ويتأكد أن الـ instance حيّ قبل إرسال حركة إليه." } },
+          { k: { en: "Health check", ar: "Health check" },
+            v: { en: "A small endpoint like GET /health the balancer calls every few seconds; a failing answer removes the instance from rotation.", ar: "endpoint صغير مثل GET /health ينادى كل بضع ثوانٍ؛ والرد الفاشل يخرج الـ instance من التوزيع." } },
+          { k: { en: "Shared store", ar: "المخزن المشترك" },
+            v: { en: "The database or cache every instance reads and writes, so they all see the same data.", ar: "الـ database أو الـ cache الذي تقرأ منه وتكتب فيه كل الـ instances، فترى كلها نفس البيانات." } },
+          { k: { en: "Session token", ar: "Session token" },
+            v: { en: "A value in a cookie or header that identifies the user, so any instance can look their data up.", ar: "قيمة في cookie أو header تعرّف المستخدم، فيستطيع أي instance البحث عن بياناته." } }
+        ]},
+        { t: "p",
+          en: "The key point is what the instance owns. In the stateless version it owns nothing that outlives the response: it reads the session token from the cookie, fetches the cart from Redis by that key, changes it, writes it back, and returns. If that instance is killed mid-second, the next request goes to another one and the user notices nothing, because the only durable copy of the cart was never inside the instance.",
+          ar: "النقطة الأساسية هي: ما الذي يملكه الـ instance؟ في النسخة الـ stateless لا يملك شيئاً يعيش بعد الرد: يقرأ الـ session token من الـ cookie، يجلب السلة من Redis بذلك المفتاح، يعدّلها، يكتبها مرة أخرى، ثم يردّ. وإن قُتل هذا الـ instance في تلك اللحظة، يذهب الـ request التالي إلى غيره ولا يلاحظ المستخدم شيئاً، لأن النسخة الوحيدة الدائمة من السلة لم تكن داخل الـ instance أصلاً." },
+        { t: "code", lang: "csharp",
+          label: { en: "The same endpoints, with the cart in a shared store", ar: "نفس الـ endpoints، مع وضع السلة في مخزن مشترك" },
+          code: "// IDistributedCache is backed by Redis here, shared by all instances\napp.MapPost(\"/cart/items\", async (HttpContext ctx, IDistributedCache store, Item item) =>\n{\n    var key = $\"cart:{ctx.Request.Cookies[\"sid\"]}\";\n\n    var json = await store.GetStringAsync(key);\n    var cart = json is null ? new Cart() : JsonSerializer.Deserialize<Cart>(json)!;\n\n    cart.Items.Add(item);\n\n    await store.SetStringAsync(key, JsonSerializer.Serialize(cart),\n        new DistributedCacheEntryOptions { SlidingExpiration = TimeSpan.FromHours(2) });\n\n    return Results.Ok(cart);\n});" },
+        { t: "p",
+          en: "This is the same idea as the coffee cup, one level down. The cookie is the writing on the cup: it identifies the order but holds no contents. Redis is the shelf behind the counter where cups wait. Any barista can read the name on the cup and find the right one on the shelf. What made the first version fragile was keeping the shelf inside one barista's apron.",
+          ar: "هذه نفس فكرة كوب القهوة، بمستوى أعمق. الـ cookie هي الكتابة على الكوب: تعرّف الطلب ولا تحمل محتواه. و Redis هو الرف خلف الطاولة حيث تنتظر الأكواب. أي barista يقرأ الاسم على الكوب ويجد الكوب الصحيح على الرف. وما جعل النسخة الأولى هشّة هو وضع الرف داخل جيب barista واحد." },
+        { t: "p",
+          en: "Sticky sessions are the shortcut people reach for instead. The load balancer hashes something about the client — usually its IP address or a cookie it sets — and always routes that client to the same instance, so the in-memory dictionary keeps working. It removes the symptom without removing the coupling: state still lives in one instance, and now traffic distribution depends on it.",
+          ar: "الـ sticky sessions هي الاختصار الذي يلجأ إليه الناس بدلاً من ذلك. الـ load balancer يحسب hash لشيء يخص العميل — عادةً عنوان IP أو cookie يضعها هو — ويوجّه ذلك العميل دائماً إلى نفس الـ instance، فيستمر عمل الـ dictionary في الذاكرة. لكنه يزيل العرَض دون أن يزيل الارتباط: الـ state ما زال في instance واحد، وصار توزيع الحمل معتمداً عليه." }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: { en: [
+            "Any instance answers any request, so adding capacity is just starting more copies.",
+            "Losing an instance loses no user data, because no user data lived there.",
+            "Deploys can restart instances one at a time without logging anyone out.",
+            "Local testing matches production: one instance behaves like ten."
+          ], ar: [
+            "أي instance يردّ على أي request، فزيادة السعة مجرد تشغيل نسخ أكثر.",
+            "فقدان instance لا يفقد بيانات مستخدمين، لأن لا بيانات مستخدمين كانت هناك.",
+            "النشر يستطيع إعادة تشغيل الـ instances واحداً تلو الآخر دون إخراج أحد من جلسته.",
+            "الاختبار المحلي يشبه الإنتاج: instance واحد يتصرف مثل عشرة."
+          ]},
+          cons: { en: [
+            "Every read now crosses the network to the store, adding roughly 1 ms each time.",
+            "The shared store becomes a dependency that can be slow or unavailable.",
+            "State must be serializable, so you cannot keep live objects like an open connection.",
+            "More moving parts to run, monitor and pay for."
+          ], ar: [
+            "كل قراءة تعبر الشبكة إلى المخزن، فتضيف حوالي 1 ms في كل مرة.",
+            "المخزن المشترك يصبح تبعية قد تبطؤ أو تتعطّل.",
+            "الـ state يجب أن يكون قابلاً للـ serialization، فلا يمكن الاحتفاظ بكائنات حيّة مثل اتصال مفتوح.",
+            "أجزاء متحركة أكثر يجب تشغيلها ومراقبتها ودفع كلفتها."
+          ]},
+          limits: { en: [
+            "Statelessness is about your app instances; the store behind them is still stateful.",
+            "Long-lived connections like WebSocket are pinned to one instance by nature.",
+            "Very large per-user state makes fetching it on every request expensive.",
+            "It does not remove the need for locking when two requests edit the same record."
+          ], ar: [
+            "الـ statelessness يخص instances تطبيقك؛ أما المخزن خلفها فما زال stateful.",
+            "الاتصالات طويلة العمر مثل WebSocket مرتبطة بـ instance واحد بطبيعتها.",
+            "الـ state الضخم لكل مستخدم يجعل جلبه في كل request مكلفاً.",
+            "لا يلغي الحاجة إلى locking عندما يعدّل request اثنان نفس السجل."
+          ]},
+          alts: { en: [
+            "Sticky sessions: keep memory state, accept uneven load and data loss on restart.",
+            "Client-held state such as a signed JWT: no store lookup, but hard to revoke early.",
+            "Server-side session store in Redis or SQL: one lookup, easy to revoke.",
+            "Stateful services with their own replication, used only where truly needed."
+          ], ar: [
+            "Sticky sessions: أبقِ الـ state في الذاكرة، واقبل حملاً غير متوازن وفقدان بيانات عند إعادة التشغيل.",
+            "State عند العميل مثل JWT موقّع: بلا بحث في مخزن، لكن إلغاؤه مبكراً صعب.",
+            "Session store على الخادم في Redis أو SQL: بحث واحد، وإلغاء سهل.",
+            "خدمات stateful لها replication خاص بها، تُستخدم فقط حيث تلزم فعلاً."
+          ]}
         }
-      }
-    ]},
-
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "Session in IMemoryCache behind sticky sessions", ar: "الجلسة في IMemoryCache خلف جلسات لاصقة" },
-        body: { en: "The default AddSession() with no distributed cache registered silently uses an in-memory store. Affinity on the load balancer hides it perfectly in normal operation. Then the first rolling deploy of a 4-instance fleet destroys 25% of sessions per step, and by the fourth step every user has been signed out — while the identity provider receives the entire user base's re-login inside a four-minute window, which is often enough to rate-limit you. The bug is invisible in every environment that runs one instance, which includes every developer's machine.", ar: "استدعاء AddSession() الافتراضي بلا distributed cache مسجَّل يستخدم بصمت مخزناً في الذاكرة. والانتماء على الـ load balancer يخفي ذلك تماماً في التشغيل الطبيعي. ثم يدمّر أول نشر تدريجي لأسطول من أربعة instances 25% من الجلسات في كل خطوة، وبحلول الخطوة الرابعة يكون كل مستخدم قد خرج — بينما يستقبل مزوّد الهوية إعادة تسجيل دخول قاعدة المستخدمين كاملة داخل نافذة أربع دقائق، وهو كافٍ غالباً لتحديد معدلك. والعلة غير مرئية في كل بيئة تشغّل instance واحداً، وهي تشمل جهاز كل مطوّر." },
-        fix: "// AddSession() alone gives you an in-memory store. Register the backing cache first.\nbuilder.Services.AddStackExchangeRedisCache(o =>\n    o.Configuration = cfg.GetConnectionString(\"redis\"));\nbuilder.Services.AddSession(o => o.IdleTimeout = TimeSpan.FromMinutes(30));\n\n// guard: fail fast at startup instead of at 2 a.m. on deploy night\nif (env.IsProduction() &&\n    sp.GetRequiredService<IDistributedCache>() is MemoryDistributedCache)\n    throw new InvalidOperationException(\"in-memory session store in production\");" },
-      { t: "mistake",
-        title: { en: "Data Protection keys not shared across the farm", ar: "مفاتيح Data Protection غير مشتركة عبر الـ farm" },
-        body: { en: "Nothing is configured, so each ASP.NET Core process generates its own key ring and writes it to the local profile — or, in a container, to a filesystem that vanishes on restart. Auth cookies, antiforgery tokens and TempData encrypted by node A are undecryptable on node B, so roughly (N-1)/N of cross-node requests fail. The symptoms are maddeningly indirect: intermittent 400 Bad Request on form posts, users logged out at random, and everything working perfectly whenever you scale down to one instance to investigate. Teams routinely spend a week suspecting the identity provider.", ar: "لا شيء مضبوط، فتولّد كل عملية ASP.NET Core حلقة مفاتيحها وتكتبها إلى الملف الشخصي المحلي — أو، داخل حاوية، إلى نظام ملفات يتبخّر عند إعادة التشغيل. فتصير كوكيز المصادقة وtokens الـ antiforgery وTempData المشفَّرة بالعقدة A غير قابلة لفكّ التشفير على العقدة B، فيفشل نحو (N-1)/N من الطلبات العابرة للعقد. والأعراض غير مباشرة إلى حدّ الجنون: 400 Bad Request متقطعة عند إرسال النماذج، وخروج مستخدمين عشوائياً، وكل شيء يعمل بإتقان كلما قلّصت إلى instance واحد للتحقيق. والفرق تقضي أسبوعاً روتينياً في الاشتباه بمزوّد الهوية." },
-        fix: "builder.Services.AddDataProtection()\n    .SetApplicationName(\"orders-api\")          // MUST be identical on every node\n    .PersistKeysToStackExchangeRedis(redis, \"DataProtection-Keys\")\n    .ProtectKeysWithAzureKeyVault(keyUri, cred);   // or DPAPI-NG / certificate" },
-      { t: "mistake",
-        title: { en: "Treating IMemoryCache as if it were coherent", ar: "معاملة IMemoryCache كأنه متماسك" },
-        body: { en: "A feature flag, a tax rate or a price list is cached per instance with a 5-minute TTL. After an update the fleet disagrees for up to 5 minutes, so a user pressing refresh sees two different prices depending on which node answers — and a cache-invalidation endpoint that clears \"the\" cache only clears the one instance the load balancer happened to route it to. The failure is not the caching; it is that the code treats per-instance soft state as authoritative shared state.", ar: "feature flag أو نسبة ضريبة أو قائمة أسعار تُخزَّن لكل instance بعمر خمس دقائق. وبعد تحديث يختلف الأسطول مدة تصل إلى خمس دقائق، فيرى مستخدم يضغط تحديث سعرين مختلفين حسب العقدة التي تجيب — وendpoint إبطال الـ cache الذي يمسح «الـ» cache لا يمسح إلا الـ instance الوحيد الذي وجّهه إليه الـ load balancer مصادفةً. والعطل ليس في التخزين المؤقت؛ بل في أن الكود يعامل حالة لينة لكل instance كحالة مشتركة مرجعية." },
-        fix: "// per-instance cache is fine — but invalidation must be a broadcast, not a local clear\nawait _bus.PublishAsync(new PricesChanged(sku));   // every instance subscribes\n\n// or accept the staleness explicitly and make it short and documented\n_cache.Set(key, value, TimeSpan.FromSeconds(10));  // bounded divergence, on purpose" },
-      { t: "mistake",
-        title: { en: "Hosted services assumed to be cluster singletons", ar: "خدمات مستضافة تُفترض singletons على مستوى المجموعة" },
-        body: { en: "A BackgroundService runs a nightly reconciliation, a queue drain or an email sweep. It is a singleton in the DI container, and everyone reads that as \"runs once\". It runs once per process. Scaling from 1 to 6 pods turns one nightly sweep into six concurrent sweeps racing over the same rows: duplicate emails to customers, deadlocks on the reconciliation table, and a job that used to take 4 minutes now taking 25 because the six copies block each other. Nothing in the code changed — only the replica count.", ar: "خدمة BackgroundService تنفّذ تسوية ليلية، أو تفريغ طابور، أو مسح بريد. وهي singleton في حاوية الـ DI، والجميع يقرأ ذلك كـ«تعمل مرة واحدة». وهي تعمل مرة واحدة لكل عملية. فالتوسّع من pod واحد إلى ستة يحوّل مسحاً ليلياً واحداً إلى ستة عمليات مسح متزامنة تتسابق على الصفوف نفسها: رسائل مكررة إلى العملاء، وdeadlocks على جدول التسوية، ومهمة كانت تستغرق أربع دقائق صارت تستغرق خمساً وعشرين لأن النسخ الست تحجب بعضها. ولم يتغير شيء في الكود — بل عدد النسخ فقط." },
-        fix: "// elect a leader with a lease; only the holder does the work\nawait using var lease = await _leases.TryAcquireAsync(\n    name: \"nightly-reconcile\", ttl: TimeSpan.FromMinutes(5), ct);\n\nif (lease is null) return;      // another pod owns it this cycle\nawait ReconcileAsync(ct);" },
-      { t: "mistake",
-        title: { en: "Stuffing everything into the JWT to \"be stateless\"", ar: "حشو كل شيء في الـ JWT كي «نكون stateless»" },
-        body: { en: "Roles, permissions, tenant settings and profile fields all go into the token so no lookup is needed. Two things break. The token grows past 4 KB and, combined with other cookies, exceeds the 8 KB total header limit that most reverse proxies default to — the result is a 431 or an abrupt connection reset that looks like a network problem and only affects users with many permissions. And because a signed token cannot be un-signed, revoking a compromised session or removing an admin role does not take effect until expiry, which on a 24-hour token is a 24-hour security hole. The revocation list you then add is exactly the server-side session state you were avoiding.", ar: "الأدوار والصلاحيات وإعدادات المستأجر وحقول الملف الشخصي كلها تدخل في الـ token كي لا يلزم أي بحث. فينكسر شيئان. إذ ينمو الـ token متجاوزاً 4 كيلوبايت، ومع كوكيز أخرى يتجاوز حدّ الترويسات الإجمالي البالغ 8 كيلوبايت الذي تفترضه معظم الـ reverse proxies — والنتيجة 431 أو إعادة تعيين اتصال مفاجئة تبدو كمشكلة شبكة ولا تصيب إلا المستخدمين ذوي الصلاحيات الكثيرة. ولأن token موقّعاً لا يمكن نزع توقيعه، فإن إبطال جلسة مخترقة أو إزالة دور مدير لا يسري حتى انتهاء الصلاحية، وهو في token مدته أربع وعشرون ساعة ثغرة أمنية مدتها أربع وعشرون ساعة. وقائمة الإبطال التي تضيفها عندها هي بالضبط حالة الجلسة على السيرفر التي كنت تتجنبها." },
-        fix: "// keep the token small and short-lived; look up the volatile parts\n// claims: sub, tenant, a handful of coarse roles, exp <= 15 minutes\n// everything else: a cached lookup keyed on sub, invalidated on change\nvar perms = await _cache.GetOrCreateAsync($\"perm:{sub}\",\n    _ => _db.LoadPermissionsAsync(sub), TimeSpan.FromMinutes(5));" },
-      { t: "mistake",
-        title: { en: "Writing uploads and temp files to local disk", ar: "كتابة الرفوعات والملفات المؤقتة إلى القرص المحلي" },
-        body: { en: "A multi-step upload writes chunks to a local temp folder and assembles them on the final request. With affinity it works; without it, chunk 3 lands on a node that has never seen chunks 1 and 2. Even with affinity it fails whenever the node restarts mid-upload, and in a container the disk is gone on restart anyway. The same pattern shows up with generated PDFs served from a local path, log files read back by an admin endpoint, and Data Protection keys — all of which are per-instance state disguised as file I/O.", ar: "رفعٌ متعدد الخطوات يكتب القطع إلى مجلد مؤقت محلي ويجمّعها عند الطلب الأخير. فمع الانتماء ينجح؛ وبدونه تهبط القطعة الثالثة على عقدة لم ترَ القطعتين الأولى والثانية قط. وحتى مع الانتماء يفشل كلما أُعيد تشغيل العقدة في منتصف الرفع، وداخل حاوية يزول القرص عند إعادة التشغيل على أي حال. والنمط نفسه يظهر مع ملفات PDF مولّدة تُقدَّم من مسار محلي، وملفات سجل يقرأها endpoint إداري، ومفاتيح Data Protection — وكلها حالة لكل instance متنكّرة في هيئة I/O ملفات." },
-        fix: "// chunks go to shared object storage keyed by upload id, not to /tmp\nawait _blobs.UploadBlockAsync(uploadId, blockId, stream, ct);\n\n// final request just commits the block list - any node can serve it\nawait _blobs.CommitBlockListAsync(uploadId, blockIds, ct);" }
-    ]},
-
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "What does it mean for a web service to be stateless?", ar: "ماذا يعني أن تكون خدمة ويب stateless؟" },
-        a: { en: "It does not mean the application has no state — it means no state required to serve a request lives exclusively in the memory of one server process. Each request carries or can look up everything needed to handle it, so any instance can answer it. The state still exists; it lives in the client (a signed cookie or token) or in a shared store (Redis, SQL). The practical test is simple: if you killed the process that handled the previous request, could another one handle the next request with no loss?", ar: "لا يعني أن التطبيق بلا حالة — بل يعني أنه لا توجد حالة لازمة لخدمة طلب تعيش حصراً في ذاكرة عملية سيرفر واحدة. فكل طلب يحمل أو يستطيع أن يجلب كل ما يلزم لمعالجته، فيستطيع أي instance الإجابة عنه. والحالة ما زالت موجودة؛ لكنها تعيش في العميل (كوكي موقّع أو token) أو في مخزن مشترك (Redis، SQL). والاختبار العملي بسيط: لو قتلت العملية التي عالجت الطلب السابق، هل تستطيع أخرى معالجة الطلب التالي بلا فقد؟" } },
-      { t: "qa", level: "mid",
-        q: { en: "Sticky sessions solve the multi-instance problem. Why not just use them?", ar: "الجلسات اللاصقة تحلّ مشكلة تعدد الـ instances. فلماذا لا نستخدمها فحسب؟" },
-        a: { en: "Because they solve routing, not durability, and they trade away the three properties you actually bought the load balancer for. A rolling deploy still destroys every session on each instance it restarts. Scale-out only helps new sessions, so adding capacity during an incident does almost nothing for the traffic already in flight. And affinity balances sessions rather than requests, so a node holding a few heavy users can run at 90% CPU while the fleet average looks fine and autoscaling never triggers. Affinity is a legitimate optimisation for cache warmth on top of a stateless design; it is not a substitute for one.", ar: "لأنها تحلّ التوجيه لا الديمومة، وتتنازل عن الخصائص الثلاث التي اشتريت الـ load balancer من أجلها فعلاً. فالنشر التدريجي ما زال يدمّر كل جلسة على كل instance يعيد تشغيله. والتوسّع لا يفيد إلا الجلسات الجديدة، فإضافة سعة أثناء حادثة لا تكاد تفعل شيئاً للحركة الجارية أصلاً. والانتماء يوازن الجلسات لا الطلبات، فقد تعمل عقدة تحتضن قلّة من المستخدمين الثقال عند 90% من المعالج بينما يبدو متوسط الأسطول جيداً ولا ينطلق التوسّع التلقائي أبداً. فالانتماء تحسين مشروع لدفء الـ cache فوق تصميم stateless؛ لا بديل عنه." } },
-      { t: "qa", level: "mid",
-        q: { en: "You scaled from one instance to three and users now get random 400s on form posts. What is your first hypothesis?", ar: "توسّعت من instance واحد إلى ثلاثة وصار المستخدمون يتلقون 400 عشوائية عند إرسال النماذج. ما فرضيتك الأولى؟" },
-        a: { en: "An unshared Data Protection key ring. ASP.NET Core encrypts antiforgery tokens, auth cookies and TempData with a per-process key ring unless you configure shared storage, so a token issued by instance A cannot be decrypted by instance B. With three instances that is about two thirds of cross-node requests failing, which reads as \"random\". The confirming evidence is that the failure rate scales with instance count and disappears entirely when you scale back to one. The fix is PersistKeysTo... a shared store plus an identical SetApplicationName on every node.", ar: "حلقة مفاتيح Data Protection غير مشتركة. فـASP.NET Core يشفّر tokens الـ antiforgery وكوكيز المصادقة وTempData بحلقة مفاتيح لكل عملية ما لم تضبط تخزيناً مشتركاً، فلا تستطيع العقدة B فكّ تشفير token أصدرته العقدة A. ومع ثلاثة instances يعني ذلك فشل نحو ثلثي الطلبات العابرة للعقد، فتُقرأ كـ«عشوائية». والدليل المؤكِّد أن معدل الفشل يتناسب مع عدد الـ instances ويختفي كلياً حين تعود إلى واحد. والحل PersistKeysTo... إلى مخزن مشترك مع SetApplicationName مطابق على كل عقدة." } },
-      { t: "qa", level: "senior",
-        q: { en: "What does moving session from IMemoryCache to Redis actually cost, and when is that cost unacceptable?", ar: "ما الكلفة الفعلية لنقل الجلسة من IMemoryCache إلى Redis، ومتى تكون تلك الكلفة غير مقبولة؟" },
-        a: { en: "A dictionary lookup is roughly 20-100 nanoseconds with no I/O; a same-zone Redis round trip is roughly 0.3-1 millisecond plus serialisation on both ends — several thousand times more. In almost every web application that is invisible against a 40 ms database query, which is why it is nearly always the right trade. It becomes unacceptable in two situations: when the per-user working set is large enough that fetching it per request dominates the response (a loaded model, a big object graph), and when a handler reads session many times, which is why ASP.NET Core's ISession loads the whole session once per request rather than per key. If you genuinely hit the first case, the answer is usually explicit partitioning with an actor or grain model, not sticky sessions.", ar: "بحث القاموس نحو 20 إلى 100 نانوثانية بلا I/O؛ ورحلة Redis في نفس المنطقة نحو 0.3 إلى 1 مللي ثانية زائد التسلسل على الطرفين — أي آلاف الأضعاف. وفي كل تطبيق ويب تقريباً يكون ذلك غير مرئي أمام استعلام قاعدة بيانات مدته 40 مللي ثانية، ولهذا يكون شبه دائماً المقايضة الصحيحة. ويصير غير مقبول في حالتين: حين تكون مجموعة العمل لكل مستخدم كبيرة بما يكفي ليهيمن جلبها لكل طلب على زمن الاستجابة (نموذج محمّل، أو رسم كائنات كبير)، وحين يقرأ معالجٌ الجلسةَ مرات كثيرة، ولهذا يحمّل ISession في ASP.NET Core الجلسةَ كاملة مرة واحدة لكل طلب لا لكل مفتاح. وإن أصبت الحالة الأولى فعلاً، فالجواب عادةً تقسيم صريح بنموذج actor أو grain، لا جلسات لاصقة." } },
-      { t: "qa", level: "senior",
-        q: { en: "Are WebSockets and SignalR a violation of statelessness? How do you scale them?", ar: "هل تنتهك WebSockets وSignalR الـ statelessness؟ وكيف توسّعها؟" },
-        a: { en: "They are genuinely connection-pinned — the socket lives in one process and cannot be moved — but that is per-connection state, not per-user state, and the distinction is what makes it tractable. You keep the connection stateful and make everything about it recoverable: the client reconnects automatically, connection-to-user mapping lives in a shared store, and messages are published through a backplane (Redis, Azure SignalR, a service bus) so any instance can deliver to any user regardless of where their socket landed. The design rule is that losing a connection costs a reconnect and possibly a replay, never data. Anything you cannot rebuild after a reconnect is per-user state that has leaked into the connection.", ar: "هي مثبّتة بالاتصال فعلاً — فالمقبس يعيش في عملية واحدة ولا يمكن نقله — لكن تلك حالة لكل اتصال لا حالة لكل مستخدم، والتمييز هو ما يجعلها قابلة للمعالجة. فتُبقي الاتصال ذا حالة وتجعل كل ما يتعلق به قابلاً للاسترجاع: العميل يعيد الاتصال تلقائياً، وربط الاتصال بالمستخدم يعيش في مخزن مشترك، والرسائل تُنشر عبر backplane (Redis، أو Azure SignalR، أو ناقل خدمة) كي يستطيع أي instance التسليم إلى أي مستخدم بغضّ النظر عن مكان هبوط مقبسه. والقاعدة التصميمية أن فقد الاتصال يكلّف إعادة اتصال وربما إعادة تشغيل للرسائل، لا بيانات أبداً. وكل ما لا تستطيع إعادة بنائه بعد إعادة الاتصال هو حالة لكل مستخدم تسربت إلى الاتصال." } },
-      { t: "qa", level: "senior",
-        q: { en: "Is a JWT-based design more stateless than a server-side session? What does it actually trade?", ar: "هل تصميم قائم على JWT أكثر statelessness من جلسة على السيرفر؟ وما الذي يقايضه فعلاً؟" },
-        a: { en: "It moves the state rather than removing it, and the trade is revocation for a lookup. With a token you avoid a store read per request, but you also lose the ability to invalidate: a signed token stays valid until it expires, so removing an admin role or killing a compromised session has no effect for the token's lifetime. Every production JWT design eventually grows a revocation or introspection list to fix that — which is server-side session state again, just consulted less often. The size cost is real too: a fat token adds to every request and can push total headers past the 8 KB limit most proxies default to. The usual resolution is short-lived access tokens (minutes) with refresh tokens, so revocation latency is bounded by the access token lifetime rather than eliminated.", ar: "هو ينقل الحالة لا يزيلها، والمقايضة هي الإبطال مقابل عملية بحث. فمع token تتجنب قراءة من مخزن لكل طلب، لكنك تفقد أيضاً القدرة على الإبطال: إذ يبقى token موقّع صالحاً حتى انتهاء صلاحيته، فإزالة دور مدير أو قتل جلسة مخترقة لا أثر لهما طوال عمر الـ token. وكل تصميم JWT إنتاجي ينمو له في النهاية قائمة إبطال أو introspection لإصلاح ذلك — وهي حالة جلسة على السيرفر مجدداً، لكنها تُستشار أقل. وكلفة الحجم حقيقية أيضاً: فـtoken سمين يضاف إلى كل طلب وقد يدفع مجموع الترويسات وراء حدّ الثمانية كيلوبايت الذي تفترضه معظم الـ proxies. والحل المعتاد access tokens قصيرة العمر (دقائق) مع refresh tokens، فيصير زمن الإبطال محدوداً بعمر الـ access token بدل أن يُلغى." } },
-      { t: "qa", level: "staff",
-        q: { en: "Half your services are accidentally stateful and nobody notices until a deploy. What do you change beyond fixing them?", ar: "نصف خدماتك ذات حالة بالمصادفة ولا يلاحظ أحد حتى النشر. ما الذي تغيّره بعد إصلاحها؟" },
-        a: { en: "Make the failure impossible to reach production undetected rather than relying on review. First, remove the environment that hides it: every non-local environment runs at least two replicas, so single-instance behaviour is never the tested behaviour. Second, put the invariants in code — a startup guard that refuses to boot in production with an in-memory session store or an unconfigured Data Protection key ring, and an architecture test that fails the build on static mutable fields and local file paths in request handlers. Third, make it a routine exercise: a scheduled chaos job that kills a random pod during business hours turns \"survives instance loss\" from an assumption into a continuously verified property. Finally, ship a service template with the shared cache, key ring and leader-election lease already wired, so the correct thing is also the default thing.", ar: "اجعل العطل يستحيل أن يبلغ الإنتاج دون اكتشاف بدل الاعتماد على المراجعة. أولاً، أزل البيئة التي تخفيه: كل بيئة غير محلية تشغّل نسختين على الأقل، فلا يكون سلوك الـ instance الواحد هو السلوك المُختبَر أبداً. ثانياً، ضع الثوابت في الكود — حارس إقلاع يرفض التشغيل في الإنتاج مع مخزن جلسة في الذاكرة أو حلقة مفاتيح Data Protection غير مضبوطة، واختبار معماري يُفشل البناء عند وجود حقول ساكنة قابلة للتغيير أو مسارات ملفات محلية في معالجات الطلبات. ثالثاً، اجعله تمريناً روتينياً: مهمة فوضى مجدولة تقتل pod عشوائياً خلال ساعات العمل تحوّل «ينجو من فقد instance» من افتراض إلى خاصية متحقَّق منها باستمرار. وأخيراً، اشحن قالب خدمة فيه الـ cache المشترك وحلقة المفاتيح وlease انتخاب القائد موصولة سلفاً، فيصير الشيء الصحيح هو الشيء الافتراضي أيضاً." } }
-    ]},
-
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Per-user state and a lock held in process-local statics", ar: "حالة لكل مستخدم وقفل محتجزان في حقول ساكنة داخل العملية" },
-        bad: "public class CartService\n{\n    // one dictionary per PROCESS - invisible on a dev machine, wrong on 4 pods\n    private static readonly ConcurrentDictionary<Guid, Cart> _carts = new();\n    private static readonly object _checkoutLock = new();\n\n    public Cart Get(Guid userId) => _carts.GetOrAdd(userId, _ => new Cart());\n\n    public void Checkout(Guid userId)\n    {\n        // protects nothing: each instance has its own lock object\n        lock (_checkoutLock)\n        {\n            var cart = Get(userId);\n            _orders.Place(cart);\n        }\n    }\n}",
-        good: "public class CartService(IDistributedCache cache, IDistributedLockProvider locks)\n{\n    public async Task<Cart> GetAsync(Guid userId, CancellationToken ct) =>\n        await cache.GetAsync<Cart>($\"cart:{userId}\", ct) ?? new Cart();\n\n    public async Task CheckoutAsync(Guid userId, CancellationToken ct)\n    {\n        // a real mutual-exclusion boundary across the whole fleet\n        await using var handle = await locks.AcquireAsync(\n            $\"checkout:{userId}\", TimeSpan.FromSeconds(10), ct);\n\n        var cart = await GetAsync(userId, ct);\n        await _orders.PlaceAsync(cart, ct);          // idempotent on cart version\n        await cache.RemoveAsync($\"cart:{userId}\", ct);\n    }\n}",
-        why: { en: "Two independent defects with the same root cause. The static dictionary makes the cart readable only on the node that created it, so a request routed elsewhere sees an empty cart — and every restart silently discards carts for the users that node was serving. The lock is worse because it looks correct: `lock` provides mutual exclusion within one process only, so with four instances four checkouts can run concurrently for the same user and the guarantee the code appears to offer does not exist at all. The corrected version moves the state to a shared cache and replaces the in-process lock with a distributed lease, keeping the write idempotent so a lost lease cannot double-place an order.", ar: "عيبان مستقلان بالسبب الجذري نفسه. فالقاموس الساكن يجعل السلة قابلة للقراءة على العقدة التي أنشأتها فقط، فيرى طلب وُجّه إلى غيرها سلة فارغة — وكل إعادة تشغيل تتخلّص بصمت من سلال المستخدمين الذين كانت تلك العقدة تخدمهم. والقفل أسوأ لأنه يبدو صحيحاً: فـlock يوفّر إقصاءً متبادلاً داخل عملية واحدة فقط، فمع أربعة instances يمكن أن تعمل أربع عمليات دفع متزامنة لنفس المستخدم، والضمان الذي يبدو أن الكود يقدّمه غير موجود إطلاقاً. أما النسخة المصححة فتنقل الحالة إلى cache مشترك وتستبدل بالقفل داخل العملية lease موزّعاً، مع إبقاء الكتابة idempotent كي لا يؤدي فقد الـ lease إلى وضع طلبية مرتين." } },
-      { t: "review", severity: "medium",
-        title: { en: "Session and Data Protection left on framework defaults", ar: "الجلسة وData Protection مُتروكتان على افتراضات الإطار" },
-        bad: "var builder = WebApplication.CreateBuilder(args);\n\nbuilder.Services.AddSession();          // silently in-memory: no IDistributedCache registered\nbuilder.Services.AddControllersWithViews();   // antiforgery on, key ring unconfigured\n\nvar app = builder.Build();\napp.UseSession();\napp.Run();",
-        good: "var redis = ConnectionMultiplexer.Connect(cfg.GetConnectionString(\"redis\")!);\n\nbuilder.Services.AddStackExchangeRedisCache(o => o.ConnectionMultiplexerFactory =\n    () => Task.FromResult<IConnectionMultiplexer>(redis));\n\nbuilder.Services.AddSession(o =>\n{\n    o.IdleTimeout        = TimeSpan.FromMinutes(30);\n    o.Cookie.IsEssential = true;\n    o.Cookie.SameSite    = SameSiteMode.Lax;\n});\n\nbuilder.Services.AddDataProtection()\n    .SetApplicationName(\"orders-web\")            // identical on every instance\n    .PersistKeysToStackExchangeRedis(redis, \"DataProtection-Keys\");\n\n// fail fast rather than fail weirdly at 2 a.m.\nif (app.Environment.IsProduction() &&\n    app.Services.GetRequiredService<IDistributedCache>() is MemoryDistributedCache)\n    throw new InvalidOperationException(\"Production requires a distributed session store.\");",
-        why: { en: "Both defaults are single-instance defaults, and both fail in a way that points away from the cause. AddSession with no IDistributedCache registered quietly binds an in-memory store, so sessions die with the process and vanish on every rolling deploy. An unconfigured Data Protection key ring is generated per process and written to a path that does not survive a container restart, so antiforgery tokens and auth cookies fail to decrypt across nodes — surfacing as intermittent 400s rather than as an obvious configuration error. Neither shows up in a single-instance environment, which is why the explicit startup guard earns its place: it converts a subtle production failure into a loud deployment failure.", ar: "كلا الافتراضين افتراض instance واحد، وكلاهما يفشل بطريقة تشير بعيداً عن السبب. فـAddSession بلا IDistributedCache مسجَّل يربط بهدوء مخزناً في الذاكرة، فتموت الجلسات مع العملية وتتبخّر عند كل نشر تدريجي. وحلقة مفاتيح Data Protection غير المضبوطة تُولَّد لكل عملية وتُكتب إلى مسار لا ينجو من إعادة تشغيل حاوية، فتفشل tokens الـ antiforgery وكوكيز المصادقة في فكّ التشفير عبر العقد — فتظهر كـ400 متقطعة لا كخطأ ضبط بيّن. ولا يظهر أي منهما في بيئة بـinstance واحد، ولهذا يستحق حارس الإقلاع الصريح موضعه: فهو يحوّل فشل إنتاج خفياً إلى فشل نشر صاخب." } }
-    ]},
-
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a system design interview, statelessness is what lets you say \"add instances\" and have it mean something. The expected move is to identify every place per-user state would otherwise accumulate — session, cart, wizard progress, upload chunks, rate-limit counters — and name where each one lives instead. The follow-up question is almost always about the shared store you just introduced, because you have traded N independent failure domains for one shared one: what happens when Redis is unavailable, and is that degradation graceful (fall back to re-authentication, serve read-only) or total?", ar: "في مقابلة تصميم أنظمة، الـ statelessness هو ما يتيح لك قول «أضف instances» بحيث يعني ذلك شيئاً. والحركة المتوقعة هي تحديد كل موضع كانت ستتراكم فيه حالة لكل مستخدم — الجلسة، والسلة، وتقدّم المعالج، وقطع الرفع، وعدّادات تحديد المعدل — وتسمية الموضع الذي يعيش فيه كل منها بدلاً من ذلك. والسؤال التالي يكون شبه دائماً عن المخزن المشترك الذي أدخلته للتو، لأنك قايضت N من نطاقات الفشل المستقلة بنطاق مشترك واحد: فماذا يحدث حين يكون Redis غير متاح، وهل ذلك التدهور لطيف (ارتداد إلى إعادة مصادقة، أو خدمة للقراءة فقط) أم كلّي؟" },
-      { t: "p", en: "The other half of the answer is knowing which components are legitimately allowed to be stateful, because claiming everything can be stateless is a red flag. Databases, caches, message brokers and connection-oriented gateways hold state on purpose and manage it with replication, partitioning and consensus. The design goal is not to eliminate state but to concentrate it in a small number of systems that were built to manage it, and to keep the horizontally scaled tier — your application instances — free of it.", ar: "والنصف الآخر من الجواب معرفة أي المكوّنات مسموح لها بحق أن تكون ذات حالة، لأن الادعاء بأن كل شيء يمكن أن يكون stateless علامة إنذار. فقواعد البيانات والـ caches ووسطاء الرسائل والبوابات الموجّهة بالاتصال تحتفظ بحالة عن قصد وتديرها بالتكرار والتقسيم والإجماع. والهدف التصميمي ليس إزالة الحالة بل تركيزها في عدد صغير من الأنظمة المبنية لإدارتها، وإبقاء الطبقة المتوسّعة أفقياً — أي instances تطبيقك — خالية منها." },
-      { t: "ul",
-        en: [
-          "Stateless API tier behind a plain round-robin or least-connections load balancer, with health checks that actually reflect readiness to serve",
-          "Session and auth state in a distributed cache with an explicit TTL, plus a shared Data Protection key ring so cookies are fleet-wide valid",
-          "WebSocket/SignalR tier kept separate from the request tier, with a backplane and automatic client reconnect, so connection loss costs a reconnect not data",
-          "Scheduled and singleton work behind a lease or leader election, never implied by a DI singleton — or moved out to a dedicated scheduler entirely",
-          "Uploads, generated files and temp artifacts in object storage keyed by an operation id, never on instance-local disk"
-        ],
-        ar: [
-          "طبقة API عديمة الحالة خلف load balancer بسيط بـ round-robin أو least-connections، مع فحوص صحة تعكس فعلاً الجاهزية للخدمة",
-          "حالة الجلسة والمصادقة في distributed cache بعمر صريح، مع حلقة مفاتيح Data Protection مشتركة كي تكون الكوكيز صالحة على مستوى الأسطول",
-          "طبقة WebSocket/SignalR منفصلة عن طبقة الطلبات، مع backplane وإعادة اتصال تلقائية للعميل، فيكلّف فقد الاتصال إعادة اتصال لا بيانات",
-          "العمل المجدول والـ singleton خلف lease أو انتخاب قائد، لا مستنتَجاً أبداً من singleton في الـ DI — أو منقولاً كلياً إلى مجدول مخصص",
-          "الرفوعات والملفات المولّدة والقطع المؤقتة في تخزين كائنات مفهرس بمعرّف عملية، لا على قرص محلي لأي instance"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "A single question separates a stateless design from a hopeful one: \"if I kill a random instance right now, what does a user notice?\" Anything worse than one retried request — a logout, a lost cart, a broken upload — is per-user state that never left the process.", ar: "سؤال واحد يفصل التصميم عديم الحالة عن التصميم المتفائل: «لو قتلتُ instance عشوائياً الآن، ماذا يلاحظ المستخدم؟» فكل ما هو أسوأ من طلب واحد مُعاد — خروج، أو سلة ضائعة، أو رفع مكسور — هو حالة لكل مستخدم لم تغادر العملية قط." }
-    ]},
-
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "Session moves from a ~20-100 ns dictionary lookup to a ~0.3-1 ms network round trip. Invisible next to a 40 ms query, but it becomes the whole story if a handler reads session per key instead of once per request", ar: "الجلسة تنتقل من بحث قاموس بنحو 20 إلى 100 نانوثانية إلى رحلة شبكة بنحو 0.3 إلى 1 مللي ثانية. وهو غير مرئي بجانب استعلام مدته 40 مللي ثانية، لكنه يصير القصة كلها إن قرأ معالجٌ الجلسةَ لكل مفتاح بدل مرة واحدة لكل طلب" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "Throughput becomes linear in instance count with no per-node hot spots. Under affinity, a fleet at 40% average CPU can still have a node at 90%, so effective capacity is set by the hottest node rather than the average", ar: "الإنتاجية تصير خطية بعدد الـ instances بلا نقاط ساخنة لكل عقدة. وتحت الانتماء قد يكون لأسطول بمتوسط معالج 40% عقدةٌ عند 90%، فتُحدَّد السعة الفعلية بأسخن عقدة لا بالمتوسط" } },
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Per-instance session memory disappears from the app tier — a meaningful win when 100k sessions × 20 KB is 2 GB per node — and reappears once, in the shared store, sized and evicted deliberately", ar: "ذاكرة الجلسة لكل instance تختفي من طبقة التطبيق — وهو مكسب معتبر حين تكون مئة ألف جلسة × 20 كيلوبايت تساوي 2 غيغابايت لكل عقدة — وتعود مرة واحدة، في المخزن المشترك، بحجم وإزاحة مضبوطين عن قصد" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "Two new costs: session round trips to the store, and client-held state on every request. A 4 KB token at 3,000 req/s is about 12 MB/s of pure header traffic, and total headers past ~8 KB hit default proxy limits", ar: "كلفتان جديدتان: رحلات الجلسة إلى المخزن، والحالة المحفوظة لدى العميل على كل طلب. فـtoken بـ4 كيلوبايت عند ثلاثة آلاف طلب/ثانية يعني نحو 12 ميغابايت/ثانية من حركة ترويسات محضة، ومجموع الترويسات فوق نحو 8 كيلوبايت يصطدم بحدود الـ proxy الافتراضية" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Serialisation and deserialisation of the session payload on every request, plus token signature verification if state is client-held. Small per request, but it is now on the hot path of every single call rather than none", ar: "تسلسل حمولة الجلسة وفكّ تسلسلها في كل طلب، زائد التحقق من توقيع الـ token إن كانت الحالة لدى العميل. وهو صغير لكل طلب، لكنه صار على المسار الساخن لكل نداء بلا استثناء بدل لا شيء" } },
-        { k: { en: "Availability", ar: "التوافر" }, v: { en: "Instance failure stops costing sessions, but the shared store becomes a correlated failure domain: N independent risks collapse into one, so it needs replication and a defined degraded mode", ar: "عطل الـ instance يكفّ عن تكليف جلسات، لكن المخزن المشترك يصير نطاق فشل مترابطاً: فتنهار N من المخاطر المستقلة إلى واحدة، فيحتاج تكراراً ووضعاً متدهوراً محدداً" } }
-      ]}
-    ]},
-
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Run at least two replicas in every non-local environment — most accidental statefulness is invisible at N=1 and obvious at N=2, so this single change catches the majority of cases before production",
-          "Kill one instance under load and watch for logouts, 400s on form posts, lost carts and failed uploads. Anything worse than one retried request is per-user state that never left the process",
-          "Compare per-instance metrics rather than fleet averages: a request-rate or CPU histogram that is wide across nodes is the signature of affinity, and the width tells you how skewed the sessions are",
-          "Grep for the usual suspects directly: `static` mutable fields, `IMemoryCache` holding anything user-scoped, `Path.GetTempPath`, `Directory.CreateDirectory`, and `BackgroundService` classes with no lease",
-          "Check Data Protection explicitly — log the key ring's persistence location at startup and assert it is not the default local path in production; enable ASP.NET Core's DataProtection event source to see key-not-found decrypt failures",
-          "Disable session affinity in staging on purpose and leave it off. If the application only works with sticky sessions, you have found the dependency you did not know you had"
-        ],
-        ar: [
-          "شغّل نسختين على الأقل في كل بيئة غير محلية — فمعظم الحالة العرَضية غير مرئية عند N=1 وبيّنة عند N=2، فيلتقط هذا التغيير وحده غالبية الحالات قبل الإنتاج",
-          "اقتل instance واحداً تحت الحمل وراقب حالات الخروج، و400 عند إرسال النماذج، والسلال الضائعة، والرفوعات الفاشلة. فكل ما هو أسوأ من طلب واحد مُعاد هو حالة لكل مستخدم لم تغادر العملية",
-          "قارن مقاييس كل instance لا متوسطات الأسطول: فمدرَّج تكراري لمعدل الطلبات أو المعالج يكون عريضاً عبر العقد هو بصمة الانتماء، وعرضه يخبرك بمقدار انحراف الجلسات",
-          "امشط بحثاً عن المشتبهين المعتادين مباشرة: الحقول `static` القابلة للتغيير، و`IMemoryCache` يحتضن أي شيء بنطاق مستخدم، و`Path.GetTempPath`، و`Directory.CreateDirectory`، وأصناف `BackgroundService` بلا lease",
-          "افحص Data Protection صراحةً — سجّل موضع استمرارية حلقة المفاتيح عند الإقلاع وتحقق من أنه ليس المسار المحلي الافتراضي في الإنتاج؛ وفعّل مصدر أحداث DataProtection في ASP.NET Core لترى أعطال فكّ التشفير بسبب مفتاح غير موجود",
-          "عطّل انتماء الجلسة في الـ staging عن قصد واتركه معطّلاً. فإن كان التطبيق لا يعمل إلا بجلسات لاصقة، فقد وجدت التبعية التي لم تكن تعرف أنك تملكها"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "The fastest diagnostic for the whole class of bugs: send the same request twice with the load balancer forced to different nodes (curl with an explicit host, or affinity disabled). If the two responses differ, you have located per-instance state — and the response that differs tells you which one.", ar: "أسرع تشخيص لصنف العلل كله: أرسل الطلب نفسه مرتين مع إجبار الـ load balancer على عقدتين مختلفتين (curl بمضيف صريح، أو بالانتماء معطّلاً). فإن اختلفت الاستجابتان، تكون قد حدّدت حالة لكل instance — والاستجابة المختلفة تخبرك بأيّها." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "The move from stateful to stateless application tiers is the single change that made elastic infrastructure practical, and it is why the twelve-factor guidance states the rule so bluntly: processes are stateless and share-nothing, and anything that must persist goes to a backing service. Every platform that autoscales on your behalf — container orchestrators, serverless runtimes, managed app hosts — assumes this and quietly breaks in confusing ways when it is not true, because they are free to start, stop and move your processes without telling you.", ar: "الانتقال من طبقات تطبيق ذات حالة إلى عديمة الحالة هو التغيير الوحيد الذي جعل البنية المرنة عملية، ولهذا يصوغ توجيه العوامل الاثني عشر القاعدة بهذه الصراحة: العمليات عديمة الحالة ولا تتشارك شيئاً، وكل ما يجب أن يستمر يذهب إلى خدمة داعمة. وكل منصة تتوسّع تلقائياً نيابة عنك — منسّقات الحاويات، وأزمنة التشغيل serverless، ومستضيفات التطبيقات المُدارة — تفترض هذا وتنكسر بصمت وبطرق محيّرة حين لا يكون صحيحاً، لأنها حرة في بدء عملياتك وإيقافها ونقلها دون إخبارك." },
-      { t: "ul",
-        en: [
-          "E-commerce platforms: carts moved out of session into a persisted store years ago, because a cart lost to a deploy is lost revenue and an abandoned-cart email is a product feature",
-          "Serverless and container platforms: instances are created and destroyed continuously and local disk is ephemeral by contract, so any per-instance state is a guaranteed defect rather than a risk",
-          "Chat and collaboration products: keep connections stateful but per-user state shared, using a backplane so a client can reconnect to any node and resume without losing history",
-          "Multi-region deployments: statelessness at the application tier is what makes regional failover a routing change rather than a data migration, since only the shared stores need replication"
-        ],
-        ar: [
-          "منصات التجارة الإلكترونية: نقلت السلال من الجلسة إلى مخزن دائم منذ سنوات، لأن سلة تضيع بنشرٍ إيراد ضائع، ورسالة السلة المهجورة ميزة منتج",
-          "منصات الـ serverless والحاويات: تُنشأ الـ instances وتُدمَّر باستمرار والقرص المحلي عابر بالعقد، فأي حالة لكل instance عيب مؤكد لا مخاطرة",
-          "منتجات المحادثة والتعاون: تُبقي الاتصالات ذات حالة والحالة لكل مستخدم مشتركة، مستخدمةً backplane كي يستطيع عميل إعادة الاتصال بأي عقدة والاستئناف دون فقد التاريخ",
-          "عمليات النشر متعددة المناطق: الـ statelessness في طبقة التطبيق هو ما يجعل تجاوز عطل منطقة تغييرَ توجيه لا ترحيلَ بيانات، إذ لا تحتاج التكرارَ إلا المخازن المشتركة"
-        ]
-      }
-    ]},
-
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Take a small ASP.NET Core app that stores a counter in a static field and increments it on each request. Run two instances behind any local load balancer (or just two ports plus curl alternating between them) and observe the two divergent counters. Then move the counter to a distributed cache and confirm both instances agree. Write down, in one sentence, what class of state the static field actually was.", ar: "خذ تطبيق ASP.NET Core صغيراً يخزّن عدّاداً في حقل ساكن ويزيده عند كل طلب. وشغّل نسختين خلف أي load balancer محلي (أو منفذين فقط مع curl يناوب بينهما) وراقب العدّادين المتباعدين. ثم انقل العدّاد إلى distributed cache وتحقق من اتفاق النسختين. واكتب بجملة واحدة أي صنف من الحالة كان ذلك الحقل الساكن فعلاً." },
-      { t: "ex", diff: "medium", en: "Reproduce the Data Protection failure deliberately: run two instances with no shared key ring, obtain an antiforgery token from instance A and post it to instance B, and capture the exact exception and status code. Then configure PersistKeysTo... a shared store plus an identical SetApplicationName, and prove the same cross-instance post now succeeds. Note which of the two symptoms — the 400 or the logout — you would actually have seen in a bug report.", ar: "أعد إنتاج عطل Data Protection عن قصد: شغّل نسختين بلا حلقة مفاتيح مشتركة، واحصل على antiforgery token من النسخة A وأرسله إلى النسخة B، والتقط الاستثناء وكود الحالة بالضبط. ثم اضبط PersistKeysTo... إلى مخزن مشترك مع SetApplicationName مطابق، وأثبت أن الإرسال العابر للنسختين نفسه صار ينجح. ولاحظ أيّ العرَضين — الـ 400 أم الخروج — كنت سترى فعلاً في تقرير علة." },
-      { t: "ex", diff: "hard", en: "Build a multi-step wizard (three POSTs) that keeps progress in ISession, run it on three instances with affinity disabled, and demonstrate the failure. Then implement two different fixes: (a) a distributed session store, and (b) carrying signed progress state in a cookie. Measure p50 and p99 for both under 200 concurrent users, compare the request sizes, and write a short recommendation with the specific condition that would flip your choice.", ar: "ابنِ معالجاً متعدد الخطوات (ثلاث عمليات POST) يحفظ التقدّم في ISession، وشغّله على ثلاث نسخ بالانتماء معطّلاً، وأظهر العطل. ثم نفّذ حلّين مختلفين: (أ) مخزن جلسة موزّع، و(ب) حمل حالة تقدّم موقّعة في كوكي. وقِس p50 وp99 لكليهما تحت مئتي مستخدم متزامن، وقارن أحجام الطلبات، واكتب توصية قصيرة مع الشرط المحدد الذي سيقلب اختيارك." },
-      { t: "ex", diff: "senior", en: "Audit a real service you own for accidental statefulness: list every static mutable field, every IMemoryCache entry keyed by a user or tenant, every local file path in a request handler, and every BackgroundService without a lease. Classify each as per-request, per-connection, per-user, per-instance soft state, or cluster-singleton. Then write a one-page migration plan ordered by blast radius, and state explicitly which items you are deliberately leaving as-is and why.", ar: "دقّق خدمة حقيقية تملكها بحثاً عن حالة عرَضية: اسرد كل حقل ساكن قابل للتغيير، وكل مدخلة IMemoryCache مفهرسة بمستخدم أو مستأجر، وكل مسار ملف محلي في معالج طلبات، وكل BackgroundService بلا lease. وصنّف كلاً منها كحالة لكل طلب، أو لكل اتصال، أو لكل مستخدم، أو حالة لينة لكل instance، أو singleton على مستوى المجموعة. ثم اكتب خطة ترحيل من صفحة واحدة مرتّبة بنصف قطر الانفجار، واذكر صراحةً أي البنود تتركها كما هي عن قصد ولماذا." }
-    ]},
-
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "Fielding's dissertation — the stateless constraint", ar: "أطروحة Fielding — قيد الـ stateless" }, url: "https://ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm", meta: { en: "Paper", ar: "بحث" } },
-      { t: "ref", label: { en: "The Twelve-Factor App — VI. Processes", ar: "تطبيق العوامل الاثني عشر — السادس: العمليات" }, url: "https://12factor.net/processes", meta: { en: "Article", ar: "مقال" } },
-      { t: "ref", label: { en: "Session and state management in ASP.NET Core", ar: "إدارة الجلسة والحالة في ASP.NET Core" }, url: "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/app-state", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "Host ASP.NET Core in a web farm", ar: "استضافة ASP.NET Core في web farm" }, url: "https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/web-farm", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "Data Protection key storage providers", ar: "مزوّدو تخزين مفاتيح Data Protection" }, url: "https://learn.microsoft.com/en-us/aspnet/core/security/data-protection/implementation/key-storage-providers", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "Distributed caching in ASP.NET Core", ar: "التخزين المؤقت الموزّع في ASP.NET Core" }, url: "https://learn.microsoft.com/en-us/aspnet/core/performance/caching/distributed", meta: { en: "Docs", ar: "توثيق" } }
-    ]}
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "A static field used as a cache", ar: "حقل static مستخدم كـ cache" },
+          body: { en: "A team added a static Dictionary to hold exchange rates \"just for a few minutes\". Each instance refreshed on its own schedule, so three instances held three different rates. An order priced on instance A was charged on instance B at a different rate, and finance found a 0.4% gap in the daily totals. Anything static holding changing data is per-instance state wearing a cache costume.", ar: "فريق أضاف Dictionary من نوع static ليحمل أسعار الصرف «لبضع دقائق فقط». كل instance كان يحدّثها بجدوله الخاص، فحمل ثلاثة instances ثلاثة أسعار مختلفة. طلب سُعّر على instance A وحُصّل على instance B بسعر آخر، فوجدت المالية فرقاً 0.4% في إجماليات اليوم. أي static يحمل بيانات متغيّرة هو state خاص بالـ instance متنكّراً في ثوب cache." },
+          fix: "// per-instance and unsynchronised\nstatic Dictionary<string, decimal> Rates = new();\n\n// shared: every instance sees the same value and the same expiry\nawait cache.SetStringAsync(\"rates:usd\", value,\n    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });" },
+        { t: "mistake",
+          title: { en: "Sticky sessions treated as the fix", ar: "اعتبار الـ sticky sessions هي الحل" },
+          body: { en: "Instead of moving carts out of memory, the team enabled sticky sessions. It worked until a deploy. Restarting instance A dropped every cart pinned to A, and those users had to start over. Worse, one instance ended up with 60% of traffic because a large corporate customer sat behind a single IP address, so the load balancer kept sending all of them to the same place.", ar: "بدل نقل السلات خارج الذاكرة، فعّل الفريق sticky sessions. عمل الأمر حتى جاء نشر جديد. إعادة تشغيل الـ instance A أسقطت كل سلة مرتبطة به، فاضطر أولئك المستخدمون للبدء من جديد. والأسوأ أن instance واحداً استقبل 60% من الحركة، لأن عميلاً مؤسسياً كبيراً كان خلف عنوان IP واحد، فظل الـ load balancer يرسلهم كلهم إلى نفس المكان." } },
+        { t: "mistake",
+          title: { en: "Background work stored in the instance", ar: "عمل خلفي مخزّن داخل الـ instance" },
+          body: { en: "An export endpoint returned a job id immediately and kept progress in a static dictionary while a background task ran. Polling GET /jobs/{id} hit a different instance and returned 404, so the UI reported the export as failed while it was actually still running. Any work that outlives the response needs its progress in shared storage, not in the process that started it.", ar: "endpoint للتصدير كان يعيد job id فوراً ويحتفظ بالتقدّم في static dictionary بينما تعمل مهمة في الخلفية. استعلام GET /jobs/{id} كان يصل إلى instance مختلف فيعيد 404، فتُظهر الواجهة أن التصدير فشل بينما هو ما زال يعمل فعلاً. أي عمل يعيش بعد الرد يحتاج تقدّمه في تخزين مشترك، لا في الـ process الذي بدأه." } },
+        { t: "mistake",
+          title: { en: "In-memory data protection keys", ar: "مفاتيح data protection في الذاكرة" },
+          body: { en: "ASP.NET Core encrypts auth cookies with keys it generates at startup. Left at the default in a container, each instance generated its own set. A cookie issued by instance A could not be decrypted by instance B, so users were logged out at random — roughly two thirds of the time with three instances. The keys must be persisted somewhere all instances read.", ar: "ASP.NET Core يشفّر cookies المصادقة بمفاتيح يولّدها عند الإقلاع. وبالإعداد الافتراضي داخل container، ولّد كل instance مجموعته الخاصة. فالـ cookie الصادرة من instance A لا يستطيع instance B فك تشفيرها، فخرج المستخدمون من جلساتهم عشوائياً — بحوالي ثلثي المرات مع ثلاثة instances. يجب حفظ المفاتيح في مكان تقرأه كل الـ instances." },
+          fix: "builder.Services.AddDataProtection()\n    .PersistKeysToStackExchangeRedis(redis, \"DataProtection-Keys\")\n    .SetApplicationName(\"shop-api\");   // same name on every instance" }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "What does it mean for an HTTP server to be stateless?", ar: "ماذا يعني أن يكون الـ HTTP server بلا حالة (stateless)؟" },
+          a: { en: "It means the server does not remember anything about you between requests. Every request has to bring what the server needs — usually a cookie or a token that identifies you — and the server looks up the rest from a database. Once it sends the response, it forgets. The practical benefit is that any server can answer any request, so you can run several copies.", ar: "يعني أن الـ server لا يتذكّر شيئاً عنك بين request وآخر. كل request يجب أن يحمل ما يحتاجه الـ server — عادةً cookie أو token يعرّفك — ثم يجلب الـ server الباقي من database. وبمجرد إرسال الرد ينسى. والفائدة العملية أن أي server يستطيع الرد على أي request، فتشغّل عدة نسخ." } },
+        { t: "qa", level: "mid",
+          q: { en: "You add a second instance and users start losing their session. What happened?", ar: "تضيف instance ثانياً فيبدأ المستخدمون بفقدان جلساتهم. ما الذي حدث؟" },
+          a: { en: "Something was being kept in one process's memory. Usually it is a session dictionary, a static cache, or the data protection keys that encrypt the auth cookie. When the load balancer sends a request to the other instance, that instance has never seen the data, so it behaves as if the user is new. I would find what is stored in memory and move it to Redis or the database, and pin the data protection keys to a shared location.", ar: "شيء ما كان محفوظاً في ذاكرة process واحد. غالباً يكون session dictionary أو static cache أو مفاتيح data protection التي تشفّر cookie المصادقة. وعندما يرسل الـ load balancer الـ request إلى الـ instance الآخر، لا يكون قد رأى البيانات، فيتصرف كأن المستخدم جديد. سأبحث عمّا يُخزَّن في الذاكرة وأنقله إلى Redis أو الـ database، وأثبّت مفاتيح data protection في مكان مشترك." } },
+        { t: "qa", level: "mid",
+          q: { en: "Are sticky sessions ever an acceptable answer?", ar: "هل تكون الـ sticky sessions إجابة مقبولة أحياناً؟" },
+          a: { en: "Yes, as a temporary bridge or for connections that are inherently pinned, like a WebSocket that stays open. But they cost you: a restart drops whatever was in that instance, load spreads unevenly when many users share an IP, and you can no longer take an instance out of rotation cleanly. If it is user data you care about, moving it to a shared store is the real fix, and it is usually a few hours of work.", ar: "نعم، كجسر مؤقت، أو للاتصالات المرتبطة بطبيعتها بـ instance واحد مثل WebSocket يبقى مفتوحاً. لكن لها ثمن: إعادة التشغيل تُسقط ما في ذلك الـ instance، والحمل يتوزّع بشكل غير متوازن حين يتشارك مستخدمون كثيرون عنوان IP واحداً، ولن تستطيع إخراج instance من التوزيع بنظافة. وإن كانت بيانات المستخدم هي ما يهمك، فالنقل إلى مخزن مشترك هو الحل الحقيقي، وغالباً يستغرق ساعات قليلة." } },
+        { t: "qa", level: "senior",
+          q: { en: "If the state just moves to Redis, have you actually removed the bottleneck?", ar: "إن كان الـ state ينتقل فقط إلى Redis، فهل أزلت العنق فعلاً؟" },
+          a: { en: "I moved it, and that is still a real win, because the app tier is now the part I can scale freely and restart safely. But I have created a dependency I must treat seriously: give it a timeout so a slow Redis does not stall every request, run it with replicas so one node failing is not an outage, and decide what happens on failure. For a cart I would fail the request; for a rate cache I would fall back to a stale value.", ar: "نقلته، وهذا مكسب حقيقي، لأن طبقة التطبيق صارت هي الجزء الذي أستطيع توسيعه بحرية وإعادة تشغيله بأمان. لكنني أنشأت تبعية يجب التعامل معها بجدية: أضع لها timeout حتى لا يعلّق Redis البطيء كل request، وأشغّلها مع replicas حتى لا يكون سقوط عقدة انقطاعاً كاملاً، وأقرر ما يحدث عند الفشل. للسلة سأُفشل الـ request؛ ولـ cache الأسعار سأرجع إلى قيمة قديمة." } },
+        { t: "qa", level: "senior",
+          q: { en: "How do you decide between a JWT and a server-side session store?", ar: "كيف تختار بين JWT و session store على الخادم؟" },
+          a: { en: "It comes down to revocation and size. A JWT is a signed token the client carries, so any instance can verify it with no lookup at all — fast, but you cannot cancel it before it expires without keeping a deny list, which puts you back at a lookup. A server-side session is one Redis read per request, but logging someone out is a delete. I use short-lived JWTs for service-to-service calls and a session store for human logins, where instant logout matters.", ar: "الأمر يعود إلى الإلغاء والحجم. الـ JWT هو token موقّع يحمله العميل، فيستطيع أي instance التحقق منه دون أي بحث — سريع، لكن لا يمكنك إلغاؤه قبل انتهائه إلا بقائمة منع، وهذا يعيدك إلى البحث. أما الـ session على الخادم فقراءة واحدة من Redis لكل request، لكن إخراج المستخدم مجرد حذف. أستخدم JWTs قصيرة العمر للنداءات بين الخدمات، و session store لتسجيل دخول البشر حيث يهم الخروج الفوري." } },
+        { t: "qa", level: "staff",
+          q: { en: "How do you stop per-instance state from creeping back in across many teams?", ar: "كيف تمنع عودة الـ state الخاص بالـ instance تدريجياً عبر فرق كثيرة؟" },
+          a: { en: "Make the single-instance assumption impossible to hold. Run at least two instances in every environment including staging, so anything memory-bound breaks before release rather than on Black Friday. Add a startup check that fails if data protection keys are not persisted. Put a lint rule or review checklist item on static mutable fields. And restart one instance during load tests as a standing part of the suite — if a rolling restart is painless, the state is genuinely outside the app.", ar: "اجعل افتراض «instance واحد» مستحيلاً. شغّل instance اثنين على الأقل في كل بيئة بما فيها staging، فينكسر أي شيء معتمد على الذاكرة قبل الإصدار بدل أن ينكسر في موسم الذروة. أضف فحصاً عند الإقلاع يفشل إن لم تكن مفاتيح data protection محفوظة. ضع قاعدة lint أو بنداً في قائمة المراجعة على الحقول static القابلة للتغيير. وأعد تشغيل instance واحد أثناء اختبارات الحمل كجزء ثابت من المجموعة — فإن مرّ الـ rolling restart بلا ألم، فالـ state خارج التطبيق فعلاً." } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "Rate limiting counted in process memory", ar: "تحديد المعدّل يُحسب في ذاكرة الـ process" },
+          bad: "static readonly ConcurrentDictionary<string, int> Hits = new();\n\nif (Hits.AddOrUpdate(ip, 1, (_, n) => n + 1) > 100)\n    return Results.StatusCode(429);",
+          good: "// one shared counter, incremented atomically, expiring after a minute\nvar key = $\"rate:{ip}:{DateTime.UtcNow:yyyyMMddHHmm}\";\nvar count = await redis.StringIncrementAsync(key);\nif (count == 1) await redis.KeyExpireAsync(key, TimeSpan.FromMinutes(1));\nif (count > 100) return Results.StatusCode(429);",
+          why: { en: "With three instances each counting separately, a client gets 100 requests per instance, so the real limit is 300 — three times what was intended, and it changes every time you scale. The shared counter makes the limit mean one thing regardless of instance count. Status 429 means \"too many requests\".", ar: "مع ثلاثة instances يعدّ كل منها على حدة، يحصل العميل على 100 request لكل instance، فيصبح الحد الحقيقي 300 — ثلاثة أضعاف المقصود، ويتغيّر كلما وسّعت. العدّاد المشترك يجعل الحد يعني شيئاً واحداً مهما كان عدد الـ instances. والحالة 429 تعني «طلبات أكثر من اللازم»." } },
+        { t: "review", severity: "medium",
+          title: { en: "A timer that must run once, running on every instance", ar: "مؤقّت يجب أن يعمل مرة واحدة، يعمل على كل instance" },
+          bad: "public class NightlyEmails : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        while (!ct.IsCancellationRequested)\n        {\n            await SendDigestsAsync(ct);          // every instance does this\n            await Task.Delay(TimeSpan.FromHours(24), ct);\n        }\n    }\n}",
+          good: "// only the instance that wins the lock sends; the others skip this round\nawait using var handle = await locks.TryAcquireAsync(\"nightly-digest\", TimeSpan.FromMinutes(30), ct);\nif (handle is not null)\n    await SendDigestsAsync(ct);",
+          why: { en: "A background service starts inside every instance, so three instances send the digest three times and customers get duplicate mail. A distributed lock — a key in Redis that only one instance can hold at a time — makes exactly one of them do the work. The alternative is moving the job out of the API into a scheduler that runs it once.", ar: "الـ background service يبدأ داخل كل instance، فترسل ثلاثة instances النشرة ثلاث مرات ويصل العملاء بريد مكرر. والـ distributed lock — مفتاح في Redis لا يملكه إلا instance واحد في اللحظة — يجعل واحداً فقط يقوم بالعمل. والبديل نقل المهمة خارج الـ API إلى scheduler يشغّلها مرة واحدة." } }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a normal deployment the app tier is the layer you want stateless, because it is the layer that changes size and gets replaced most often. Autoscaling adds instances when CPU rises and removes them when it falls; a deploy replaces every instance within minutes; a machine failure removes one without warning. All three are safe only if losing an instance loses nothing.",
+          ar: "في أي نشر عادي، طبقة التطبيق هي الطبقة التي تريدها stateless، لأنها الطبقة التي يتغيّر حجمها وتُستبدل أكثر من غيرها. الـ autoscaling يضيف instances عند ارتفاع الـ CPU ويزيلها عند انخفاضه؛ والنشر يستبدل كل instance خلال دقائق؛ وعطل جهاز يزيل واحداً دون إنذار. والحالات الثلاث آمنة فقط إذا كان فقدان instance لا يفقد شيئاً." },
+        { t: "ul",
+          en: [
+            "Kubernetes and similar platforms kill and restart containers freely; a stateful instance turns a routine restart into a user-visible incident.",
+            "Blue/green and rolling deploys assume the new instances can serve traffic the old ones were serving, which only holds if state is shared.",
+            "Autoscaling only helps if a brand-new instance is immediately as useful as an old one — no warm-up memory to rebuild.",
+            "A second region is possible only when instances hold no unique data; otherwise you cannot fail over without losing sessions."
+          ],
+          ar: [
+            "Kubernetes وما يشبهه يقتل الـ containers ويعيد تشغيلها بحرية؛ والـ instance الـ stateful يحوّل إعادة تشغيل روتينية إلى حادث يراه المستخدم.",
+            "نشر blue/green والـ rolling deploys يفترضان أن الـ instances الجديدة تستطيع خدمة ما كانت تخدمه القديمة، وهذا يصحّ فقط إن كان الـ state مشتركاً.",
+            "الـ autoscaling ينفع فقط إذا كان الـ instance الجديد مفيداً فوراً مثل القديم — بلا ذاكرة إحماء يعيد بناءها.",
+            "المنطقة الثانية ممكنة فقط عندما لا تحمل الـ instances بيانات فريدة؛ وإلا لن تستطيع التحويل إليها دون فقدان الجلسات."
+          ]},
+        { t: "callout", kind: "tip",
+          en: "A useful design question in review: \"if I kill one instance right now, what is lost?\" If the honest answer is anything other than the in-flight requests, the app is not stateless yet.",
+          ar: "سؤال تصميم مفيد في المراجعة: «لو قتلت instance واحداً الآن، ماذا نفقد؟» إن كان الجواب الصادق أي شيء غير الـ requests الجارية، فالتطبيق ليس stateless بعد." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Latency", ar: "Latency" },
+            v: { en: "Each shared-store read adds roughly 0.5-2 ms inside one data centre. Two lookups per request is fine; twenty is a design problem.", ar: "كل قراءة من المخزن المشترك تضيف حوالي 0.5-2 ms داخل مركز بيانات واحد. قراءتان لكل request مقبول؛ وعشرون مشكلة تصميم." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "With no per-instance state, throughput grows almost linearly with instance count until the shared store or the database becomes the limit.", ar: "بلا state خاص بالـ instance، تنمو الإنتاجية خطياً تقريباً مع عدد الـ instances حتى يصبح المخزن المشترك أو الـ database هو الحد." } },
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "Instances stay small and predictable, so you can pack more per machine. Memory no longer grows with the number of active users.", ar: "الـ instances تبقى صغيرة ومتوقعة، فتضع عدداً أكبر منها على كل جهاز. والذاكرة لم تعد تنمو مع عدد المستخدمين النشطين." } },
+          { k: { en: "Network", ar: "Network" },
+            v: { en: "Traffic that used to be a memory read is now a network call. Keep session payloads small — a few kilobytes, not megabytes.", ar: "ما كان قراءة من الذاكرة صار نداء عبر الشبكة. أبقِ حجم بيانات الجلسة صغيراً — بضعة كيلوبايت لا ميغابايت." } },
+          { k: { en: "CPU", ar: "CPU" },
+            v: { en: "Serializing and deserializing session data on every request costs CPU. Compact JSON or a binary format helps when payloads grow.", ar: "الـ serialization و deserialization لبيانات الجلسة في كل request يكلّف CPU. و JSON مضغوط أو صيغة binary يساعدان عندما تكبر البيانات." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "Add the instance name to every log line and to a response header — if the same user's failing requests all show a different instance, you have found the pattern.",
+            "Send the same request 10 times in a loop with curl and compare bodies; an answer that changes between identical calls means per-instance state.",
+            "Run two instances locally with docker compose up --scale api=2 and repeat the failing flow — most of these bugs cannot reproduce on one instance.",
+            "Search the codebase for static fields holding mutable data: grep -rn \"static.*Dictionary\\|static.*List\" src/ and check each hit.",
+            "Watch the load balancer's per-instance request counts; a lopsided split usually means sticky sessions are on and hashing badly."
+          ],
+          ar: [
+            "أضف اسم الـ instance إلى كل سطر log وإلى header في الرد — فإن أظهرت requests المستخدم الفاشلة instance مختلفاً في كل مرة، فقد وجدت النمط.",
+            "أرسل نفس الـ request عشر مرات في حلقة بـ curl وقارن الأجساد؛ فرد يتغيّر بين نداءات متطابقة يعني state خاصاً بالـ instance.",
+            "شغّل instance اثنين محلياً بـ docker compose up --scale api=2 وكرّر المسار الفاشل — أغلب هذه العلل لا تظهر مع instance واحد.",
+            "ابحث في الكود عن حقول static تحمل بيانات متغيّرة: grep -rn \"static.*Dictionary\\|static.*List\" src/ وافحص كل نتيجة.",
+            "راقب عدد الـ requests لكل instance في الـ load balancer؛ التوزيع غير المتوازن يعني عادةً أن sticky sessions مفعّلة وتوزّع بشكل سيئ."
+          ]},
+        { t: "callout", kind: "tip",
+          en: "Return the instance name in a response header during investigation. Then a support screenshot of the browser network tab tells you which instance answered, without needing the user to reproduce anything.",
+          ar: "أعِد اسم الـ instance في header بالرد أثناء التحقيق. عندها تخبرك لقطة شاشة من تبويب الشبكة في المتصفح أي instance ردّ، دون أن يحتاج المستخدم لإعادة إنتاج المشكلة." }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "Almost every system that survives a traffic spike is stateless at the layer that receives requests. The pattern shows up wherever load is uneven and hardware is disposable: the request-handling tier holds nothing, and anything that must be remembered is pushed one layer down into a store built to be shared.",
+          ar: "كل نظام تقريباً ينجو من موجة حمل يكون stateless في الطبقة التي تستقبل الـ requests. والنمط يظهر حيثما كان الحمل متفاوتاً والأجهزة قابلة للاستبدال: طبقة معالجة الـ requests لا تحمل شيئاً، وكل ما يجب تذكّره يُدفع طبقة إلى الأسفل، إلى مخزن مصمّم ليكون مشتركاً." },
+        { t: "ul",
+          en: [
+            "E-commerce during sales events: instance count can go from 4 to 40 in minutes, so carts and sessions live in Redis, never in a process.",
+            "Public APIs with rate limits: the counters must be shared, otherwise the published limit is silently multiplied by the instance count.",
+            "Chat and collaboration platforms: the WebSocket connection is pinned to one instance, but the message history and presence data are shared, so a dropped connection reconnects anywhere.",
+            "Payment gateways: a request may be retried against a different instance after a timeout, so idempotency keys are stored centrally rather than in memory."
+          ],
+          ar: [
+            "التجارة الإلكترونية في مواسم التخفيضات: عدد الـ instances قد ينتقل من 4 إلى 40 خلال دقائق، فتعيش السلات والجلسات في Redis لا في process.",
+            "الـ APIs العامة ذات حدود المعدّل: العدّادات يجب أن تكون مشتركة، وإلا ضُرب الحد المعلن بعدد الـ instances بصمت.",
+            "منصات المحادثة والتعاون: اتصال الـ WebSocket مرتبط بـ instance واحد، لكن سجل الرسائل وبيانات التواجد مشتركة، فيعيد الاتصال المقطوع الارتباط في أي مكان.",
+            "بوابات الدفع: قد يُعاد إرسال الـ request إلى instance مختلف بعد timeout، فتُخزَّن مفاتيح الـ idempotency مركزياً لا في الذاكرة."
+          ]}
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Take the in-memory cart API from this lesson, run two instances behind any load balancer, and script 30 alternating add/read calls. Record how many reads return an empty cart. You are done when the measured miss rate is close to the 50% you predicted before running it.",
+          ar: "خذ API السلة في الذاكرة من هذا الدرس، شغّل instance اثنين خلف أي load balancer، واكتب سكربت يرسل 30 نداء إضافة وقراءة بالتناوب. سجّل كم قراءة تعيد سلة فارغة. تنتهي عندما تقترب نسبة الفشل المقاسة من الـ 50% التي توقعتها قبل التشغيل." },
+        { t: "ex", diff: "medium",
+          en: "Move the cart to Redis using IDistributedCache and repeat the same script. You are done when the miss rate is zero and you can state the added latency per read from your own measurement, not from this lesson.",
+          ar: "انقل السلة إلى Redis باستخدام IDistributedCache وأعد تشغيل نفس السكربت. تنتهي عندما تصبح نسبة الفشل صفراً وتستطيع ذكر الـ latency المضاف لكل قراءة من قياسك أنت، لا من هذا الدرس." },
+        { t: "ex", diff: "hard",
+          en: "Add cookie authentication to the two-instance setup and log in. Restart one instance and keep browsing. You are done when you have made the random logouts happen, explained them by the data protection keys, and fixed it by persisting the keys to a shared location.",
+          ar: "أضف مصادقة بـ cookie إلى إعداد الـ instance اثنين وسجّل الدخول. أعد تشغيل instance واحداً وواصل التصفّح. تنتهي عندما تكون قد أحدثت الخروج العشوائي من الجلسة، وفسّرته بمفاتيح data protection، وأصلحته بحفظ المفاتيح في مكان مشترك." },
+        { t: "ex", diff: "senior",
+          en: "Write a one-page audit of an existing service in your codebase: list every place state outlives a response (static fields, background jobs, in-memory caches, local files), rate each as safe or unsafe under a rolling restart, and propose the smallest change for each unsafe one. You are done when a colleague can act on the list without asking you what a row means.",
+          ar: "اكتب تدقيقاً من صفحة واحدة لخدمة قائمة في كودك: اذكر كل موضع يعيش فيه state بعد الرد (حقول static، مهام خلفية، caches في الذاكرة، ملفات محلية)، وقيّم كلاً منها آمناً أو غير آمن عند rolling restart، واقترح أصغر تغيير لكل غير آمن. تنتهي عندما يستطيع زميل التصرّف بناءً على القائمة دون أن يسألك عن معنى أي سطر." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref", label: { en: "Session and state management in ASP.NET Core", ar: "إدارة الـ session والـ state في ASP.NET Core" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/app-state",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "Distributed caching in ASP.NET Core", ar: "الـ distributed caching في ASP.NET Core" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/performance/caching/distributed",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "Configure data protection key storage", ar: "إعداد تخزين مفاتيح data protection" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/security/data-protection/configuration/overview",
+          meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "The Twelve-Factor App: processes are stateless", ar: "The Twelve-Factor App: الـ processes بلا حالة" },
+          url: "https://12factor.net/processes",
+          meta: { en: "Article", ar: "مقال" } }
+      ]
+    }
   ],
   quiz: [
     {
-      q: { en: "What does \"stateless\" actually mean for a web service?", ar: "ماذا يعني «stateless» فعلاً لخدمة ويب؟" },
+      q: { en: "What is the defining property of a stateless server?", ar: "ما الخاصية التي تعرّف الـ server الـ stateless؟" },
       options: [
-        { en: "The application stores no data anywhere", ar: "التطبيق لا يخزّن أي بيانات في أي مكان" },
-        { en: "No state needed to serve a request lives exclusively in one server process's memory", ar: "لا حالة لازمة لخدمة طلب تعيش حصراً في ذاكرة عملية سيرفر واحدة" },
-        { en: "The service uses JWTs instead of cookies", ar: "الخدمة تستخدم JWTs بدل الكوكيز" },
-        { en: "Each user is always routed to the same instance", ar: "كل مستخدم يُوجَّه دائماً إلى الـ instance نفسه" }
+        { en: "It stores no data anywhere at all.", ar: "لا يخزّن أي بيانات في أي مكان إطلاقاً." },
+        { en: "It keeps nothing about a user in its own memory between requests.", ar: "لا يحتفظ بأي شيء عن المستخدم في ذاكرته بين request وآخر." },
+        { en: "It uses only GET requests.", ar: "يستخدم requests من نوع GET فقط." },
+        { en: "It runs on exactly one machine.", ar: "يعمل على جهاز واحد بالضبط." }
       ],
       correct: 1,
-      why: { en: "Stateless is a property of the request-handling path, not a claim that no data exists. State still lives somewhere — in the client as a signed cookie or token, or in a shared store like Redis or SQL — but never exclusively in the memory of one process, so any instance can serve any request. JWTs are one implementation choice, not the definition. And routing each user to the same instance is session affinity, which is the opposite: it makes exactly one process able to serve that user.", ar: "الـ stateless خاصية لمسار معالجة الطلب، لا ادعاء بعدم وجود بيانات. فالحالة ما زالت تعيش في مكان ما — في العميل ككوكي موقّع أو token، أو في مخزن مشترك مثل Redis أو SQL — لكن ليس حصراً في ذاكرة عملية واحدة أبداً، فيستطيع أي instance خدمة أي طلب. والـ JWTs خيار تنفيذ لا التعريف. وتوجيه كل مستخدم إلى الـ instance نفسه هو انتماء الجلسة، وهو النقيض: إذ يجعل عملية واحدة بالضبط قادرة على خدمة ذلك المستخدم." }
+      why: { en: "State still exists — in a database, Redis, or the token the client sends. What makes the server stateless is that none of it lives in that one process between requests, so any instance can answer.", ar: "الـ state ما زال موجوداً — في database أو Redis أو الـ token الذي يرسله العميل. وما يجعل الـ server stateless هو ألّا يعيش أي منه في ذلك الـ process بين الـ requests، فيستطيع أي instance الرد." }
     },
     {
-      q: { en: "You scale a working single-instance ASP.NET Core app to four instances. Users report random 400 errors on form posts and occasional sign-outs. What is the most likely cause?", ar: "توسّع تطبيق ASP.NET Core يعمل بنسخة واحدة إلى أربع نسخ. فيبلّغ المستخدمون عن أخطاء 400 عشوائية عند إرسال النماذج وخروج متقطع. ما السبب الأرجح؟" },
+      q: { en: "With three instances and carts in a static in-memory dictionary, roughly what share of cart reads find the cart?", ar: "مع ثلاثة instances وسلات في static dictionary في الذاكرة، ما النسبة التقريبية لقراءات السلة التي تجدها؟" },
       options: [
-        { en: "The load balancer is misconfigured and dropping requests", ar: "الـ load balancer سيئ الضبط ويسقط الطلبات" },
-        { en: "The Data Protection key ring is per-process, so tokens and cookies from one node cannot be decrypted by another", ar: "حلقة مفاتيح Data Protection لكل عملية، فلا تستطيع عقدة فكّ تشفير tokens وكوكيز عقدة أخرى" },
-        { en: "The database connection pool is exhausted under the higher throughput", ar: "مجمّع اتصالات قاعدة البيانات مستنفد تحت الإنتاجية الأعلى" },
-        { en: "Antiforgery tokens expire faster when more instances are running", ar: "tokens الـ antiforgery تنتهي أسرع حين تعمل نسخ أكثر" }
+        { en: "About 100% — the load balancer sorts it out.", ar: "حوالي 100% — الـ load balancer يتكفّل بالأمر." },
+        { en: "About 67%.", ar: "حوالي 67%." },
+        { en: "About 33%.", ar: "حوالي 33%." },
+        { en: "0% — nothing works at all.", ar: "0% — لا شيء يعمل إطلاقاً." }
       ],
-      correct: 1,
-      why: { en: "ASP.NET Core's Data Protection stack encrypts antiforgery tokens, auth cookies and TempData with a key ring that, when unconfigured, is generated per process and stored locally. With four instances, roughly three quarters of cross-node requests carry a payload the receiving node cannot decrypt, which surfaces as intermittent 400 Bad Request on form posts and random sign-outs. The diagnostic signature is that the failure rate tracks instance count and disappears entirely at one instance. The fix is PersistKeysTo... a shared store together with an identical SetApplicationName on every node.", ar: "مكدّس Data Protection في ASP.NET Core يشفّر tokens الـ antiforgery وكوكيز المصادقة وTempData بحلقة مفاتيح تُولَّد، حين لا تُضبط، لكل عملية وتُخزَّن محلياً. ومع أربع نسخ تحمل نحو ثلاثة أرباع الطلبات العابرة للعقد حمولةً لا تستطيع العقدة المستقبِلة فكّ تشفيرها، فيظهر ذلك كـ400 Bad Request متقطعة عند إرسال النماذج وخروج عشوائي. والبصمة التشخيصية أن معدل الفشل يتتبع عدد النسخ ويختفي كلياً عند نسخة واحدة. والحل PersistKeysTo... إلى مخزن مشترك مع SetApplicationName مطابق على كل عقدة." }
+      correct: 2,
+      why: { en: "With even round-robin routing, one instance in three holds that cart, so about a third of reads find it. The other two thirds return an empty cart with status 200, which is why the bug looks like data loss rather than an error.", ar: "مع توزيع round-robin متساوٍ، instance واحد من ثلاثة يحمل تلك السلة، فحوالي ثلث القراءات تجدها. والثلثان الآخران يعيدان سلة فارغة بحالة 200، ولهذا تبدو العلّة كفقدان بيانات لا كخطأ." }
     },
     {
-      q: { en: "Why does session affinity fail to give you the benefits of horizontal scaling?", ar: "لماذا يفشل انتماء الجلسة في منحك فوائد التوسّع الأفقي؟" },
+      q: { en: "Why are sticky sessions a weak long-term fix?", ar: "لماذا تُعدّ الـ sticky sessions حلاً ضعيفاً على المدى الطويل؟" },
       options: [
-        { en: "Because load balancers cannot handle more than a few thousand sticky sessions", ar: "لأن الـ load balancers لا تستطيع التعامل مع أكثر من بضعة آلاف جلسة لاصقة" },
-        { en: "Because it balances sessions rather than requests, and new instances only receive new sessions", ar: "لأنه يوازن الجلسات لا الطلبات، ولأن النسخ الجديدة لا تستقبل إلا جلسات جديدة" },
-        { en: "Because sticky cookies are blocked by most browsers", ar: "لأن معظم المتصفحات تحجب الكوكيز اللاصقة" },
-        { en: "Because affinity forces all traffic through a single node", ar: "لأن الانتماء يجبر كل الحركة على المرور بعقدة واحدة" }
+        { en: "They are slower than reading from Redis.", ar: "أبطأ من القراءة من Redis." },
+        { en: "State still lives in one instance, so a restart loses it and load spreads unevenly.", ar: "الـ state ما زال في instance واحد، فإعادة التشغيل تفقده والحمل يتوزّع بشكل غير متوازن." },
+        { en: "They require a JWT to work.", ar: "تحتاج JWT حتى تعمل." },
+        { en: "They only work with a single instance.", ar: "تعمل فقط مع instance واحد." }
       ],
       correct: 1,
-      why: { en: "Affinity distributes session ownership, and sessions are not equal in cost. If a small fraction of power users generates a large fraction of requests, a node holding several of them can sit at 90% CPU while its siblings run at 30% and fleet-average autoscaling sees no reason to act. Scaling out compounds the problem: new instances only attract new sessions, so relief arrives at the session-churn rate — hours, for a long-session product. Affinity is fine as a cache-warmth optimisation layered on a stateless design, but it cannot substitute for one.", ar: "الانتماء يوزّع ملكية الجلسات، والجلسات ليست متساوية الكلفة. فإن ولّدت نسبة صغيرة من المستخدمين المكثّفين نسبة كبيرة من الطلبات، فقد تجلس عقدة تحتضن عدداً منهم عند 90% من المعالج بينما تعمل أخواتها عند 30% ولا يرى التوسّع التلقائي القائم على متوسط الأسطول سبباً للتحرك. والتوسّع يفاقم المشكلة: إذ لا تجتذب النسخ الجديدة إلا جلسات جديدة، فيصل الفرَج بمعدل تبدّل الجلسات — ساعات، في منتج ذي جلسات طويلة. والانتماء مقبول كتحسين لدفء الـ cache فوق تصميم stateless، لكنه لا يغني عنه." }
+      why: { en: "Stickiness hides the symptom without removing the coupling. Restarting or losing an instance still destroys whatever it held, and hashing by IP sends everyone behind one corporate network to the same instance.", ar: "الـ stickiness تخفي العرَض دون إزالة الارتباط. فإعادة تشغيل instance أو فقدانه ما زال يدمّر ما كان يحمله، والـ hashing بعنوان IP يرسل كل من خلف شبكة مؤسسية واحدة إلى نفس الـ instance." }
     },
     {
-      q: { en: "A BackgroundService runs a nightly reconciliation. You scale from 1 to 6 pods. What happens, and why?", ar: "خدمة BackgroundService تنفّذ تسوية ليلية. وتوسّعت من pod واحد إلى ستة. ماذا يحدث، ولماذا؟" },
+      q: { en: "Users are randomly logged out after scaling to three instances. What is the most likely cause?", ar: "يخرج المستخدمون من جلساتهم عشوائياً بعد التوسّع إلى ثلاثة instances. ما السبب الأرجح؟" },
       options: [
-        { en: "Nothing changes — it is registered as a DI singleton, so it runs once", ar: "لا يتغير شيء — فهي مسجّلة كـ singleton في الـ DI، فتعمل مرة واحدة" },
-        { en: "It runs six times concurrently, because a DI singleton is per process, not per cluster", ar: "تعمل ست مرات متزامنة، لأن singleton في الـ DI لكل عملية لا لكل مجموعة" },
-        { en: "It runs once but six times slower, because the pods share the work", ar: "تعمل مرة واحدة لكن أبطأ بست مرات، لأن الـ pods تتقاسم العمل" },
-        { en: "The orchestrator automatically elects one pod to run hosted services", ar: "المنسّق ينتخب تلقائياً pod واحداً لتشغيل الخدمات المستضافة" }
+        { en: "Data protection keys are generated per instance, so cookies from one cannot be decrypted by another.", ar: "مفاتيح data protection تُولَّد لكل instance، فلا يستطيع instance فك تشفير cookie صادرة من آخر." },
+        { en: "The database connection pool is too small.", ar: "حجم connection pool للـ database صغير جداً." },
+        { en: "HTTPS certificates expired.", ar: "شهادات HTTPS انتهت صلاحيتها." },
+        { en: "The cookie is missing the Secure flag.", ar: "الـ cookie تنقصها راية Secure." }
       ],
-      correct: 1,
-      why: { en: "Singleton in the DI container means one instance per process, and every pod is a separate process running the full application. Six pods therefore start six copies of the hosted service, all racing over the same rows — duplicate customer emails, deadlocks on the reconciliation table, and a job that took 4 minutes now taking far longer because the copies block each other. No orchestrator elects a leader for you. Cluster-singleton work needs an explicit mechanism: a distributed lease, a leader election, or moving the job out to a dedicated scheduler that runs it exactly once.", ar: "الـ singleton في حاوية الـ DI يعني نسخة واحدة لكل عملية، وكل pod عملية منفصلة تشغّل التطبيق كاملاً. فستة pods تبدأ ست نسخ من الخدمة المستضافة، كلها تتسابق على الصفوف نفسها — رسائل مكررة إلى العملاء، وdeadlocks على جدول التسوية، ومهمة كانت تستغرق أربع دقائق صارت تستغرق أطول بكثير لأن النسخ تحجب بعضها. ولا ينتخب أي منسّق قائداً نيابة عنك. فالعمل الـ singleton على مستوى المجموعة يحتاج آلية صريحة: lease موزّع، أو انتخاب قائد، أو نقل المهمة إلى مجدول مخصص ينفّذها مرة واحدة بالضبط." }
+      correct: 0,
+      why: { en: "ASP.NET Core encrypts the auth cookie with keys created at startup. Without persisting them to a shared location and setting the same application name, each instance has its own set and rejects the others' cookies.", ar: "ASP.NET Core يشفّر cookie المصادقة بمفاتيح تُنشأ عند الإقلاع. وبدون حفظها في مكان مشترك وضبط نفس application name، يملك كل instance مجموعته الخاصة ويرفض cookies البقية." }
     },
     {
-      q: { en: "Which statement about putting all state in a JWT is accurate?", ar: "أي عبارة عن وضع كل الحالة في JWT دقيقة؟" },
+      q: { en: "Which cost do you accept when you move session state from memory to a shared store?", ar: "ما التكلفة التي تقبلها عند نقل الـ session state من الذاكرة إلى مخزن مشترك؟" },
       options: [
-        { en: "It removes state from the system entirely, which is why it is strictly better than a session store", ar: "يزيل الحالة من النظام كلياً، ولهذا فهو أفضل قطعاً من مخزن جلسات" },
-        { en: "It relocates state to the client, trading a per-request lookup for the inability to revoke and a size cost on every request", ar: "ينقل الحالة إلى العميل، مقايضاً عملية بحث لكل طلب باستحالة الإبطال وكلفة حجم على كل طلب" },
-        { en: "Tokens can be revoked server-side at any time because the server holds the signing key", ar: "يمكن إبطال الـ tokens على السيرفر في أي وقت لأن السيرفر يملك مفتاح التوقيع" },
-        { en: "Token size is irrelevant because headers are compressed on all HTTP versions", ar: "حجم الـ token غير مهم لأن الترويسات مضغوطة في كل إصدارات الـ HTTP" }
+        { en: "Requests can no longer be load balanced.", ar: "لم يعد بالإمكان توزيع الـ requests عبر load balancer." },
+        { en: "The application can only run one instance.", ar: "يستطيع التطبيق تشغيل instance واحد فقط." },
+        { en: "A network call of roughly 0.5-2 ms per lookup, plus a dependency that can fail.", ar: "نداء شبكة بحدود 0.5-2 ms لكل بحث، إضافة إلى تبعية قد تفشل." },
+        { en: "Sessions can no longer expire.", ar: "لم يعد بالإمكان انتهاء صلاحية الجلسات." }
       ],
-      correct: 1,
-      why: { en: "A token moves state to the client rather than removing it. You save a store read per request, but a signed token stays valid until it expires — removing an admin role or killing a compromised session has no effect for the token's lifetime, which is why production designs add a revocation or introspection list, reintroducing server-side state. Holding the signing key lets you verify and issue tokens, not un-issue them. Size is a real constraint: a fat token is added to every request and total headers past roughly 8 KB hit default reverse-proxy limits, producing 431s or connection resets. The usual resolution is short-lived access tokens plus refresh tokens, which bounds revocation latency rather than eliminating it.", ar: "الـ token ينقل الحالة إلى العميل لا يزيلها. فتوفّر قراءة من مخزن لكل طلب، لكن token موقّعاً يبقى صالحاً حتى انتهاء صلاحيته — فإزالة دور مدير أو قتل جلسة مخترقة لا أثر لهما طوال عمر الـ token، ولهذا تضيف التصاميم الإنتاجية قائمة إبطال أو introspection، فتعيد إدخال حالة على السيرفر. وامتلاك مفتاح التوقيع يتيح لك التحقق من الـ tokens وإصدارها، لا سحب إصدارها. والحجم قيد حقيقي: فـtoken سمين يضاف إلى كل طلب، ومجموع الترويسات فوق نحو ثمانية كيلوبايت يصطدم بحدود الـ reverse proxy الافتراضية، فينتج 431 أو إعادة تعيين اتصال. والحل المعتاد access tokens قصيرة العمر مع refresh tokens، فيقيّد ذلك زمن الإبطال بدل أن يلغيه." }
+      correct: 2,
+      why: { en: "The trade is real: what was a memory read becomes a network call inside the data centre, and the store becomes something you must give a timeout, replicate, and plan a fallback for. In exchange the app tier scales and restarts freely.", ar: "المقايضة حقيقية: ما كان قراءة من الذاكرة يصبح نداء شبكة داخل مركز البيانات، ويصبح المخزن شيئاً يجب أن تضع له timeout و replication وخطة بديلة. وفي المقابل تتوسّع طبقة التطبيق وتُعاد تشغيلها بحرية." }
     }
   ]
 };

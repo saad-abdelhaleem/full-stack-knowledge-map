@@ -4,328 +4,448 @@ const statusRetryLesson = {
   moduleId: "foundations",
   title: { en: "What clients retry on", ar: "ما يعيد العملاء المحاولة عليه" },
   summary: {
-    en: "Which status codes are actually safe to retry, why 500 and 504 are the two most dangerous codes in the list, and how Retry-After turns a guess into a contract.",
-    ar: "أي أكواد الحالة آمنة فعلاً لإعادة المحاولة، ولماذا 500 و504 هما أخطر كودين في القائمة، وكيف يحوّل Retry-After التخمين إلى عقد."
+    en: "Which status codes are safe to send again, why 500 and 504 are the dangerous ones, and how Retry-After turns guessing into a rule.",
+    ar: "أي status codes آمن إرسالها مرة أخرى، ولماذا 500 و504 هما الخطران، وكيف يحوّل Retry-After التخمين إلى قاعدة."
   },
   mins: 9,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "Every call between two services fails sometimes for reasons that have nothing to do with the request: a TCP connection reset while a load balancer drained a node, a pod evicted mid-response, a two-second GC pause on the callee, a DNS answer that expired between resolution and connect. At any realistic scale these are not rare events — a service making 10,000 outbound calls per second sees a transient failure rate of 0.01% as one failed call per second, all day, forever. Retrying is not a defensive extra; it is the only reason distributed systems appear reliable at all.", ar: "كل نداء بين خدمتين يفشل أحياناً لأسباب لا علاقة لها بالـ request نفسه: إعادة تعيين اتصال TCP أثناء تفريغ الـ load balancer لعقدة، أو pod أُزيح في منتصف الاستجابة، أو توقّف GC لثانيتين عند المستدعَى، أو إجابة DNS انتهت صلاحيتها بين التحليل والاتصال. وعند أي مقياس واقعي ليست هذه أحداثاً نادرة — فخدمة تجري عشرة آلاف نداء صادر في الثانية ترى معدل فشل عابر 0.01% كنداء فاشل واحد كل ثانية، طوال اليوم، وإلى الأبد. فإعادة المحاولة ليست إضافة دفاعية؛ بل هي السبب الوحيد في أن الأنظمة الموزّعة تبدو موثوقة أصلاً." },
-      { t: "p", en: "The trouble is that the retry decision is made by the client, but almost all the information needed to make it correctly lives on the server. Only the server knows whether the write committed before it fell over, whether the failure was its own or an upstream's, and how long the caller should wait. The status code and Retry-After header are the entire channel through which that knowledge crosses the wire. When a server returns a lazy 500 for everything, it is not being conservative — it is withholding the one fact the client needs and forcing it to guess.", ar: "والمشكلة أن قرار إعادة المحاولة يتخذه العميل، بينما تكاد كل المعلومات اللازمة لاتخاذه بصواب تسكن في السيرفر. فالسيرفر وحده يعرف هل تم تثبيت الكتابة قبل أن ينهار، وهل كان العطل من عنده أم من مصدر أعلى، وكم ينبغي أن ينتظر المستدعي. وكود الحالة وترويسة Retry-After هما كامل القناة التي تعبر بها تلك المعرفة السلك. فحين يرجع سيرفر 500 كسولة لكل شيء، فهو ليس متحفظاً — بل يحجب الحقيقة الوحيدة التي يحتاجها العميل ويجبره على التخمين." },
-      { t: "p", en: "And guessing wrong is expensive in both directions. Retry too little and a one-in-ten-thousand blip becomes a user-visible error on a checkout page. Retry too much and you turn a degraded dependency into a dead one: a service running at 80% capacity that starts returning errors on 20% of calls receives, under a naive three-attempt policy, up to 1.4× its normal load precisely when it has the least headroom. The second failure mode is the one that takes companies down, because it is self-reinforcing — the retries cause the errors that cause the retries.", ar: "والتخمين الخاطئ مكلف في الاتجاهين. فإن قلّت إعادة المحاولة تحوّل ارتباك بنسبة واحد في عشرة آلاف إلى خطأ يراه المستخدم على صفحة الدفع. وإن أفرطت فيها حوّلت تبعية متدهورة إلى تبعية ميتة: فخدمة تعمل عند 80% من سعتها وتبدأ بإرجاع أخطاء على 20% من النداءات تستقبل، تحت سياسة ساذجة بثلاث محاولات، ما يصل إلى 1.4 ضعف حملها الطبيعي في اللحظة التي يكون فيها هامشها أقل ما يكون. ونمط الفشل الثاني هو الذي يُسقِط الشركات، لأنه ذاتي التعزيز — فإعادات المحاولة تسبّب الأخطاء التي تسبّب إعادات المحاولة." },
-      { t: "callout", kind: "note", en: "RFC 9110 §9.2.2 is careful about wording: a client MAY automatically retry an idempotent request when the response was not received, but automatically retrying a non-idempotent request is explicitly discouraged. Notice what that permission is keyed on — the method, plus the absence of a response. It says nothing about retrying a request that did receive a 500. That case is not covered by the spec because the spec cannot know what your server did before it failed.", ar: "الـ RFC 9110 §9.2.2 دقيق في صياغته: يجوز (MAY) للعميل أن يعيد تلقائياً request مُتَماثِل النتيجة (idempotent) حين لا تصل الاستجابة، أما الإعادة التلقائية لـ request غير idempotent فمثبَّطة صراحة. لاحظ على ماذا يعتمد هذا الإذن — على الـ method، وعلى غياب الاستجابة. وهو لا يقول شيئاً عن إعادة request وصلته 500 فعلاً. فتلك الحالة لا تغطيها المواصفة لأن المواصفة لا يمكن أن تعرف ما فعله سيرفرك قبل أن يفشل." }
-    ]},
+    {
+      key: "why",
+      blocks: [
+        { t: "p",
+          en: "A retry means sending the exact same request again after the first attempt failed. The status code in the failed response is your main clue about whether that is safe. Some codes mean the server did no work at all, so sending the request again costs nothing. Other codes mean the server may have finished the work and only the reply got lost. Repeating that request can charge a customer twice.",
+          ar: "الـ retry يعني إرسال نفس الـ request مرة أخرى بعد فشل المحاولة الأولى. والـ status code في الاستجابة الفاشلة هو دليلك الأساسي على ما إذا كان ذلك آمناً. بعض الأكواد تعني أن السيرفر لم ينفّذ أي عمل، فإعادة الإرسال لا تكلّف شيئاً. وأكواد أخرى تعني أن السيرفر ربما أنهى العمل وضاع الرد فقط. وإعادة إرسال هذا الـ request قد تخصم من العميل مرتين." },
 
-    { key: "problem", blocks: [
-      { t: "p", en: "A payments service exposes POST /charges. Under load its database connection pool saturates, SaveChanges commits the row, and then the response serialisation path throws on an exhausted thread pool. The caller receives 500. Its retry policy — three attempts, generic — sends the request twice more. Two of the three attempts commit. The customer is charged three times, the reconciliation job flags it eleven hours later, and the postmortem's root cause is written up as \"database saturation\" when the actual root cause is that a 500 was used to describe a state the client could not distinguish from a no-op.", ar: "خدمة مدفوعات تعرض POST /charges. وتحت الحمل يتشبّع مجمّع اتصالات قاعدة بياناتها، فيثبّت SaveChanges السجل، ثم يرمي مسار تسلسل الاستجابة بسبب استنفاد الـ thread pool. فيستقبل المستدعي 500. وسياسة إعادة المحاولة لديه — ثلاث محاولات، عامة — ترسل الطلب مرتين إضافيتين. فتُثبَّت اثنتان من الثلاث. ويُحاسَب العميل ثلاث مرات، وتشير مهمة التسوية إلى ذلك بعد إحدى عشرة ساعة، ويُكتب السبب الجذري في تقرير ما بعد الحادثة كـ«تشبّع قاعدة البيانات» بينما السبب الجذري الفعلي أن 500 استُخدمت لوصف حالة لم يستطع العميل تمييزها عن اللاعمل." },
-      { t: "p", en: "The same service has the opposite bug on the read path. A downstream inventory API returns 503 with Retry-After: 4 during a rolling deploy — an unambiguous, machine-readable instruction meaning \"I did nothing, come back in four seconds\". The HTTP client ignores the header, uses its own hardcoded 200 ms backoff, and burns all three attempts inside 600 ms while the deploy still has 3.4 seconds to run. Every call fails, the circuit breaker opens, and a deploy that should have been invisible becomes a four-minute partial outage. The server told the truth; the client did not listen.", ar: "ولنفس الخدمة العلة المعاكسة على مسار القراءة. فواجهة مخزون أدنى ترجع 503 مع Retry-After: 4 أثناء نشر تدريجي — وهي تعليمة لا لبس فيها وقابلة للقراءة آلياً تعني «لم أفعل شيئاً، عد بعد أربع ثوانٍ». لكن عميل الـ HTTP يتجاهل الترويسة، ويستخدم تراجعه المثبّت في الكود بمقدار 200 مللي ثانية، فيحرق محاولاته الثلاث خلال 600 مللي ثانية بينما يتبقى للنشر 3.4 ثانية. فتفشل كل النداءات، وينفتح الـ circuit breaker، ويتحول نشر كان ينبغي أن يكون غير مرئي إلى انقطاع جزئي مدته أربع دقائق. فالسيرفر قال الحقيقة؛ والعميل لم يُصغِ." },
-      { t: "kv", rows: [
-        { k: { en: "Retry on a bare 500 after a POST", ar: "إعادة محاولة على 500 مجردة بعد POST" }, v: { en: "The client cannot tell a pre-commit failure from a post-commit one. On a payment or order endpoint this is a duplicate-side-effect bug with a financial cost, and it only appears under the load that caused the 500 in the first place — never in staging", ar: "لا يستطيع العميل تمييز عطل قبل التثبيت من عطل بعده. وعلى endpoint دفع أو طلبية تصير هذه علة تأثير جانبي مكرر بتكلفة مالية، ولا تظهر إلا تحت الحمل الذي سبّب الـ 500 أصلاً — ولا تظهر أبداً في الـ staging" } },
-        { k: { en: "Retry on 504 treated like 503", ar: "إعادة محاولة على 504 تُعامَل كـ 503" }, v: { en: "504 means the gateway gave up waiting — the upstream is very likely still executing the request. Retrying adds a second concurrent execution of work already in flight, so a slow upstream now has 2× the in-flight work and gets slower, producing more 504s", ar: "الـ 504 تعني أن الـ gateway كفّ عن الانتظار — والغالب جداً أن المصدر الأعلى ما زال ينفّذ الطلب. فإعادة المحاولة تضيف تنفيذاً متزامناً ثانياً لعمل قيد التنفيذ أصلاً، فيصير للمصدر البطيء ضِعف العمل الجاري فيزداد بطئاً، فينتج المزيد من 504" } },
-        { k: { en: "Retry on 400/401/403", ar: "إعادة محاولة على 400/401/403" }, v: { en: "Zero chance of success and a nonzero chance of harm: retrying 401 against an account-lockout policy that counts failed authentications will lock the service account after 5 attempts, converting a token bug into a full outage for every caller", ar: "احتمال نجاح صفر واحتمال ضرر ليس صفراً: فإعادة المحاولة على 401 مقابل سياسة إقفال حساب تعدّ المصادقات الفاشلة ستقفل حساب الخدمة بعد خمس محاولات، فتحوّل علة token إلى انقطاع كامل لكل المستدعين" } },
-        { k: { en: "Retries stacked at three layers", ar: "إعادات محاولة متراكبة عبر ثلاث طبقات" }, v: { en: "SDK retries 3×, the resilience pipeline retries 3×, the message consumer retries 3×. The multiplication is 27 executions of one logical operation, and each layer believes it is being modest. The dependency sees a 27× amplification exactly when it is already failing", ar: "الـ SDK يعيد ثلاث مرات، وخط المرونة يعيد ثلاث مرات، ومستهلك الرسائل يعيد ثلاث مرات. فالحاصل الضربي 27 تنفيذاً لعملية منطقية واحدة، وكل طبقة تظن نفسها متواضعة. فترى التبعية تضخيماً بمقدار 27 ضعفاً في اللحظة التي تكون فيها فاشلة أصلاً" } },
-        { k: { en: "No jitter on the backoff", ar: "بلا jitter في التراجع" }, v: { en: "Every caller failed at the same instant, so every caller retries at the same instant. 4,000 clients on a fixed 1s backoff produce a 4,000-request spike one second after recovery starts, which knocks the recovering node back down before it has finished warming its caches", ar: "كل المستدعين فشلوا في اللحظة نفسها، فيعيدون المحاولة في اللحظة نفسها. فأربعة آلاف عميل بتراجع ثابت مقداره ثانية ينتجون ذروة بأربعة آلاف request بعد ثانية من بدء التعافي، فتُسقِط العقدة المتعافية قبل أن تنتهي من تسخين ذاكراتها المؤقتة" } },
-        { k: { en: "Retry-After parsed as seconds only", ar: "Retry-After يُحلَّل كثوانٍ فقط" }, v: { en: "The header legally carries either delay-seconds or an HTTP-date. A parser doing int.Parse on \"Wed, 21 Oct 2026 07:28:00 GMT\" throws, the exception is swallowed, and the fallback delay of 0 ms is used — the strictest possible instruction is silently converted into the most aggressive possible behaviour", ar: "الترويسة تحمل قانونياً إما delay-seconds وإما HTTP-date. ومحلِّل يجري int.Parse على \"Wed, 21 Oct 2026 07:28:00 GMT\" يرمي استثناءً، فيُبتلع الاستثناء، ويُستخدم التأخير الاحتياطي صفر مللي ثانية — فتُحوَّل أشد تعليمة ممكنة بصمت إلى أكثر سلوك عدوانية ممكن" } }
-      ]}
-    ]},
+        { t: "kv", rows: [
+          { k: { en: "Status code", ar: "Status code" },
+            v: { en: "The three-digit number at the start of every HTTP response. 200 means it worked, 404 means not found, 503 means the server is unavailable.", ar: "الرقم المكوّن من ثلاث خانات في بداية كل HTTP response. 200 يعني نجح، و404 يعني غير موجود، و503 يعني السيرفر غير متاح." } },
+          { k: { en: "Retry", ar: "Retry" },
+            v: { en: "Sending the same request a second time, from the client, after the first attempt failed.", ar: "إرسال نفس الـ request مرة ثانية من العميل بعد فشل المحاولة الأولى." } },
+          { k: { en: "Transient failure", ar: "Transient failure" },
+            v: { en: "A failure caused by a temporary condition — a restart, a full queue, a brief network drop — that usually clears by itself within seconds.", ar: "فشل سببه حالة مؤقتة — إعادة تشغيل، أو queue ممتلئ، أو انقطاع شبكة قصير — وعادةً ينتهي وحده خلال ثوانٍ." } },
+          { k: { en: "Idempotent request", ar: "Idempotent request" },
+            v: { en: "A request you can send many times where the end state is the same as sending it once. GET and DELETE are idempotent. A POST that creates a payment is not.", ar: "request يمكن إرساله مرات كثيرة وتكون الحالة النهائية كأنك أرسلته مرة واحدة. الـ GET والـ DELETE هما idempotent. أما POST الذي ينشئ payment فليس كذلك." } },
+          { k: { en: "Side effect", ar: "Side effect" },
+            v: { en: "Any lasting change the server makes while handling a request: a row written, money moved, an email sent.", ar: "أي تغيير دائم يحدثه السيرفر أثناء معالجة الـ request: صف مكتوب، أو أموال تحرّكت، أو إيميل أُرسل." } },
+          { k: { en: "Retry-After", ar: "Retry-After" },
+            v: { en: "A response header where the server says how long the client should wait before trying again, either as a number of seconds or as a date.", ar: "response header يقول فيه السيرفر كم ينبغي أن ينتظر العميل قبل المحاولة مجدداً، إما بعدد ثوانٍ وإما بتاريخ." } }
+        ]},
 
-    { key: "internals", blocks: [
-      { t: "p", en: "Retry safety is the conjunction of three independent facts, and a policy is only correct when it checks all three. First: is the operation idempotent — would executing it twice leave the same state as executing it once? Second: could the server have performed the work despite the failure the client observed? Third: is the failure likely to be gone by the time we try again? Method semantics answer the first, the status code answers the second, and the status code plus Retry-After answer the third. Most broken retry policies are broken because they only consulted the third question.", ar: "أمان إعادة المحاولة هو اقتران ثلاث حقائق مستقلة، ولا تكون السياسة صحيحة إلا حين تفحص الثلاث. أولاً: هل العملية idempotent — أي هل ينتج عن تنفيذها مرتين نفس الحالة الناتجة عن تنفيذها مرة؟ ثانياً: هل يمكن أن يكون السيرفر قد أنجز العمل رغم العطل الذي رآه العميل؟ ثالثاً: هل يُرجَّح أن يكون العطل قد زال حين نحاول ثانية؟ فدلالات الـ method تجيب على الأولى، وكود الحالة يجيب على الثانية، وكود الحالة مع Retry-After يجيبان على الثالثة. ومعظم سياسات إعادة المحاولة المعطوبة معطوبة لأنها استشارت السؤال الثالث وحده." },
-      { t: "p", en: "The cleanest case is the one where no response arrived at all — a connection reset, a TLS failure, a DNS error, a client-side timeout that fired before any bytes came back. Here RFC 9110 §9.2.2 explicitly permits an automatic retry of an idempotent request, and .NET's SocketsHttpHandler already does a limited form of it internally: if a pooled HTTP/1.1 connection turns out to have been closed by the server while idle, the handler transparently reconnects and resends, because that failure is provably before any server processing. Note the boundary precisely — this only holds when the request bytes could not have been acted on. A client-side timeout gives you no such guarantee; the server may be four seconds into the work.", ar: "وأنظف حالة هي التي لا تصل فيها استجابة إطلاقاً — إعادة تعيين اتصال، أو عطل TLS، أو خطأ DNS، أو مهلة من جهة العميل انطلقت قبل عودة أي بايت. وهنا يسمح RFC 9110 §9.2.2 صراحة بإعادة تلقائية لـ request مُتَماثِل النتيجة، وSocketsHttpHandler في .NET يفعل صورة محدودة من ذلك داخلياً أصلاً: فإن تبيّن أن اتصال HTTP/1.1 مأخوذاً من المجمّع قد أغلقه السيرفر أثناء خموله، يعيد المعالج الاتصال والإرسال بشفافية، لأن ذلك العطل قبل أي معالجة من السيرفر بالبرهان. ولاحظ الحدّ بدقة — فهذا لا يصحّ إلا حين يستحيل أن تكون بايتات الطلب قد نُفِّذت. أما مهلة جهة العميل فلا تمنحك ضماناً كهذا؛ فقد يكون السيرفر قد قطع أربع ثوانٍ في العمل." },
-      { t: "kv", rows: [
-        { k: { en: "No response at all (reset, TLS, DNS)", ar: "لا استجابة إطلاقاً (reset، TLS، DNS)" }, v: { en: "Safest retry there is, for idempotent methods. The failure is provably before the server acted. For POST, still unsafe without an idempotency key — a reset can also happen after the server committed and while the response was being written", ar: "أأمن إعادة محاولة على الإطلاق، للـ methods المتماثلة النتيجة. فالعطل قبل تصرّف السيرفر بالبرهان. أما لـ POST فيبقى غير آمن بلا idempotency key — إذ يمكن أن تقع إعادة التعيين أيضاً بعد أن يثبّت السيرفر وأثناء كتابة الاستجابة" } },
-        { k: { en: "408 Request Timeout", ar: "408 Request Timeout" }, v: { en: "The server gave up waiting for the client to finish sending. By definition it never got a complete request, so it cannot have processed one. Safe to retry for any method — and rare in practice, because most proxies just close the connection instead", ar: "السيرفر كفّ عن انتظار العميل ليكمل الإرسال. وبالتعريف لم يصله request كامل، فيستحيل أن يكون عالج واحداً. آمن لإعادة المحاولة لأي method — ونادر عملياً، لأن معظم الـ proxies تغلق الاتصال بدلاً منه" } },
-        { k: { en: "425 Too Early / 421 Misdirected Request", ar: "425 Too Early / 421 Misdirected Request" }, v: { en: "425 rejects a replayable TLS 0-RTT request — resend once the handshake completes. 421 says this connection is not authoritative for the host, so retry on a fresh connection. Both are explicit \"retry me\" codes, not errors", ar: "الـ 425 ترفض request قابلاً لإعادة التشغيل عبر TLS 0-RTT — أعد الإرسال بعد اكتمال المصافحة. والـ 421 تقول إن هذا الاتصال ليس مخوّلاً لهذا المضيف، فأعد المحاولة على اتصال جديد. وكلاهما كود «أعد محاولتي» صريح لا خطأ" } },
-        { k: { en: "429 Too Many Requests", ar: "429 Too Many Requests" }, v: { en: "The definitive retryable code: the server refused before doing the work, so there is no side effect, and Retry-After tells you exactly when the quota window reopens. Retrying earlier than the header says is worse than useless — it usually extends the window", ar: "الكود القاطع القابل لإعادة المحاولة: فالسيرفر رفض قبل أداء العمل، فلا أثر جانبي، وRetry-After يخبرك بالضبط متى تُفتح نافذة الحصة. وإعادة المحاولة قبل ما تقوله الترويسة أسوأ من عديمة الفائدة — فهي تمدّد النافذة عادةً" } },
-        { k: { en: "500 Internal Server Error", ar: "500 Internal Server Error" }, v: { en: "The most ambiguous code in HTTP. It means \"something threw\" and carries no information about whether the write committed. Retry it only for reads, or for writes carrying an idempotency key. Treating a bare 500 on a POST as retryable is how duplicate charges are made", ar: "أكثر الأكواد التباساً في الـ HTTP. فهو يعني «رُمي شيء ما» ولا يحمل أي معلومة عن تثبيت الكتابة. أعِد المحاولة عليه للقراءات فقط، أو للكتابات الحاملة idempotency key. ومعاملة 500 مجردة على POST كقابلة لإعادة المحاولة هي الطريق إلى الرسوم المكررة" } },
-        { k: { en: "502 Bad Gateway", ar: "502 Bad Gateway" }, v: { en: "A proxy received an invalid or truncated response from upstream. The upstream may well have executed the request fully and failed only while responding — so 502 is exactly as ambiguous as 500 with respect to side effects, despite looking more like a network problem", ar: "proxy استقبل استجابة غير صالحة أو مبتورة من المصدر الأعلى. وقد يكون المصدر نفّذ الطلب كاملاً وفشل أثناء الردّ فقط — فالـ 502 ملتبسة تماماً بقدر الـ 500 فيما يخص الآثار الجانبية، رغم أنها تبدو أشبه بمشكلة شبكة" } },
-        { k: { en: "503 Service Unavailable", ar: "503 Service Unavailable" }, v: { en: "The strongest safe-retry signal in the 5xx range: it means the server refused to start, typically shedding load or shutting down for a deploy. No work was done. Usually carries Retry-After, and it is non-cacheable by default, which is what you want for a transient state", ar: "أقوى إشارة إعادة محاولة آمنة في نطاق الـ 5xx: فهي تعني أن السيرفر رفض أن يبدأ، عادةً بإسقاط حمل أو إغلاق للنشر. فلا عمل أُنجز. وتحمل Retry-After غالباً، وهي غير قابلة للتخزين افتراضياً، وهو ما تريده لحالة عابرة" } },
-        { k: { en: "504 Gateway Timeout", ar: "504 Gateway Timeout" }, v: { en: "The most dangerous code to retry. The gateway stopped waiting; the upstream almost certainly did not stop working. A retry doubles concurrent in-flight work on a component that is already too slow, which is the textbook mechanism of a retry-driven cascading failure", ar: "أخطر كود لإعادة المحاولة. فالـ gateway توقف عن الانتظار؛ والمصدر الأعلى شبه المؤكد أنه لم يتوقف عن العمل. فإعادة المحاولة تضاعف العمل المتزامن الجاري على مكوّن بطيء أصلاً، وهي الآلية النموذجية لفشل متتالٍ مدفوع بإعادة المحاولة" } }
-      ]},
-      { t: "p", en: "Retry-After is the only part of this that is a genuine contract rather than an inference, and it is routinely mis-implemented. RFC 9110 §10.2.3 defines it as either delay-seconds (a non-negative integer) or an HTTP-date, and both forms are legal on any response — most commonly 503, 429 and 3xx. .NET models this correctly and awkwardly: HttpResponseHeaders.RetryAfter is a RetryConditionHeaderValue with two nullable properties, Delta and Date, exactly one of which is populated. Code that reads only Delta silently sees null for every date-form header, falls back to a default, and discards the server's instruction.", ar: "وRetry-After هو الجزء الوحيد هنا الذي يمثّل عقداً حقيقياً لا استنتاجاً، وهو يُنفَّذ خطأً بشكل روتيني. فالـ RFC 9110 §10.2.3 يعرّفه بأنه إما delay-seconds (عدد صحيح غير سالب) وإما HTTP-date، وكلا الشكلين قانوني على أي استجابة — والأشيع على 503 و429 والـ 3xx. و.NET يمثّل ذلك بصواب وبعُسر: فـHttpResponseHeaders.RetryAfter من نوع RetryConditionHeaderValue بخاصيتين قابلتين للعدم، Delta وDate، تُملأ واحدة منهما بالضبط. والكود الذي يقرأ Delta وحدها يرى null بصمت لكل ترويسة بشكل التاريخ، فيرتدّ إلى قيمة افتراضية، ويُهدر تعليمة السيرفر." },
-      { t: "code", lang: "csharp", label: { en: "A retry decision that consults all three questions", ar: "قرار إعادة محاولة يستشير الأسئلة الثلاثة" }, code: "// 1. Is the operation replayable at all?\nstatic bool Replayable(HttpRequestMessage r) =>\n       r.Method == HttpMethod.Get  || r.Method == HttpMethod.Head\n    || r.Method == HttpMethod.Put  || r.Method == HttpMethod.Delete\n    || r.Headers.Contains(\"Idempotency-Key\");   // makes POST replayable\n\n// 2. Could the server have done the work anyway?\nstatic bool NoSideEffectPossible(HttpStatusCode s) => s switch\n{\n    HttpStatusCode.RequestTimeout      => true,  // 408: never got a full request\n    HttpStatusCode.TooManyRequests     => true,  // 429: refused before executing\n    HttpStatusCode.ServiceUnavailable  => true,  // 503: refused to start\n    (HttpStatusCode)425                => true,  // 425: 0-RTT replay rejected\n    (HttpStatusCode)421                => true,  // 421: wrong connection, not wrong request\n    HttpStatusCode.InternalServerError => false, // 500: unknowable\n    HttpStatusCode.BadGateway          => false, // 502: upstream may have committed\n    HttpStatusCode.GatewayTimeout      => false, // 504: upstream is probably STILL running it\n    _                                  => false\n};\n\nstatic bool ShouldRetry(HttpRequestMessage req, HttpResponseMessage res) =>\n    Replayable(req) && (NoSideEffectPossible(res.StatusCode)\n                        || (res.StatusCode >= (HttpStatusCode)500 && req.Headers.Contains(\"Idempotency-Key\")));\n\n// 3. How long do we wait? Honour the server, and handle BOTH legal forms.\nstatic TimeSpan Delay(HttpResponseMessage res, int attempt)\n{\n    var ra = res.Headers.RetryAfter;\n    if (ra?.Delta is { } d) return d;\n    if (ra?.Date  is { } t) return Max(TimeSpan.Zero, t - DateTimeOffset.UtcNow);\n\n    // no instruction: exponential backoff with FULL jitter, never a fixed delay\n    var ceiling = TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt));\n    return ceiling * Random.Shared.NextDouble();\n}" },
-      { t: "p", en: "The jitter in that last branch is not a refinement, it is the load-bearing part. Exponential backoff alone fixes the rate at which one client retries but does nothing about correlation between clients, and correlation is what kills a recovering server: 4,000 callers that all failed at t=0 all wake at t=1s together. Full jitter — sampling uniformly from [0, ceiling] rather than waiting the ceiling — spreads that same population across the whole window. AWS's measurements of this put the reduction in total work and in contention at roughly an order of magnitude versus plain exponential backoff, which is why it is the default in essentially every modern resilience library.", ar: "والـ jitter في ذلك الفرع الأخير ليس تحسيناً تجميلياً بل الجزء الحامل للحِمل. فالتراجع الأسي وحده يضبط معدل إعادة محاولة العميل الواحد ولا يفعل شيئاً حيال الارتباط بين العملاء، والارتباط هو ما يقتل سيرفراً متعافياً: فأربعة آلاف مستدعٍ فشلوا جميعاً عند اللحظة صفر يستيقظون جميعاً عند الثانية الأولى معاً. أما الـ full jitter — أي أخذ عيّنة موحّدة من [0, السقف] بدل انتظار السقف — فينشر ذلك الجمهور نفسه عبر النافذة كاملة. وقياسات AWS لهذا تضع خفض العمل الكلي والتنازع عند نحو رتبة كاملة مقارنةً بالتراجع الأسي المجرد، ولذلك صار الافتراضي في كل مكتبة مرونة حديثة تقريباً." },
-      { t: "p", en: "Finally, a retry policy needs a global brake, not just a per-call limit. A per-call cap of three attempts still permits the whole fleet to triple its load on a struggling dependency. A retry budget — the technique used in Google's SRE practice and in Envoy — caps retries as a fraction of successful requests over a rolling window, typically 10%. Under normal conditions that ceiling is never reached and retries behave exactly as before; during a broad outage, when almost everything is failing, the budget is exhausted immediately and retries stop fleet-wide. That inversion is the point: retries should be plentiful when failures are rare and forbidden when failures are common.", ar: "وأخيراً، تحتاج سياسة إعادة المحاولة إلى مكبح شامل لا إلى حدّ لكل نداء فحسب. فسقف بثلاث محاولات لكل نداء يظل يسمح للأسطول كله بمضاعفة حمله ثلاث مرات على تبعية متعثرة. أما ميزانية إعادة المحاولة — وهي التقنية المستخدمة في ممارسة SRE لدى Google وفي Envoy — فتحدّ إعادات المحاولة كنسبة من الطلبات الناجحة عبر نافذة متدحرجة، عادةً 10%. وفي الظروف الطبيعية لا يُبلَغ ذلك السقف أبداً فتتصرّف إعادات المحاولة كما كانت تماماً؛ وأثناء انقطاع واسع، حين يفشل كل شيء تقريباً، تُستنفد الميزانية فوراً فتتوقف إعادات المحاولة على مستوى الأسطول. وذلك القلب هو المقصود: ينبغي أن تكون إعادات المحاولة وفيرة حين يندر الفشل، ممنوعة حين يشيع." },
-      { t: "callout", kind: "warn", en: "A client-side timeout is not evidence that nothing happened. It is evidence that you stopped listening. Treat a timed-out write exactly like a 504 — the work may be committing right now — and resolve it with an idempotency key or a status query, never with a blind resend.", ar: "مهلة جهة العميل ليست دليلاً على أن شيئاً لم يحدث. بل هي دليل على أنك توقفت عن الإصغاء. عامِل الكتابة التي انتهت مهلتها معاملة 504 تماماً — فقد يكون العمل يُثبَّت الآن — وحُلّها بـ idempotency key أو باستعلام حالة، لا بإعادة إرسال عمياء أبداً." }
-    ]},
+        { t: "p",
+          en: "Retries exist because most network failures are short. A pod restarts, a connection pool fills up, a switch drops a packet. Wait two seconds and the same call succeeds. Without retries, every one of those blips becomes a failed order. With careless retries, every one of those blips becomes a duplicate order. Choosing which codes to retry is the whole difference.",
+          ar: "الـ retries موجودة لأن معظم أعطال الشبكة قصيرة. pod يُعاد تشغيله، أو connection pool يمتلئ، أو switch يُسقط packet. انتظر ثانيتين وينجح نفس النداء. وبدون retries يتحول كل عطل قصير إلى order فاشل. ومع retries عشوائية يتحول كل عطل قصير إلى order مكرّر. واختيار الأكواد التي تعيد المحاولة عليها هو الفرق كله." },
 
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
-          en: [
-            "Turns the dominant class of distributed failure — brief, uncorrelated, transient — into a latency bump instead of a user-visible error",
-            "A 0.1% per-call failure rate becomes roughly 1-in-a-million after three independent attempts, which is the difference between a daily incident and an annual one",
-            "Retry-After lets a server coordinate its own recovery: deploys, quota windows and load shedding become schedulable rather than adversarial",
-            "Backoff with jitter converts a synchronised thundering herd into a smooth ramp, so a recovering node actually gets to recover",
-            "Retry budgets give you a single fleet-wide dial that fails safe: plentiful retries when failures are rare, none when they are systemic"
-          ],
-          ar: [
-            "يحوّل الصنف المهيمن من الفشل الموزّع — القصير غير المترابط العابر — إلى ارتفاع في زمن الاستجابة بدل خطأ يراه المستخدم",
-            "معدل فشل 0.1% لكل نداء يصير نحو واحد في المليون بعد ثلاث محاولات مستقلة، وهو الفرق بين حادثة يومية وحادثة سنوية",
-            "الـ Retry-After يتيح للسيرفر تنسيق تعافيه بنفسه: فتصير عمليات النشر ونوافذ الحصص وإسقاط الحمل قابلة للجدولة بدل أن تكون عدائية",
-            "التراجع مع الـ jitter يحوّل قطيعاً هادراً متزامناً إلى ارتفاع تدريجي سلس، فتحصل العقدة المتعافية على فرصة فعلية للتعافي",
-            "ميزانيات إعادة المحاولة تمنحك مقبضاً واحداً على مستوى الأسطول يفشل بأمان: إعادات وفيرة حين يندر الفشل، ولا شيء حين يصير منهجياً"
-          ]
-        },
-        cons: {
-          en: [
-            "Retries amplify load precisely when the dependency has the least headroom, and are the single most common trigger of cascading failure",
-            "Any retry on a non-idempotent write risks a duplicate side effect, and the risk is invisible until you are at the load that produces 500s",
-            "They multiply across layers — SDK × resilience pipeline × queue consumer — so a 3-attempt policy at each of three levels is 27 executions",
-            "They inflate tail latency: a request that eventually succeeds on attempt three has paid every backoff, so p99.9 is dominated by retried calls",
-            "They mask real degradation from your dashboards, because the success metric stays green while the dependency is failing half the time"
-          ],
-          ar: [
-            "إعادات المحاولة تضخّم الحمل تحديداً حين يكون هامش التبعية أضيق ما يكون، وهي المُطلِق الأشيع للفشل المتتالي",
-            "أي إعادة محاولة على كتابة غير idempotent تخاطر بأثر جانبي مكرر، والمخاطرة غير مرئية حتى تبلغ الحمل الذي ينتج الـ 500",
-            "تتضاعف عبر الطبقات — الـ SDK × خط المرونة × مستهلك الطابور — فسياسة بثلاث محاولات عند كل من ثلاثة مستويات تعني 27 تنفيذاً",
-            "تضخّم زمن الذيل: فطلب ينجح أخيراً في المحاولة الثالثة يكون قد دفع كل فترات التراجع، فتهيمن النداءات المُعادة على p99.9",
-            "تخفي التدهور الحقيقي عن لوحاتك، لأن مقياس النجاح يبقى أخضر بينما التبعية تفشل نصف الوقت"
-          ]
-        },
-        limits: {
-          en: [
-            "No retry policy can distinguish a 500 thrown before the commit from one thrown after it — only an idempotency key or a status endpoint can",
-            "Retrying cannot help when the failure is deterministic: a poison message or a malformed payload fails identically forever",
-            "The status code is a per-response signal with no memory, so it can never express \"this has been failing for 40 seconds\" — that is a circuit breaker's job",
-            "Retry-After is advisory; a server has no way to enforce it and no way to know whether the client honoured it",
-            "Once a response has begun streaming, there is no safe retry point — the client has already delivered partial data downstream"
-          ],
-          ar: [
-            "لا سياسة إعادة محاولة تستطيع تمييز 500 رُميت قبل التثبيت من واحدة رُميت بعده — ولا يستطيع ذلك إلا idempotency key أو endpoint حالة",
-            "إعادة المحاولة لا تنفع حين يكون العطل حتمياً: فرسالة سامّة أو حمولة مشوّهة تفشل بنفس الشكل إلى الأبد",
-            "كود الحالة إشارة لكل استجابة بلا ذاكرة، فلا يستطيع أبداً قول «هذا يفشل منذ أربعين ثانية» — فتلك وظيفة circuit breaker",
-            "الـ Retry-After استرشادي؛ فلا سبيل للسيرفر لفرضه ولا لمعرفة هل احترمه العميل",
-            "بمجرد أن تبدأ الاستجابة بالبثّ، لا توجد نقطة إعادة محاولة آمنة — فالعميل قد سلّم بيانات جزئية إلى ما بعده أصلاً"
-          ]
-        },
-        alts: {
-          en: [
-            "Fail fast and let the caller decide: correct for interactive paths where a human would rather see an error in 200 ms than wait 4 s",
-            "Hedged requests — send a second copy after the p95 and take the first answer — which cuts tail latency instead of covering errors, at ~5% extra load",
-            "Queue the work and retry asynchronously with a dead-letter queue, moving retry out of the request path entirely",
-            "Idempotency keys plus a server-side dedup store, which make retries safe rather than merely limited",
-            "Circuit breakers as the layer above retries: retry the individual blip, trip the breaker on the sustained outage"
-          ],
-          ar: [
-            "الفشل السريع وترك القرار للمستدعي: وهو الصواب في المسارات التفاعلية حيث يفضّل الإنسان رؤية خطأ خلال 200 مللي ثانية على انتظار أربع ثوانٍ",
-            "الطلبات المُحوَّطة (hedged) — إرسال نسخة ثانية بعد الـ p95 وأخذ أول جواب — وهي تقلّص زمن الذيل بدل تغطية الأخطاء، بكلفة حمل إضافي نحو 5%",
-            "وضع العمل في طابور وإعادة المحاولة لا تزامنياً مع طابور dead-letter، فتخرج إعادة المحاولة من مسار الطلب كلياً",
-            "مفاتيح الـ idempotency مع مخزن إزالة تكرار على السيرفر، فتجعل إعادات المحاولة آمنة لا محدودة فحسب",
-            "الـ circuit breakers كطبقة فوق إعادات المحاولة: أعد المحاولة على الارتباك الفردي، واقطع الدارة عند الانقطاع المستمر"
-          ]
+        { t: "p",
+          en: "Think of two everyday situations. In the first, you go to post a letter and the post office is shut. Nothing left your hand, so you come back tomorrow and post it. No harm. In the second, you hand your card to a cashier, the terminal freezes, and no receipt prints. You do not know whether the money moved. Tapping the card again may charge you twice. Status codes are how the server tells you which situation you are in — and for two of them it cannot tell you at all.",
+          ar: "تخيّل موقفين يوميين. في الأول تذهب لإرسال رسالة فتجد مكتب البريد مغلقاً. لم تخرج الرسالة من يدك، فتعود غداً وترسلها ولا ضرر. وفي الثاني تعطي بطاقتك للكاشير، فيتجمّد الجهاز ولا يُطبع أي إيصال. أنت لا تعرف هل تحرّكت الأموال أم لا. وتمرير البطاقة ثانيةً قد يخصم منك مرتين. الـ status codes هي الطريقة التي يخبرك بها السيرفر في أي موقف أنت — وفي كودين منها لا يستطيع إخبارك إطلاقاً." },
+
+        { t: "callout", kind: "note",
+          en: "503 Service Unavailable is the shut post office: the request never ran. 500 and 504 are the frozen card terminal: the server either crashed part-way through the work, or finished it and the answer never came back. Nothing in the response tells you which of the two happened.",
+          ar: "الـ 503 Service Unavailable هو مكتب البريد المغلق: الـ request لم يُنفَّذ أصلاً. أما 500 و504 فهما جهاز البطاقة المتجمّد: السيرفر إما انهار في منتصف العمل وإما أنهاه ولم يصل الرد. ولا شيء في الاستجابة يخبرك أيّ الاثنين حدث." }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        { t: "p",
+          en: "Here is the case used through the whole lesson. An Orders service calls a Payments service with POST /payments, sending orderId, amount and currency. The handler writes a payments row and moves real money. The Orders service uses HttpClient with one retry policy applied to every call: three attempts, two seconds apart, on any response that is not a success.",
+          ar: "هذه هي الحالة المستخدمة في الدرس كله. خدمة Orders تنادي خدمة Payments عبر POST /payments وترسل orderId وamount وcurrency. والـ handler يكتب صفاً في جدول payments ويحرّك أموالاً حقيقية. وخدمة Orders تستخدم HttpClient مع retry policy واحدة مطبّقة على كل نداء: ثلاث محاولات بينها ثانيتان، على أي استجابة ليست ناجحة." },
+
+        { t: "p",
+          en: "During a 90-second deploy of the Payments service, the gateway kept accepting connections while the pods restarted. About 42,000 payment requests were in flight. Roughly 4,300 of them came back as 504 Gateway Timeout — meaning the gateway stopped waiting for an answer, not that the work failed. The Orders service retried all 4,300, twice each. About 1,900 customers were charged twice, because the first attempt had actually completed on the server and only the response was lost. The word timeout described the gateway's patience, not the server's work.",
+          ar: "أثناء deploy استغرق 90 ثانية لخدمة Payments، ظل الـ gateway يقبل الاتصالات بينما كانت الـ pods يُعاد تشغيلها. كان نحو 42,000 payment request قيد التنفيذ. ورجع منها نحو 4,300 بكود 504 Gateway Timeout — أي أن الـ gateway توقّف عن الانتظار، لا أن العمل فشل. وأعادت خدمة Orders المحاولة على الـ 4,300 كلها مرتين لكل واحد. وخُصم من نحو 1,900 عميل مرتين، لأن المحاولة الأولى كانت قد اكتملت فعلاً على السيرفر وضاع الرد وحده. كلمة timeout هنا تصف صبر الـ gateway لا عمل السيرفر." },
+
+        { t: "kv", rows: [
+          { k: { en: "400 Bad Request", ar: "400 Bad Request" },
+            v: { en: "The request itself is malformed. The same bytes give the same answer forever. Never retry.", ar: "الـ request نفسه غير صالح. ونفس البايتات تعطي نفس الرد دائماً. لا تعِد المحاولة أبداً." } },
+          { k: { en: "401 / 403", ar: "401 / 403" },
+            v: { en: "Not authenticated, or not allowed. Retry only after refreshing the token, and only once — repeated attempts can lock the account.", ar: "غير مُصادَق عليه أو غير مسموح. أعد المحاولة فقط بعد تجديد الـ token، ومرة واحدة — فالمحاولات المتكررة قد تُقفل الحساب." } },
+          { k: { en: "404 / 409 / 422", ar: "404 / 409 / 422" },
+            v: { en: "The server understood you and said no. Nothing changes on a second attempt. Never retry.", ar: "السيرفر فهمك وقال لا. ولا شيء يتغير في المحاولة الثانية. لا تعِد المحاولة أبداً." } },
+          { k: { en: "408 Request Timeout", ar: "408 Request Timeout" },
+            v: { en: "The server gave up waiting for the client to finish sending the request. The body usually never arrived complete, so a retry is normally safe.", ar: "السيرفر تعب من انتظار العميل ليكمل إرسال الـ request. وعادةً لم يصل الـ body كاملاً، فإعادة المحاولة آمنة غالباً." } },
+          { k: { en: "429 Too Many Requests", ar: "429 Too Many Requests" },
+            v: { en: "You are being rate limited — the server is capping how many calls you may send. Retrying is expected, but only after the delay in Retry-After.", ar: "أنت تحت rate limiting — السيرفر يحدّد عدد النداءات المسموح بها. وإعادة المحاولة متوقَّعة، لكن بعد المدة المذكورة في Retry-After فقط." } },
+          { k: { en: "500 Internal Server Error", ar: "500 Internal Server Error" },
+            v: { en: "The handler threw an exception. It may have thrown before the side effect or after it. Retry only if repeating is harmless.", ar: "الـ handler رمى exception. وقد يكون رماه قبل الـ side effect أو بعده. أعد المحاولة فقط إذا كان التكرار غير ضار." } },
+          { k: { en: "502 / 503", ar: "502 / 503" },
+            v: { en: "A proxy found no healthy server, or the server declared itself unavailable. In both cases your request never reached the handler. Safe to retry.", ar: "لم يجد الـ proxy سيرفراً سليماً، أو أعلن السيرفر أنه غير متاح. وفي الحالتين لم يصل الـ request إلى الـ handler. آمن لإعادة المحاولة." } },
+          { k: { en: "504 Gateway Timeout", ar: "504 Gateway Timeout" },
+            v: { en: "A proxy stopped waiting for the server. The server may still be working and may finish. Same rule as 500.", ar: "الـ proxy توقّف عن انتظار السيرفر. وقد يكون السيرفر ما زال يعمل وقد ينهي العمل. نفس قاعدة 500." } },
+          { k: { en: "No response at all", ar: "لا استجابة إطلاقاً" },
+            v: { en: "Connection reset, DNS failure, TLS failure. If it broke before your bytes went out, retrying is safe. Once bytes are on the wire you cannot tell. Treat it like 500.", ar: "connection reset أو فشل DNS أو فشل TLS. إن حدث قبل خروج بايتاتك فإعادة المحاولة آمنة. وبعد خروجها لا يمكنك التمييز. عامله مثل 500." } }
+        ]},
+
+        { t: "p",
+          en: "One pattern runs through the whole table. The safe codes are the ones where the server can prove it did nothing. The dangerous codes are the ones where the server itself does not know how far it got.",
+          ar: "هناك نمط واحد يسري في الجدول كله. الأكواد الآمنة هي التي يستطيع السيرفر فيها إثبات أنه لم يفعل شيئاً. والأكواد الخطرة هي التي لا يعرف السيرفر نفسه فيها إلى أي مدى وصل." }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        { t: "p",
+          en: "The only question a retry decision answers is this: did the side effect already happen? HTTP answers it clearly for most codes and not at all for 500 and 504. So a correct retry rule is built from two inputs, not one: the status code, and whether repeating this particular request is harmless.",
+          ar: "السؤال الوحيد الذي يجيب عنه قرار الـ retry هو: هل حدث الـ side effect بالفعل؟ والـ HTTP يجيب بوضوح عن معظم الأكواد، ولا يجيب إطلاقاً عن 500 و504. لذلك تُبنى قاعدة الـ retry الصحيحة من مدخلين لا مدخل واحد: الـ status code، وهل تكرار هذا الـ request تحديداً غير ضار." },
+
+        { t: "p",
+          en: "Trace one POST /payments through the hops. The client opens a socket and writes the request bytes. A load balancer picks a pod. The gateway forwards the request. Kestrel — the web server inside ASP.NET Core — parses it and runs the middleware. The handler validates the body, calls the card processor, and commits a database transaction. Then the response travels back the same way. A failure can land at any hop, and where it lands is exactly what decides whether the side effect happened.",
+          ar: "تتبّع POST /payments واحداً عبر المحطات. العميل يفتح socket ويكتب بايتات الـ request. ثم يختار الـ load balancer أحد الـ pods. ويمرّر الـ gateway الـ request. ثم يحلّله Kestrel — وهو الـ web server داخل ASP.NET Core — ويشغّل الـ middleware. ويتحقق الـ handler من الـ body، وينادي الـ card processor، ويعمل commit لـ transaction في قاعدة البيانات. ثم يعود الرد بنفس الطريق. والفشل قد يقع في أي محطة، وموضع وقوعه هو بالضبط ما يحدّد هل حدث الـ side effect." },
+
+        { t: "p",
+          en: "Failures at the first hops are provably harmless. A 503 comes from the load balancer before any pod was chosen. A 502 means the gateway could not reach a pod. Neither ever reached the handler, so the payments row was never written. Failures at the last hops are the problem. A 504 is emitted by the gateway when its own patience runs out, while the handler keeps running behind it and may commit the transaction one second later. A 500 is emitted after the handler threw — but the throw may have happened after the money moved and before the row was written.",
+          ar: "الأعطال في المحطات الأولى غير ضارة بشكل مثبت. فالـ 503 يأتي من الـ load balancer قبل اختيار أي pod. والـ 502 يعني أن الـ gateway لم يستطع الوصول إلى pod. وكلاهما لم يصل إلى الـ handler، فلم يُكتب صف الـ payments أبداً. والمشكلة في المحطات الأخيرة. فالـ 504 يصدره الـ gateway عندما ينفد صبره هو، بينما يظل الـ handler يعمل خلفه وقد يعمل commit بعد ثانية واحدة. والـ 500 يصدر بعد أن رمى الـ handler exception — لكن الرمي قد يكون حدث بعد تحرّك الأموال وقبل كتابة الصف." },
+
+        { t: "p",
+          en: "Use a courier as the anchor. Address does not exist is a 404, and sending the parcel again changes nothing. We could not reach the depot is a 503, and your parcel never moved, so send it again. We lost contact with the driver after pickup is a 504 — the parcel may already be delivered. Sending a second parcel is only sensible if the recipient can recognise it as a duplicate. The idempotency key is the label that lets them recognise it.",
+          ar: "استخدم شركة شحن كمثال ثابت. العنوان غير موجود هو 404، وإعادة إرسال الطرد لا تغيّر شيئاً. ولم نستطع الوصول إلى المستودع هو 503، والطرد لم يتحرك أصلاً، فأعد إرساله. وفقدنا الاتصال بالسائق بعد الاستلام هو 504 — وقد يكون الطرد سُلّم بالفعل. وإرسال طرد ثانٍ يكون منطقياً فقط إذا كان المستلم قادراً على معرفة أنه مكرّر. والـ idempotency key هو الملصق الذي يجعله يعرف ذلك." },
+
+        { t: "kv", rows: [
+          { k: { en: "HTTP method", ar: "HTTP method" },
+            v: { en: "Says whether repeating is harmless by definition. GET, HEAD, PUT and DELETE are idempotent by the spec. POST is not.", ar: "يحدّد هل التكرار غير ضار بحكم التعريف. فـ GET وHEAD وPUT وDELETE هي idempotent حسب المواصفة. أما POST فلا." } },
+          { k: { en: "Status code", ar: "Status code" },
+            v: { en: "The server's own claim about how far it got before failing.", ar: "إقرار السيرفر نفسه عن المدى الذي وصل إليه قبل الفشل." } },
+          { k: { en: "Retry-After", ar: "Retry-After" },
+            v: { en: "The server's instruction about when to come back. It answers when, never whether.", ar: "تعليمة السيرفر عن موعد العودة. تجيب عن متى، ولا تجيب أبداً عن هل." } },
+          { k: { en: "Idempotency key", ar: "Idempotency key" },
+            v: { en: "A unique id the client generates and sends with the request. The server stores it, and on a repeat returns the first result instead of doing the work twice.", ar: "معرّف فريد ينشئه العميل ويرسله مع الـ request. يخزّنه السيرفر، وعند التكرار يعيد نتيجة المرة الأولى بدل تنفيذ العمل مرتين." } },
+          { k: { en: "Retry budget", ar: "Retry budget" },
+            v: { en: "A cap on how many retries the client may spend across all requests, so one broken dependency cannot multiply your traffic.", ar: "سقف لعدد الـ retries التي يستهلكها العميل عبر كل الـ requests، حتى لا تضاعف تبعية معطلة واحدة حجم مرورك." } }
+        ]},
+
+        { t: "code", lang: "csharp",
+          label: { en: "The decision, written out", ar: "القرار مكتوباً" },
+          code: "static bool ShouldRetry(HttpRequestMessage req, HttpResponseMessage res)\n{\n    // Repeating is harmless either by method, or because we sent a key.\n    bool repeatIsSafe =\n        req.Method == HttpMethod.Get ||\n        req.Method == HttpMethod.Head ||\n        req.Method == HttpMethod.Put ||\n        req.Method == HttpMethod.Delete ||\n        req.Headers.Contains(\"Idempotency-Key\");\n\n    int code = (int)res.StatusCode;\n\n    // Never reached the handler: safe for any method.\n    if (code == 429 || code == 502 || code == 503) return true;\n\n    // May have reached the handler: safe only if repeating is harmless.\n    if (code == 408 || code == 500 || code == 504) return repeatIsSafe;\n\n    // Every other 4xx is a permanent answer. Every 2xx is a success.\n    return false;\n}" },
+
+        { t: "p",
+          en: "The wait between attempts matters as much as the decision. If the server sent Retry-After, honour it — it is the only number that knows when the server will be ready. If it did not, back off exponentially: 200 ms, then 400, then 800. Add jitter, which is a small random amount added to each wait so a thousand clients do not all retry in the same millisecond. Clamp the result, because an unbounded Retry-After of 86400 would park a worker for a day.",
+          ar: "مدة الانتظار بين المحاولات لا تقل أهمية عن القرار نفسه. إن أرسل السيرفر Retry-After فاحترمه — فهو الرقم الوحيد الذي يعرف متى سيكون السيرفر جاهزاً. وإن لم يرسله فاستخدم exponential backoff: 200 ms ثم 400 ثم 800. وأضف jitter، وهو مقدار عشوائي صغير يُضاف لكل انتظار حتى لا يعيد ألف عميل المحاولة في نفس الميلي ثانية. وقيّد الناتج بحدّ أعلى، لأن Retry-After غير محدود بقيمة 86400 سيوقف عاملاً ليوم كامل." },
+
+        { t: "code", lang: "csharp",
+          label: { en: "How long to wait", ar: "كم تنتظر" },
+          code: "static TimeSpan Delay(HttpResponseMessage res, int attempt)\n{\n    var ra = res.Headers.RetryAfter;   // parses BOTH legal forms\n    if (ra?.Delta is TimeSpan seconds) return Clamp(seconds);\n    if (ra?.Date is DateTimeOffset when) return Clamp(when - DateTimeOffset.UtcNow);\n\n    var backoff = TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt));\n    var jitter  = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250));\n    return Clamp(backoff + jitter);\n}\n\nstatic TimeSpan Clamp(TimeSpan t) =>\n    t < TimeSpan.Zero            ? TimeSpan.Zero :\n    t > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : t;" },
+
+        { t: "p",
+          en: "One detail about .NET. A plain HttpClient retries nothing on its own. The retries come from a handler you add, usually the standard resilience handler in Microsoft.Extensions.Http.Resilience, which retries 5xx, 408 and 429 out of the box. That default is safe for a read-only client and unsafe for a client that posts payments, because the handler sees every request the client sends. This is why retry policies belong on a named client scoped to one dependency, not on a shared default.",
+          ar: "تفصيلة عن .NET. الـ HttpClient العادي لا يعيد المحاولة من تلقاء نفسه. والـ retries تأتي من handler تضيفه أنت، وغالباً هو الـ standard resilience handler في Microsoft.Extensions.Http.Resilience، وهو يعيد المحاولة على 5xx و408 و429 افتراضياً. هذا الافتراضي آمن لعميل يقرأ فقط، وغير آمن لعميل يرسل payments، لأن الـ handler يرى كل request يرسله العميل. ولهذا تنتمي سياسات الـ retry إلى named client مخصّص لتبعية واحدة، لا إلى default مشترك." }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        { t: "tradeoff",
+          pros: {
+            en: [
+              "Turns short outages into invisible delays instead of failed orders.",
+              "Costs nothing when the dependency is healthy — the policy only fires on failure.",
+              "Absorbs deploys and pod restarts, which are the most common source of 502 and 503.",
+              "Retry-After lets the server steer your load instead of you guessing."
+            ],
+            ar: [
+              "يحوّل الانقطاعات القصيرة إلى تأخير غير مرئي بدل orders فاشلة.",
+              "لا يكلّف شيئاً عندما تكون التبعية سليمة — فالسياسة لا تعمل إلا عند الفشل.",
+              "يمتص الـ deploys وإعادة تشغيل الـ pods، وهي أكثر مصادر 502 و503 شيوعاً.",
+              "الـ Retry-After يجعل السيرفر يوجّه حِملك بدل أن تخمّن أنت."
+            ]
+          },
+          cons: {
+            en: [
+              "On a non-idempotent POST, a retry after 500 or 504 can duplicate a real side effect.",
+              "Retries multiply load exactly when the dependency is already struggling.",
+              "Each attempt holds a connection and a thread's worth of work for longer.",
+              "Retries at several layers multiply: 3 layers of 3 attempts is 27 requests."
+            ],
+            ar: [
+              "على POST غير idempotent، قد يكرّر الـ retry بعد 500 أو 504 أثر side effect حقيقياً.",
+              "الـ retries تضاعف الحمل تحديداً وقت أن تكون التبعية متعبة أصلاً.",
+              "كل محاولة تحجز connection وتشغل عملاً بقدر thread لمدة أطول.",
+              "الـ retries في عدة طبقات تتضاعف: ثلاث طبقات بثلاث محاولات تعني 27 request."
+            ]
+          },
+          limits: {
+            en: [
+              "A retry cannot fix a 4xx — the answer is permanent.",
+              "The status code alone never tells you whether the side effect happened.",
+              "Retrying only helps for failures shorter than your total retry window.",
+              "Without an idempotency key, a safe retry on POST is not possible."
+            ],
+            ar: [
+              "الـ retry لا يصلح 4xx — فالجواب دائم.",
+              "الـ status code وحده لا يخبرك أبداً هل حدث الـ side effect.",
+              "الـ retry يفيد فقط في أعطال أقصر من نافذة إعادة المحاولة كلها.",
+              "بدون idempotency key لا يمكن عمل retry آمن على POST."
+            ]
+          },
+          alts: {
+            en: [
+              "Idempotency keys, so a repeat is provably harmless.",
+              "A circuit breaker that stops calling a dependency that is clearly down.",
+              "A queue plus a background worker, so the retry happens off the request path.",
+              "Failing fast and letting the user press the button again, when the action is cheap."
+            ],
+            ar: [
+              "الـ idempotency keys ليصبح التكرار غير ضار بشكل مثبت.",
+              "circuit breaker يوقف النداء على تبعية واضح أنها معطّلة.",
+              "queue مع background worker، فتحدث إعادة المحاولة خارج مسار الـ request.",
+              "الفشل السريع وترك المستخدم يضغط الزر مرة أخرى، عندما يكون الإجراء رخيصاً."
+            ]
+          }
         }
-      }
-    ]},
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        { t: "mistake",
+          title: { en: "Retrying POST on 500 with no idempotency key", ar: "إعادة المحاولة على POST عند 500 بلا idempotency key" },
+          body: {
+            en: "Someone wrapped the payments client in a policy that retried any 5xx. During one incident the payments handler threw after the card was charged and before the row was committed. The client saw 500 and sent the same body again. The card was charged a second time. The fix is not to remove the retry, but to send a key the server can recognise so the second call returns the first result.",
+            ar: "أحدهم غلّف عميل الـ payments بسياسة تعيد المحاولة على أي 5xx. وفي حادثة، رمى handler الـ payments exception بعد خصم البطاقة وقبل عمل commit للصف. فرأى العميل 500 وأرسل نفس الـ body ثانيةً. فخُصمت البطاقة مرة ثانية. والحل ليس حذف الـ retry، بل إرسال key يعرفه السيرفر فيعيد النداء الثاني نتيجة الأول."
+          },
+          fix: "req.Headers.Add(\"Idempotency-Key\", order.Id.ToString());\n// server: if key seen before, return the stored response, do no work" },
 
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "Retrying a POST on a bare 500", ar: "إعادة محاولة POST على 500 مجردة" },
-        body: { en: "The policy is written as \"retry on 5xx\" because that reads like the conservative choice. On POST /charges it is the opposite. A 500 can be thrown after the transaction committed — an exhausted thread pool during response serialisation, an OOM while building the JSON, a timeout writing to an audit sink. Under the exact load that produces those 500s, a three-attempt policy commits the charge up to three times. The defect never reproduces below the saturation point, so it ships through every load-free staging environment and surfaces first on a real payment.", ar: "تُكتب السياسة كـ«أعد المحاولة على 5xx» لأن ذلك يبدو الخيار المتحفظ. وعلى POST /charges هو العكس. فيمكن أن تُرمى 500 بعد تثبيت المعاملة — thread pool مستنفد أثناء تسلسل الاستجابة، أو نفاد ذاكرة أثناء بناء الـ JSON، أو مهلة عند الكتابة إلى مصرف تدقيق. وتحت الحمل نفسه الذي ينتج تلك الـ 500، تثبّت سياسة بثلاث محاولات الرسم ثلاث مرات. ولا يتكرر العيب أبداً تحت نقطة التشبّع، فيمرّ عبر كل بيئة staging خالية من الحمل ويظهر أول مرة على دفعة حقيقية." },
-        fix: "// make the write replayable, then retrying 5xx becomes safe\nreq.Headers.Add(\"Idempotency-Key\", operationId.ToString());  // stable across ALL attempts\n\n// server side: dedupe before doing the work\nif (await _store.TryClaimAsync(key, ttl: TimeSpan.FromHours(24)) is { } prior)\n    return Results.Json(prior.Response, statusCode: prior.Status);" },
-      { t: "mistake",
-        title: { en: "Treating 504 like 503", ar: "معاملة 504 معاملة 503" },
-        body: { en: "Both are 5xx, both look like \"the server is having a moment\", and most policies bucket them together. They are opposites. 503 means the server refused to start work — nothing happened. 504 means a gateway stopped waiting for work that is almost certainly still executing upstream. Retrying a 504 adds a second concurrent execution to a component that is already too slow to finish the first, so in-flight work doubles, latency rises further, and the next timeout arrives sooner. This is the standard mechanism by which one slow dependency takes down a whole call graph.", ar: "كلاهما 5xx، وكلاهما يبدو كـ«السيرفر يمرّ بلحظة عصيبة»، ومعظم السياسات تضعهما في سلة واحدة. وهما نقيضان. فالـ 503 تعني أن السيرفر رفض بدء العمل — لم يحدث شيء. والـ 504 تعني أن gateway توقف عن انتظار عمل شبه المؤكد أنه ما زال ينفَّذ في الأعلى. فإعادة المحاولة على 504 تضيف تنفيذاً متزامناً ثانياً إلى مكوّن أبطأ من أن ينهي الأول أصلاً، فيتضاعف العمل الجاري، ويرتفع الزمن أكثر، وتصل المهلة التالية أسرع. وهذه هي الآلية المعيارية التي تُسقِط بها تبعية بطيئة واحدة رسم نداءات كاملاً." },
-        fix: "// 503 -> retry. 504 -> do not add load; degrade or fail.\nHttpStatusCode.ServiceUnavailable => RetryWith(res.Headers.RetryAfter),\nHttpStatusCode.GatewayTimeout     => Fail(\"upstream still executing; retry would double in-flight work\")," },
-      { t: "mistake",
-        title: { en: "Ignoring Retry-After, or parsing only the seconds form", ar: "تجاهل Retry-After، أو تحليل شكل الثواني وحده" },
-        body: { en: "Retry-After legally carries either delay-seconds or an HTTP-date. Code that does int.Parse on the raw header value throws on \"Wed, 21 Oct 2026 07:28:00 GMT\", the exception is caught by a broad handler, and the fallback delay of zero is used — the server's strictest possible instruction becomes the client's most aggressive possible behaviour. The mirror-image bug is honouring the header blindly: a hostile or misconfigured upstream returning Retry-After: 86400 will park your entire worker pool for a day if you await it without a ceiling.", ar: "الـ Retry-After يحمل قانونياً إما delay-seconds وإما HTTP-date. والكود الذي يجري int.Parse على قيمة الترويسة الخام يرمي عند \"Wed, 21 Oct 2026 07:28:00 GMT\"، فيلتقط الاستثناءَ معالجٌ واسع، ويُستخدم التأخير الاحتياطي صفر — فتصير أشدّ تعليمات السيرفر أكثرَ سلوكيات العميل عدوانية. والعلة المرآة هي احترام الترويسة بعمى: فمصدر أعلى معادٍ أو سيئ الضبط يرجع Retry-After: 86400 سيوقف مجمّع العمال لديك كله يوماً كاملاً إن انتظرته بلا سقف." },
-        fix: "var ra = res.Headers.RetryAfter;\nvar wait = ra?.Delta\n        ?? (ra?.Date is { } t ? t - DateTimeOffset.UtcNow : (TimeSpan?)null)\n        ?? FullJitter(attempt);\n\nwait = Clamp(wait, TimeSpan.Zero, TimeSpan.FromSeconds(30));  // never trust it unbounded" },
-      { t: "mistake",
-        title: { en: "Retrying 4xx, especially 401", ar: "إعادة المحاولة على 4xx، وخاصة 401" },
-        body: { en: "A catch-all \"retry any failure\" wrapper treats 400, 401 and 403 as retryable. Success probability is zero, so at best it wastes three round trips and triples the p99 of an error path. At worst it is actively destructive: 401 retried against an identity provider with a lockout policy that counts consecutive failed authentications will lock the shared service principal after five attempts. A single expired-token bug then escalates from \"one caller gets 401\" to \"every caller of every service using that principal is down\", and the lockout usually needs manual intervention to clear.", ar: "غلافُ «أعد المحاولة على أي عطل» الشامل يعامل 400 و401 و403 كقابلة لإعادة المحاولة. واحتمال النجاح صفر، فأحسن الأحوال أن يُهدر ثلاث رحلات ذهاب وإياب ويضاعف p99 لمسار الخطأ ثلاث مرات. وأسوأها أن يكون مدمّراً فعلياً: فـ401 مُعادة على مزوّد هوية بسياسة إقفال تعدّ حالات المصادقة الفاشلة المتتالية ستقفل الـ service principal المشترك بعد خمس محاولات. فتتصاعد علة token منتهٍ واحدة من «مستدعٍ واحد يتلقّى 401» إلى «كل مستدعٍ لكل خدمة تستخدم ذلك الـ principal معطّل»، والإقفال يحتاج عادةً تدخّلاً يدوياً لإزالته." },
-        fix: "// 4xx means the caller must change something. Only two are retryable:\n(int)res.StatusCode switch\n{\n    408 or 425 or 421 or 429 => Retry(),\n    >= 400 and < 500         => Fail(),   // includes 401 — refresh the token, do not resend it\n    _                        => Evaluate5xx(res)\n};" },
-      { t: "mistake",
-        title: { en: "Retries stacked at every layer", ar: "إعادات المحاولة متراكبة عند كل طبقة" },
-        body: { en: "The vendor SDK retries three times internally. The resilience pipeline around the HttpClient retries three times. The message consumer redelivers three times. Nobody wrote a 27× amplifier; three teams each wrote a modest 3×. During a partial outage the dependency receives 27 executions of every logical operation, and because each layer also applies its own backoff, a single call can occupy a worker for over a minute — so the caller exhausts its thread pool while the callee drowns. The tell is a dependency whose inbound request rate goes up during an incident while your outbound business volume is flat.", ar: "الـ SDK من المزوّد يعيد المحاولة ثلاث مرات داخلياً. وخط المرونة حول الـ HttpClient يعيد ثلاث مرات. ومستهلك الرسائل يعيد التسليم ثلاث مرات. لم يكتب أحد مضخّماً بـ27 ضعفاً؛ بل كتبت ثلاثة فرق كلٌّ منها 3× متواضعة. وأثناء انقطاع جزئي تستقبل التبعية 27 تنفيذاً لكل عملية منطقية، ولأن كل طبقة تطبّق تراجعها الخاص أيضاً، يمكن أن يشغل نداء واحد عاملاً لأكثر من دقيقة — فيستنفد المستدعي مجمّع خيوطه بينما يغرق المستدعَى. والعلامة الدالة هي تبعية يرتفع معدل الطلبات الواردة إليها أثناء حادثة بينما حجم عملك الصادر ثابت." },
-        fix: "// pick exactly ONE layer to own retries; disable the rest explicitly\nclientOptions.RetryPolicy = null;              // SDK: off\nservices.AddHttpClient(\"orders\")\n        .AddStandardResilienceHandler();       // pipeline: the single owner\nconsumer.ImmediateRetryCount = 0;              // consumer: off, dead-letter instead" },
-      { t: "mistake",
-        title: { en: "Fixed backoff with no jitter and no budget", ar: "تراجع ثابت بلا jitter وبلا ميزانية" },
-        body: { en: "A node is restarted and 4,000 callers fail within the same 50 ms window. With a fixed 1-second backoff, all 4,000 retry inside the same 50 ms window one second later, hitting a process that has an empty connection pool, a cold JIT and unwarmed caches. It falls over, the next backoff fires, and the system oscillates instead of recovering — a pattern that can outlive the original fault by many minutes. Full jitter alone spreads that population across the whole window; a retry budget additionally guarantees the fleet cannot exceed roughly 10% extra load no matter how bad things get.", ar: "تُعاد تهيئة عقدة فيفشل أربعة آلاف مستدعٍ داخل نافذة الخمسين مللي ثانية نفسها. ومع تراجع ثابت مقداره ثانية، يعيد الأربعة آلاف جميعاً المحاولة داخل نافذة الخمسين مللي ثانية نفسها بعد ثانية، فيصطدمون بعملية ذات مجمّع اتصالات فارغ وJIT بارد وذاكرات مؤقتة غير مسخّنة. فتنهار، وينطلق التراجع التالي، فيتذبذب النظام بدل أن يتعافى — نمط قد يعيش أطول من العطل الأصلي بدقائق كثيرة. والـ full jitter وحده ينشر ذلك الجمهور عبر النافذة كاملة؛ وميزانية إعادة المحاولة تضمن فوق ذلك ألا يتجاوز الأسطول نحو 10% حملاً إضافياً مهما ساءت الأمور." },
-        fix: "// full jitter: sample uniformly from [0, ceiling], never wait the ceiling itself\nvar ceiling = TimeSpan.FromMilliseconds(Math.Min(200 * Math.Pow(2, attempt), 20_000));\nvar delay   = ceiling * Random.Shared.NextDouble();\n\n// and a fleet-wide brake\nif (!_budget.TryConsume()) return Fail(\"retry budget exhausted\");  // ~10% of successes" }
-    ]},
+        { t: "mistake",
+          title: { en: "Retrying 4xx codes", ar: "إعادة المحاولة على أكواد 4xx" },
+          body: {
+            en: "A shared HttpClient wrapper retried on !response.IsSuccessStatusCode. A client sent a malformed date and got 400. The wrapper sent the identical bytes three times and returned the same 400, three seconds later. Multiply that across a bad mobile release and a healthy validation endpoint takes three times its normal traffic while producing nothing. A 4xx is the server saying the request is wrong; the request does not change while it sits in memory.",
+            ar: "غلاف HttpClient مشترك كان يعيد المحاولة عند !response.IsSuccessStatusCode. وأرسل عميل تاريخاً غير صالح فحصل على 400. فأرسل الغلاف نفس البايتات ثلاث مرات وأعاد نفس الـ 400 بعد ثلاث ثوانٍ. واضرب ذلك في إصدار موبايل سيئ، فيستقبل endpoint سليم ثلاثة أضعاف حمله دون أي فائدة. فالـ 4xx هو قول السيرفر إن الـ request خاطئ، والـ request لا يتغير وهو ساكن في الذاكرة."
+          } },
 
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "Which HTTP status codes are safe to retry?", ar: "أي أكواد HTTP آمنة لإعادة المحاولة؟" },
-        a: { en: "The unambiguous ones are 408, 425, 421, 429 and 503 — in every case the server tells you it did not perform the work, either because it never received a complete request (408), rejected a 0-RTT replay (425), was not authoritative for the connection (421), refused on quota (429), or refused to start (503). 500, 502 and 504 are 5xx but are not in that list, because none of them tells you whether the work happened. And 4xx other than 408/425/421/429 should never be retried: the caller has to change something first.", ar: "الأكواد التي لا لبس فيها هي 408 و425 و421 و429 و503 — وفي كل حالة يخبرك السيرفر أنه لم يؤدِّ العمل، إما لأنه لم يستقبل request كاملاً (408)، أو رفض إعادة تشغيل 0-RTT (425)، أو لم يكن مخوّلاً لهذا الاتصال (421)، أو رفض على أساس الحصة (429)، أو رفض أن يبدأ (503). أما 500 و502 و504 فهي 5xx لكنها ليست في تلك القائمة، لأن أياً منها لا يخبرك هل حدث العمل. و4xx عدا 408/425/421/429 لا ينبغي إعادة المحاولة عليها أبداً: فعلى المستدعي أن يغيّر شيئاً أولاً." } },
-      { t: "qa", level: "mid",
-        q: { en: "Why is 500 not always safe to retry, even for a 5xx?", ar: "لماذا ليست 500 آمنة دائماً لإعادة المحاولة، رغم كونها 5xx؟" },
-        a: { en: "Because 500 only says something threw; it says nothing about when. The exception may have been thrown after the database transaction committed — during response serialisation, while writing an audit record, on an exhausted thread pool. From the client's side a pre-commit 500 and a post-commit 500 are byte-identical, so retrying a non-idempotent write on a 500 is a coin flip on whether you duplicate the side effect. The fix is not a better heuristic, it is to make the operation replayable with an idempotency key so the question stops mattering.", ar: "لأن 500 تقول فقط إن شيئاً رُمي؛ ولا تقول شيئاً عن متى. فقد يكون الاستثناء رُمي بعد تثبيت معاملة قاعدة البيانات — أثناء تسلسل الاستجابة، أو عند كتابة سجل تدقيق، أو على thread pool مستنفد. ومن جهة العميل تتطابق 500 ما قبل التثبيت و500 ما بعده بايتاً ببايت، فإعادة محاولة كتابة غير idempotent على 500 رمي عملة على تكرار الأثر الجانبي. والحل ليس استدلالاً أفضل، بل جعل العملية قابلة لإعادة التشغيل بـ idempotency key حتى يتوقف السؤال عن كونه مهماً." } },
-      { t: "qa", level: "mid",
-        q: { en: "What is the practical difference between 502, 503 and 504 for a retry policy?", ar: "ما الفرق العملي بين 502 و503 و504 لسياسة إعادة المحاولة؟" },
-        a: { en: "503 is the only one that is a clean retry: the server refused to begin, so no side effect exists, and it usually carries Retry-After. 502 means a proxy got an invalid or truncated response from upstream — the upstream may have completed the work and failed only while responding, so it is as ambiguous as 500. 504 is the worst of the three: the gateway stopped waiting, but the upstream is probably still running the request, so a retry adds concurrent load to something already too slow. Bucketing all three as \"5xx, retry\" is one of the most common ways to turn a slow dependency into a dead one.", ar: "الـ 503 وحدها إعادة محاولة نظيفة: فالسيرفر رفض أن يبدأ، فلا أثر جانبي، وهي تحمل Retry-After عادةً. والـ 502 تعني أن proxy تلقّى استجابة غير صالحة أو مبتورة من الأعلى — وقد يكون الأعلى أتمّ العمل وفشل أثناء الردّ فقط، فهي ملتبسة بقدر 500. والـ 504 أسوأ الثلاث: فالـ gateway توقف عن الانتظار، لكن الأعلى غالباً ما زال ينفّذ الطلب، فإعادة المحاولة تضيف حملاً متزامناً إلى شيء بطيء أصلاً. ووضع الثلاثة في سلة «5xx، أعد المحاولة» من أشيع طرق تحويل تبعية بطيئة إلى ميتة." } },
-      { t: "qa", level: "senior",
-        q: { en: "Why does jitter matter more than the backoff curve itself?", ar: "لماذا يهمّ الـ jitter أكثر من منحنى التراجع نفسه؟" },
-        a: { en: "Exponential backoff controls how often one client retries; it does nothing about the fact that all clients failed at the same instant and will therefore wake at the same instant. Correlation, not rate, is what prevents a recovering node from recovering — it comes back with a cold cache and an empty connection pool and immediately receives the entire synchronised herd. Full jitter, sampling uniformly from [0, ceiling] instead of waiting the ceiling, decorrelates the population across the whole window. AWS's published analysis measures roughly an order-of-magnitude reduction in total work and contention compared with plain exponential backoff, which is why every serious resilience library defaults to it.", ar: "التراجع الأسي يتحكم في كم مرة يعيد عميل واحد المحاولة؛ ولا يفعل شيئاً حيال كون كل العملاء فشلوا في اللحظة نفسها وسيستيقظون بالتالي في اللحظة نفسها. والارتباط، لا المعدل، هو ما يمنع عقدة متعافية من التعافي — إذ تعود بذاكرة مؤقتة باردة ومجمّع اتصالات فارغ فتستقبل فوراً القطيع المتزامن كاملاً. أما الـ full jitter، بأخذ عيّنة موحّدة من [0, السقف] بدل انتظار السقف، فيفكّ ارتباط الجمهور عبر النافذة كاملة. وتحليل AWS المنشور يقيس خفضاً بنحو رتبة كاملة في العمل الكلي والتنازع مقارنة بالتراجع الأسي المجرد، ولذلك تجعله كل مكتبة مرونة جادّة الافتراضَ لديها." } },
-      { t: "qa", level: "senior",
-        q: { en: "A dependency is failing 30% of calls. Your retry policy is three attempts. What load does it now see, and what should change?", ar: "تبعية تفشل في 30% من النداءات. وسياسة إعادة المحاولة لديك ثلاث محاولات. ما الحمل الذي تراه الآن، وما الذي ينبغي أن يتغيّر؟" },
-        a: { en: "Roughly 1 + 0.3 + 0.09 ≈ 1.39× normal load, so about 40% extra traffic delivered exactly when it has the least headroom — and if the failures are caused by overload, that extra load raises the failure rate, which raises the amplification, which is a positive feedback loop. The right change is a retry budget: cap total retries at around 10% of successful requests over a rolling window. At a 0.1% failure rate that ceiling is never touched and behaviour is unchanged; at 30% it is exhausted immediately and retries stop fleet-wide, so the dependency gets a chance to drain. A circuit breaker on top converts sustained failure into fast local failure instead of queued waiting.", ar: "نحو 1 + 0.3 + 0.09 ≈ 1.39 ضعف الحمل الطبيعي، أي زيادة نحو 40% من الحركة تُسلَّم تحديداً حين يكون هامشها أضيق ما يكون — وإن كانت الأعطال ناتجة عن الحمل الزائد، فتلك الزيادة ترفع معدل الفشل، فيرفع التضخيم، وهي حلقة تغذية راجعة موجبة. والتغيير الصحيح ميزانية إعادة محاولة: حدّ إجمالي الإعادات عند نحو 10% من الطلبات الناجحة عبر نافذة متدحرجة. فعند معدل فشل 0.1% لا يُمسّ ذلك السقف أبداً ولا يتغير السلوك؛ وعند 30% يُستنفد فوراً فتتوقف الإعادات على مستوى الأسطول، فتحصل التبعية على فرصة للتصريف. وcircuit breaker فوق ذلك يحوّل الفشل المستمر إلى فشل محلي سريع بدل انتظار في طابور." } },
-      { t: "qa", level: "senior",
-        q: { en: "Your client times out after 2s. The server takes 3s and succeeds. What did the client just learn, and what should it do?", ar: "عميلك تنتهي مهلته بعد ثانيتين. والسيرفر يستغرق ثلاث ثوانٍ وينجح. ماذا تعلّم العميل للتو، وماذا ينبغي أن يفعل؟" },
-        a: { en: "It learned nothing about the server, only that it stopped listening. The write committed; the client believes it failed. This is exactly the 504 situation and it must be treated the same way — a blind resend produces a second execution of work that already succeeded. The correct handling is either an idempotency key, so the resend is deduplicated server-side and returns the original result, or a status-query endpoint the client can poll with the operation id. As a design principle, the client timeout should also be strictly shorter than the caller's own deadline and strictly longer than the server's p99, or you manufacture this ambiguity on healthy traffic.", ar: "لم يتعلّم شيئاً عن السيرفر، بل فقط أنه توقف عن الإصغاء. فالكتابة ثُبّتت؛ والعميل يظن أنها فشلت. وهذه بالضبط حالة الـ 504 ويجب أن تُعامَل بالطريقة نفسها — فإعادة الإرسال العمياء تنتج تنفيذاً ثانياً لعمل نجح أصلاً. والمعالجة الصحيحة إما idempotency key فتُزال تكرارية الإرسال على السيرفر ويُرجَع الناتج الأصلي، وإما endpoint استعلام حالة يستطلعه العميل بمعرّف العملية. وكمبدأ تصميمي، ينبغي أيضاً أن تكون مهلة العميل أقصر تماماً من الموعد النهائي للمستدعي وأطول تماماً من p99 للسيرفر، وإلا صنعت هذا الالتباس على حركة سليمة." } },
-      { t: "qa", level: "staff",
-        q: { en: "Retry amplification keeps causing incidents across many teams. What do you change organisationally?", ar: "تضخيم إعادة المحاولة يواصل التسبب بحوادث عبر فرق كثيرة. ما الذي تغيّره تنظيمياً؟" },
-        a: { en: "Stop asking teams to be disciplined and make the correct policy the default artifact. Ship one internal HTTP client package with the retry classification, full jitter, a retry budget and a circuit breaker already configured, and make constructing a raw HttpClient the thing that requires a review. Publish a written rule that exactly one layer owns retries per call path — usually the outermost in-process pipeline — and require SDK and consumer retries to be explicitly disabled. Then make the amplification visible: every service emits inbound request count split by retry-or-not via a traceparent-scoped attempt counter, so a dependency can see the 27× on a dashboard instead of in a postmortem. Finally, make retry storms a standard game-day scenario rather than something each team rediscovers at 3 a.m.", ar: "كُفّ عن مطالبة الفرق بالانضباط واجعل السياسة الصحيحة هي القطعة الافتراضية. اشحن حزمة عميل HTTP داخلية واحدة فيها تصنيف إعادة المحاولة والـ full jitter وميزانية الإعادة وcircuit breaker مضبوطة سلفاً، واجعل إنشاء HttpClient خام هو الشيء الذي يستلزم مراجعة. وانشر قاعدة مكتوبة بأن طبقة واحدة بالضبط تملك إعادات المحاولة في كل مسار نداء — عادةً خط المرونة الأخارجي داخل العملية — واشترط تعطيل إعادات الـ SDK والمستهلك صراحةً. ثم اجعل التضخيم مرئياً: كل خدمة تصدر عدّاد الطلبات الواردة مفصولاً بين مُعادة وغير مُعادة عبر عدّاد محاولات محدود بالـ traceparent، فتستطيع التبعية رؤية الـ 27× على لوحة بدل رؤيتها في تقرير ما بعد الحادثة. وأخيراً، اجعل عواصف إعادة المحاولة سيناريو game-day معيارياً بدل أن يعيد كل فريق اكتشافه في الثالثة فجراً." } }
-    ]},
+        { t: "mistake",
+          title: { en: "Ignoring Retry-After on 429", ar: "تجاهل Retry-After عند 429" },
+          body: {
+            en: "A sync job hit a partner API, got 429 with Retry-After: 60, and retried after its own fixed one second. It did that on every worker. The partner counted the extra calls against the same quota, so the window never reset and the job stayed rate limited for twenty minutes instead of one. Retry-After is the only value in the exchange that knows when the limit resets.",
+            ar: "وظيفة مزامنة نادت partner API فحصلت على 429 مع Retry-After: 60، لكنها أعادت المحاولة بعد ثانية واحدة ثابتة خاصة بها. وفعلت ذلك على كل worker. فاحتسب الـ partner النداءات الزائدة على نفس الـ quota، فلم تُصفَّر النافذة وبقيت الوظيفة تحت rate limiting عشرين دقيقة بدل دقيقة. فالـ Retry-After هو القيمة الوحيدة في التبادل التي تعرف متى يُصفَّر الحدّ."
+          } },
 
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Blanket retry wrapper applied to a non-idempotent write", ar: "غلاف إعادة محاولة شامل مطبَّق على كتابة غير idempotent" },
-        bad: "// applied to every outbound call in the service, including POST /charges\nfor (var attempt = 0; attempt < 3; attempt++)\n{\n    try\n    {\n        var res = await _http.PostAsJsonAsync(\"/charges\", body, ct);\n        if (res.IsSuccessStatusCode) return await res.Content.ReadFromJsonAsync<Charge>(ct);\n    }\n    catch (HttpRequestException) { /* swallow and try again */ }\n    catch (TaskCanceledException) { /* timeout - try again */ }\n\n    await Task.Delay(1000, ct);   // fixed delay, no jitter\n}\nthrow new PaymentFailedException();",
-        good: "// one attempt is one charge unless the server can prove it is the same charge\nvar key = operation.Id.ToString();   // stable across attempts, generated ONCE\n\nvar pipeline = new ResiliencePipelineBuilder<HttpResponseMessage>()\n    .AddRetry(new HttpRetryStrategyOptions\n    {\n        MaxRetryAttempts = 3,\n        BackoffType      = DelayBackoffType.Exponential,\n        UseJitter        = true,\n        ShouldHandle     = args => ValueTask.FromResult(\n            ShouldRetry(args.Outcome, hasIdempotencyKey: true)),\n        DelayGenerator   = args => ValueTask.FromResult(RetryAfterOf(args.Outcome))\n    })\n    .AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions())\n    .Build();\n\nreturn await pipeline.ExecuteAsync(async token =>\n{\n    using var req = new HttpRequestMessage(HttpMethod.Post, \"/charges\")\n        { Content = JsonContent.Create(body) };\n    req.Headers.Add(\"Idempotency-Key\", key);\n    return await _http.SendAsync(req, token);\n}, ct);",
-        why: { en: "Three separate defects compound here. The catch of TaskCanceledException retries a client-side timeout, which is the case where the server is most likely still working. The retry-on-any-exception path resends a POST with no idempotency key, so every attempt is a distinct charge. And the fixed 1-second delay synchronises every caller in the fleet onto the same retry instant. The corrected version makes the operation replayable first, then narrows the retry predicate, honours Retry-After, adds jitter, and puts a breaker above it so sustained failure stops adding load.", ar: "ثلاثة عيوب منفصلة تتراكب هنا. فالتقاط TaskCanceledException يعيد المحاولة على مهلة من جهة العميل، وهي الحالة التي يُرجَّح فيها أكثر ما يُرجَّح أن السيرفر ما زال يعمل. ومسار الإعادة على أي استثناء يعيد إرسال POST بلا idempotency key، فتصير كل محاولة رسماً مستقلاً. والتأخير الثابت بثانية يزامن كل مستدعٍ في الأسطول على لحظة الإعادة نفسها. أما النسخة المصححة فتجعل العملية قابلة لإعادة التشغيل أولاً، ثم تضيّق شرط الإعادة، وتحترم Retry-After، وتضيف jitter، وتضع قاطعاً فوقها فيتوقف الفشل المستمر عن إضافة حمل." } },
-      { t: "review", severity: "medium",
-        title: { en: "Retry-After read as an integer only", ar: "Retry-After يُقرأ كعدد صحيح فقط" },
-        bad: "var wait = TimeSpan.FromSeconds(2);   // default\n\nif (res.Headers.TryGetValues(\"Retry-After\", out var values))\n{\n    // throws on the HTTP-date form, and the caller catches everything\n    wait = TimeSpan.FromSeconds(int.Parse(values.First()));\n}\n\nawait Task.Delay(wait, ct);",
-        good: "static TimeSpan RetryAfterOf(HttpResponseMessage res, int attempt)\n{\n    var ra = res.Headers.RetryAfter;                 // parsed by the framework\n    var wait = ra?.Delta\n            ?? (ra?.Date is { } at ? at - DateTimeOffset.UtcNow : (TimeSpan?)null)\n            ?? FullJitter(attempt);                  // no instruction -> back off ourselves\n\n    // never let a remote party decide how long we block a worker\n    return wait < TimeSpan.Zero      ? TimeSpan.Zero\n         : wait > MaxWait            ? MaxWait       // e.g. 30s\n         : wait;\n}",
-        why: { en: "RFC 9110 §10.2.3 allows both delay-seconds and an HTTP-date, and real gateways emit both — CDNs in particular favour the date form. int.Parse on the date throws, the broad catch above swallows it, and the retry fires on the default two seconds instead of the ten minutes the server asked for, which can prolong an outage the server was actively trying to shed. Using HttpResponseHeaders.RetryAfter gets framework-level parsing of both forms for free. The clamp matters just as much in the other direction: an upstream returning 86400 would otherwise park a worker for a day.", ar: "الـ RFC 9110 §10.2.3 يسمح بكل من delay-seconds وHTTP-date، والـ gateways الحقيقية تصدر الشكلين — والـ CDNs تفضّل شكل التاريخ خاصةً. وint.Parse على التاريخ يرمي، فيبتلعه الالتقاط الواسع أعلاه، وتنطلق الإعادة على الثانيتين الافتراضيتين بدل العشر دقائق التي طلبها السيرفر، فقد يُطيل ذلك انقطاعاً كان السيرفر يحاول التخفف منه فعلياً. واستخدام HttpResponseHeaders.RetryAfter يمنحك تحليل الشكلين على مستوى الإطار مجاناً. والتقييد بحدّ أعلى لا يقل أهمية في الاتجاه الآخر: فمصدر أعلى يرجع 86400 كان سيوقف عاملاً يوماً كاملاً." } }
-    ]},
+        { t: "mistake",
+          title: { en: "Retrying at every layer", ar: "إعادة المحاولة في كل طبقة" },
+          body: {
+            en: "The mobile app retried three times, the API gateway retried three times, and the Orders service retried three times. One slow Payments pod received 27 copies of one user action. The extra load kept the pod slow, which produced more timeouts, which produced more retries. Pick exactly one layer to retry at — usually the one closest to the failing dependency — and make the others fail fast.",
+            ar: "تطبيق الموبايل يعيد المحاولة ثلاث مرات، والـ API gateway ثلاثاً، وخدمة Orders ثلاثاً. فاستقبل pod بطيء واحد في Payments سبعاً وعشرين نسخة من إجراء مستخدم واحد. والحمل الزائد أبقى الـ pod بطيئاً، فأنتج timeouts أكثر، فأنتج retries أكثر. اختر طبقة واحدة بالضبط لإعادة المحاولة — غالباً الأقرب للتبعية الفاشلة — واجعل البقية تفشل بسرعة."
+          } }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        { t: "qa", level: "junior",
+          q: { en: "Which status codes are safe to retry?", ar: "أي status codes آمن إعادة المحاولة عليها؟" },
+          a: { en: "429, 502 and 503 are the easy ones — the request never reached the application code, so sending it again costs nothing. 408, 500 and 504 depend on the request: safe for a GET or a PUT, unsafe for a POST that creates something, because the server may already have done the work. Everything in the 4xx range other than 408 and 429 is a permanent no, so retrying just wastes time.", ar: "الـ 429 و502 و503 هي السهلة — فالـ request لم يصل إلى كود التطبيق، وإعادة إرساله لا تكلّف شيئاً. أما 408 و500 و504 فتعتمد على الـ request: آمنة لـ GET أو PUT، وغير آمنة لـ POST ينشئ شيئاً، لأن السيرفر قد يكون نفّذ العمل فعلاً. وكل ما في نطاق 4xx عدا 408 و429 هو رفض دائم، فإعادة المحاولة عليه إهدار للوقت." } },
 
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a design review, retries are where a latency budget and a capacity plan meet. If service A calls B calls C and each layer retries three times with backoff, the worst-case latency of one user request is the product of the layers, not the sum — and the worst-case load on C is 27× A's request rate. This is why deadline propagation matters more than per-call timeouts: A should pass its remaining budget downward (as a header, or via CancellationToken linked to a deadline) so that B and C stop retrying when there is no time left to use the answer.", ar: "في مراجعة تصميم، إعادات المحاولة هي حيث تلتقي ميزانية زمن الاستجابة بخطة السعة. فإن كانت الخدمة A تنادي B وB تنادي C وكل طبقة تعيد ثلاث مرات مع تراجع، فأسوأ زمن لطلب مستخدم واحد هو حاصل ضرب الطبقات لا مجموعها — وأسوأ حمل على C هو 27 ضعف معدل طلبات A. ولهذا يهمّ تمرير الموعد النهائي أكثر من المُهل لكل نداء: فينبغي أن تمرّر A ميزانيتها المتبقية إلى الأسفل (كترويسة، أو عبر CancellationToken مربوط بموعد نهائي) كي تتوقف B وC عن إعادة المحاولة حين لا يبقى وقت لاستخدام الجواب." },
-      { t: "p", en: "The second design question is who owns the retry. As a rule, retry at the layer that has enough context to know whether the operation is replayable, and nowhere else. That is almost always the outermost in-process pipeline in the calling service — not the vendor SDK, which does not know your idempotency scheme, and not the queue consumer, which will redeliver anyway. Everywhere else the correct behaviour is to propagate the failure and let one owner decide.", ar: "والسؤال التصميمي الثاني هو من يملك إعادة المحاولة. والقاعدة: أعد المحاولة عند الطبقة التي تملك سياقاً كافياً لتعرف هل العملية قابلة لإعادة التشغيل، ولا شيء غيرها. وهي شبه دائماً خط المرونة الأخارجي داخل عملية الخدمة المستدعية — لا الـ SDK من المزوّد، فهو لا يعرف مخطط الـ idempotency لديك، ولا مستهلك الطابور، فهو سيعيد التسليم على أي حال. وفي كل موضع آخر يكون السلوك الصحيح هو تمرير العطل وترك القرار لمالك واحد." },
-      { t: "ul",
-        en: [
-          "Synchronous API calls: retry only 408/425/421/429/503 by default; extend to 5xx only on paths carrying an idempotency key",
-          "Payment and order writes: idempotency key generated once by the client, stored server-side with the response for at least 24 hours",
-          "Queue consumers: a small number of immediate retries for transient errors, then a delayed retry queue, then a dead-letter queue — never an unbounded loop",
-          "Webhook delivery: the sender retries on a long exponential schedule (minutes to hours) and the receiver must be idempotent, because at-least-once is the only deliverable guarantee",
-          "Read-through caches: on a dependency failure prefer serving stale data over retrying, since a stale answer beats an amplified outage"
-        ],
-        ar: [
-          "نداءات الـ API المتزامنة: أعد المحاولة افتراضياً على 408/425/421/429/503 فقط؛ ووسّعها إلى 5xx فقط على المسارات الحاملة idempotency key",
-          "كتابات المدفوعات والطلبيات: idempotency key يولّده العميل مرة واحدة، ويُخزَّن على السيرفر مع الاستجابة أربعاً وعشرين ساعة على الأقل",
-          "مستهلكو الطوابير: عدد صغير من الإعادات الفورية للأخطاء العابرة، ثم طابور إعادة مؤجَّل، ثم طابور dead-letter — ولا حلقة غير محدودة أبداً",
-          "تسليم الـ webhooks: المُرسِل يعيد المحاولة على جدول أسي طويل (دقائق إلى ساعات) ويجب أن يكون المستقبِل idempotent، لأن at-least-once هو الضمان الوحيد القابل للتسليم",
-          "الـ caches ذات القراءة النافذة: عند عطل تبعية فضّل تقديم بيانات قديمة على إعادة المحاولة، فالجواب القديم أفضل من انقطاع مضخَّم"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "A good design-review question: \"if this dependency starts returning errors for 100% of calls, how much traffic does it receive?\" If the answer is more than it receives when healthy, the retry policy is a load generator with a resilience label on it.", ar: "سؤال جيد في مراجعة التصميم: «إن بدأت هذه التبعية بإرجاع أخطاء على 100% من النداءات، كم حركةً ستستقبل؟» فإن كان الجواب أكثر مما تستقبله وهي سليمة، فسياسة إعادة المحاولة مولّد حمل تحمل ملصق مرونة." }
-    ]},
+        { t: "qa", level: "mid",
+          q: { en: "Why is 500 more dangerous than 503?", ar: "لماذا 500 أخطر من 503؟" },
+          a: { en: "503 is emitted before your handler runs — the server is saying it is not accepting work right now. So nothing changed and a retry is free. 500 is emitted after your handler ran and threw. The exception could have been thrown before the money moved or after it. The response gives you no way to tell, so you have to assume the side effect might already exist.", ar: "الـ 503 يصدر قبل تشغيل الـ handler — فالسيرفر يقول إنه لا يقبل عملاً الآن. فلم يتغير شيء وإعادة المحاولة مجانية. أما 500 فيصدر بعد أن عمل الـ handler ورمى exception. وقد يكون الـ exception رُمي قبل تحرّك الأموال أو بعده. والاستجابة لا تعطيك أي وسيلة للتمييز، فعليك افتراض أن الـ side effect قد يكون موجوداً بالفعل." } },
 
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Latency (tail)", ar: "زمن الاستجابة (الذيل)" }, v: { en: "Retries move directly into p99/p99.9. Three attempts with 200 ms / 400 ms / 800 ms backoff add up to 1.4 s of pure waiting to a request that eventually succeeds, so a 50 ms p50 service can show a 1.5 s p99.9 with no slow code anywhere in it", ar: "إعادات المحاولة تنتقل مباشرة إلى p99/p99.9. فثلاث محاولات بتراجع 200 و400 و800 مللي ثانية تضيف حتى 1.4 ثانية من الانتظار المحض إلى طلب ينجح أخيراً، فتُظهر خدمة بـ p50 مقداره 50 مللي ثانية p99.9 مقداره 1.5 ثانية دون أي كود بطيء فيها" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "Each attempt is a full round trip and may cost a fresh TCP + TLS handshake if the pooled connection was the thing that broke — roughly 2 extra RTTs and a certificate validation per retry across a region boundary", ar: "كل محاولة رحلة ذهاب وإياب كاملة، وقد تكلّف مصافحة TCP وTLS جديدة إن كان الاتصال المجمَّع هو ما انكسر — أي نحو رحلتين إضافيتين والتحقق من شهادة لكل إعادة عبر حدود منطقة" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "Amplification is multiplicative across layers: 3 attempts at each of 3 layers is 27 executions. A retry budget capping retries at 10% of successes bounds the worst case at 1.1× regardless of how bad the failure rate gets", ar: "التضخيم ضربي عبر الطبقات: فثلاث محاولات عند كل من ثلاث طبقات تعني 27 تنفيذاً. وميزانية إعادة محاولة تحدّ الإعادات عند 10% من النجاحات تقيّد أسوأ حالة عند 1.1 ضعف مهما ساء معدل الفشل" } },
-        { k: { en: "Memory / threads", ar: "الذاكرة / الخيوط" }, v: { en: "A retrying call holds its request buffers, its HttpClient handler slot and its async state machine for the whole backoff. At 2,000 concurrent calls waiting 1.4 s each, that is thousands of pinned buffers and a connection pool that cannot recycle", ar: "النداء المُعيد للمحاولة يحتجز مخازن طلبه، وخانته في معالج الـ HttpClient، وآلة حالته اللاتزامنية طوال فترة التراجع. وعند ألفي نداء متزامن ينتظر كل منها 1.4 ثانية، فتلك آلاف المخازن المثبَّتة ومجمّع اتصالات لا يستطيع إعادة التدوير" } },
-        { k: { en: "Database", ar: "قاعدة البيانات" }, v: { en: "Retried writes that were not deduplicated do real work twice: two transactions, two sets of locks, two index updates. Under contention the second attempt is also more likely to deadlock with the first, so retries can manufacture the failures they were meant to absorb", ar: "الكتابات المُعادة غير المزالة التكرار تؤدي عملاً حقيقياً مرتين: معاملتان، ومجموعتا أقفال، وتحديثان للفهارس. وتحت التنازع يزداد أيضاً احتمال تعارض المحاولة الثانية مع الأولى في deadlock، فتستطيع إعادات المحاولة تصنيع الأعطال التي وُجدت لامتصاصها" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Mostly serialisation, TLS and validation repeated per attempt. Small per call, but on the callee side a 30% failure rate with three attempts means about 40% of all CPU spent parsing requests whose answers nobody will use", ar: "غالباً تسلسل وTLS وتحقق مكرر لكل محاولة. وهو صغير لكل نداء، لكن على جهة المستدعَى يعني معدل فشل 30% مع ثلاث محاولات إنفاق نحو 40% من كل زمن المعالج في تحليل طلبات لن يستخدم أحد أجوبتها" } }
-      ]}
-    ]},
+        { t: "qa", level: "mid",
+          q: { en: "What does Retry-After actually contain?", ar: "ماذا يحتوي Retry-After فعلياً؟" },
+          a: { en: "Either a number of seconds, like 120, or an HTTP date, like Wed, 21 Oct 2026 07:28:00 GMT. Both forms are legal on any response, and gateways emit the date form regularly. In .NET, HttpResponseHeaders.RetryAfter parses both — Delta for the seconds form and Date for the date form. Code that only parses integers throws on half the real traffic. I also clamp the value, because a server can legally ask me to wait a day.", ar: "إما عدد ثوانٍ مثل 120، وإما HTTP date مثل Wed, 21 Oct 2026 07:28:00 GMT. والشكلان قانونيان على أي استجابة، والـ gateways تصدر شكل التاريخ بانتظام. وفي .NET يحلّل HttpResponseHeaders.RetryAfter الشكلين — Delta لشكل الثواني وDate لشكل التاريخ. والكود الذي يحلّل الأعداد الصحيحة فقط يرمي exception على نصف المرور الحقيقي. وأنا أقيّد القيمة أيضاً، لأن السيرفر يستطيع قانونياً أن يطلب مني الانتظار يوماً." } },
 
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Compare inbound request rate on the callee against outbound business volume on the caller during the incident window — if the callee's rate rose while yours was flat, you are looking at retry amplification, and the ratio tells you the multiplier",
-          "Add an attempt counter to every outbound request (a custom header, or the retry count as a span attribute) so traces show \"attempt 3 of 3\" instead of three unrelated-looking spans",
-          "In .NET, subscribe to the System.Net.Http EventSource counters — requests-started vs requests-failed vs current-requests — and to Polly/resilience telemetry, which emits an OnRetry event per attempt you can count directly",
-          "Grep the codebase for every retry configuration in one pass: AddStandardResilienceHandler, ResiliencePipelineBuilder, SDK-level RetryPolicy/MaxRetryAttempts, and consumer redelivery settings. Layers you forgot are the usual multiplier",
-          "Capture the actual Retry-After values you receive (log the header, not just the delay you computed) — a mismatch between what the server asked for and what you waited is the fastest way to find a broken parser",
-          "Reproduce with a fault-injection proxy (toxiproxy, or a test handler) that returns 500 after committing a side effect, then assert exactly one side effect exists — this is the only test that catches the duplicate-charge class of bug"
-        ],
-        ar: [
-          "قارن معدل الطلبات الواردة عند المستدعَى بحجم عملك الصادر عند المستدعي أثناء نافذة الحادثة — فإن ارتفع معدل المستدعَى بينما ظلّ معدلك ثابتاً، فأنت تنظر إلى تضخيم إعادة محاولة، والنسبة تخبرك بالمضاعف",
-          "أضف عدّاد محاولات إلى كل طلب صادر (ترويسة مخصصة، أو عدد الإعادات كخاصية span) كي تُظهر آثار التتبّع «المحاولة 3 من 3» بدل ثلاثة spans تبدو غير مترابطة",
-          "في .NET، اشترك في عدّادات EventSource الخاصة بـ System.Net.Http — requests-started مقابل requests-failed مقابل current-requests — وفي telemetry الخاص بـ Polly/المرونة، فهو يصدر حدث OnRetry لكل محاولة يمكنك عدّه مباشرة",
-          "امشط قاعدة الكود بحثاً عن كل ضبط لإعادة المحاولة في مرور واحد: AddStandardResilienceHandler، وResiliencePipelineBuilder، وRetryPolicy/MaxRetryAttempts على مستوى الـ SDK، وإعدادات إعادة التسليم في المستهلك. فالطبقات التي نسيتها هي المضاعف المعتاد",
-          "سجّل قيم Retry-After التي تستقبلها فعلاً (سجّل الترويسة لا التأخير الذي حسبته فقط) — فعدم التطابق بين ما طلبه السيرفر وما انتظرته أسرع طريقة لاكتشاف محلِّل معطوب",
-          "أعِد الإنتاج بـ proxy لحقن الأعطال (toxiproxy، أو معالج اختبار) يرجع 500 بعد تثبيت أثر جانبي، ثم تحقق من وجود أثر جانبي واحد بالضبط — فهذا هو الاختبار الوحيد الذي يلتقط صنف علة الرسوم المكررة"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "When an incident starts, the first question is not \"why is it failing\" but \"how much of this traffic is us retrying?\". Turning retries off for sixty seconds is a legitimate mitigation and often the fastest one — if the dependency recovers the moment you stop retrying, you have found both the root cause and the fix.", ar: "حين تبدأ حادثة، السؤال الأول ليس «لماذا يفشل» بل «كم من هذه الحركة هي إعادات محاولة منا؟». وإطفاء إعادات المحاولة ستين ثانية إجراء تخفيف مشروع وغالباً الأسرع — فإن تعافت التبعية لحظة توقفك عن الإعادة، تكون قد وجدت السبب الجذري والحل معاً." }
-    ]},
+        { t: "qa", level: "senior",
+          q: { en: "How do you make a POST safely retryable?", ar: "كيف تجعل POST قابلاً لإعادة المحاولة بأمان؟" },
+          a: { en: "The client generates a unique id per business action — not per attempt — and sends it as an Idempotency-Key header. The server stores that key together with the response, in the same database transaction as the side effect. If a request arrives with a key it has seen, it returns the stored response and does no work. Now a retry after a 504 is provably harmless, because the second call cannot reach the charging code.", ar: "العميل ينشئ معرّفاً فريداً لكل إجراء تجاري — لا لكل محاولة — ويرسله في header اسمه Idempotency-Key. والسيرفر يخزّن هذا المفتاح مع الاستجابة في نفس الـ transaction الذي يحوي الـ side effect. وإذا وصل request بمفتاح سبق أن رآه، يعيد الاستجابة المخزّنة ولا ينفّذ عملاً. عندها تصبح إعادة المحاولة بعد 504 غير ضارة بشكل مثبت، لأن النداء الثاني لا يصل إلى كود الخصم." } },
 
-    { key: "realworld", blocks: [
-      { t: "p", en: "Retry classification is the difference between a resilient system and a self-amplifying one, and the industries that learned it hardest are the ones where a duplicate operation costs money rather than CPU. Payment processors, ticketing platforms and inventory systems converged on the same answer independently: make the write replayable with a client-generated key, store the response against that key, and then retry freely. Read-heavy platforms went the other direction and made staleness the fallback — serving a slightly old answer is nearly always better than adding load to a struggling dependency.", ar: "تصنيف إعادة المحاولة هو الفرق بين نظام مرن ونظام ذاتي التضخيم، والقطاعات التي تعلّمته بأشقّ الطرق هي التي تكلّف فيها العملية المكررة مالاً لا زمن معالج. فمعالجات المدفوعات ومنصات التذاكر وأنظمة المخزون تقاربت على الجواب نفسه باستقلال: اجعل الكتابة قابلة لإعادة التشغيل بمفتاح يولّده العميل، وخزّن الاستجابة مقابل ذلك المفتاح، ثم أعد المحاولة بحرية. أما المنصات كثيفة القراءة فذهبت في الاتجاه الآخر وجعلت القِدَم هو البديل — فتقديم جواب قديم قليلاً أفضل شبه دائماً من إضافة حمل إلى تبعية متعثرة." },
-      { t: "ul",
-        en: [
-          "Payment and banking APIs: idempotency keys are a documented part of the public contract, with a stored-response window measured in hours to days, precisely so that a client can retry a 500 without fear",
-          "Cloud provider SDKs: ship with retry classification, exponential backoff and full jitter built in and enabled by default — and their docs explicitly warn against wrapping them in a second retry layer",
-          "Webhook and notification delivery: at-least-once with long exponential schedules and a signed event id, pushing the deduplication responsibility onto the receiver by design",
-          "Streaming and video platforms: prefer hedged requests to retries on read paths, sending a duplicate after the p95 and taking the first response, which trims tail latency at roughly 5% extra load instead of amplifying only during failure"
-        ],
-        ar: [
-          "واجهات المدفوعات والخدمات المصرفية: مفاتيح الـ idempotency جزء موثّق من العقد العام، بنافذة استجابة مخزَّنة تُقاس بالساعات إلى الأيام، تحديداً كي يستطيع العميل إعادة المحاولة على 500 دون خوف",
-          "الـ SDKs لدى مزوّدي السحابة: تُشحن بتصنيف إعادة محاولة وتراجع أسي وfull jitter مبنية ومفعّلة افتراضياً — وتوثيقها يحذّر صراحةً من تغليفها بطبقة إعادة محاولة ثانية",
-          "تسليم الـ webhooks والإشعارات: at-least-once بجداول أسية طويلة ومعرّف حدث موقّع، فتُدفع مسؤولية إزالة التكرار إلى المستقبِل بالتصميم",
-          "منصات البث والفيديو: تفضّل الطلبات المُحوَّطة على إعادات المحاولة في مسارات القراءة، فترسل نسخة مكررة بعد الـ p95 وتأخذ أول استجابة، فتقلّص زمن الذيل بكلفة حمل إضافي نحو 5% بدل التضخيم أثناء الفشل وحده"
-        ]
-      }
-    ]},
+        { t: "qa", level: "senior",
+          q: { en: "Retries can make an outage worse. How do you stop that?", ar: "الـ retries قد تزيد العطل سوءاً. كيف تمنع ذلك؟" },
+          a: { en: "Three things. First, jitter, so clients spread out instead of arriving as one wave every two seconds. Second, a retry budget — a rule that retries may not exceed something like ten percent of total requests, so a dependency that is failing for everyone does not get four times its normal load. Third, a circuit breaker that stops calling entirely once the failure rate crosses a threshold, and lets a single probe through to check recovery.", ar: "ثلاثة أشياء. أولاً jitter، فيتوزّع العملاء بدل أن يصلوا كموجة واحدة كل ثانيتين. ثانياً retry budget — قاعدة تمنع تجاوز الـ retries نحو عشرة بالمئة من إجمالي الـ requests، فلا تتلقى تبعية فاشلة للجميع أربعة أضعاف حملها الطبيعي. ثالثاً circuit breaker يوقف النداء تماماً بمجرد تجاوز نسبة الفشل حدّاً معيناً، ثم يسمح بنداء واحد للفحص ليتأكد من التعافي." } },
 
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Write a pure function ShouldRetry(HttpMethod method, int statusCode, bool hasIdempotencyKey) returning bool, and cover it with a table-driven test containing at least these cases: GET+503, GET+504, POST+503, POST+500 without a key, POST+500 with a key, PUT+429, DELETE+404, GET+401. Write down a one-line justification for each expected result before you implement the function.", ar: "اكتب دالة نقية ShouldRetry(HttpMethod method, int statusCode, bool hasIdempotencyKey) ترجع bool، وغطّها باختبار مدفوع بجدول يحتوي على الأقل هذه الحالات: GET+503، وGET+504، وPOST+503، وPOST+500 بلا مفتاح، وPOST+500 بمفتاح، وPUT+429، وDELETE+404، وGET+401. واكتب تبريراً بسطر واحد لكل نتيجة متوقعة قبل أن تنفّذ الدالة." },
-      { t: "ex", diff: "medium", en: "Implement a Retry-After reader that handles both legal forms (delay-seconds and HTTP-date) using HttpResponseHeaders.RetryAfter, clamps the result to [0s, 30s], and falls back to full jitter when the header is absent. Then write tests proving that \"Retry-After: 120\", \"Retry-After: <a date 90 seconds from now>\" and a missing header each produce a delay in the expected range — including the case where the date is already in the past.", ar: "نفّذ قارئاً لـ Retry-After يعالج الشكلين القانونيين (delay-seconds وHTTP-date) باستخدام HttpResponseHeaders.RetryAfter، ويقيّد الناتج ضمن [0 ثانية، 30 ثانية]، ويرتدّ إلى full jitter عند غياب الترويسة. ثم اكتب اختبارات تثبت أن \"Retry-After: 120\" و\"Retry-After: <تاريخ بعد تسعين ثانية من الآن>\" وغياب الترويسة، ينتج كلٌّ منها تأخيراً في المدى المتوقع — بما في ذلك حالة كون التاريخ في الماضي أصلاً." },
-      { t: "ex", diff: "hard", en: "Build a test harness with a fake server that commits a side effect (increments a counter) and then returns 500 for the first two calls before succeeding. Drive it with a three-attempt retry policy and assert the counter equals 3. Now add an Idempotency-Key header and a server-side dedup store keyed on it, re-run, and assert the counter equals 1 and that all three attempts returned the same response body. Measure and report the wall-clock difference between the two runs.", ar: "ابنِ منصة اختبار بسيرفر وهمي يثبّت أثراً جانبياً (يزيد عدّاداً) ثم يرجع 500 لأول ندائين قبل أن ينجح. وشغّلها بسياسة إعادة محاولة بثلاث محاولات وتحقق من أن العدّاد يساوي 3. ثم أضف ترويسة Idempotency-Key ومخزن إزالة تكرار على السيرفر مفهرساً بها، وأعد التشغيل، وتحقق من أن العدّاد يساوي 1 وأن المحاولات الثلاث أرجعت جسم الاستجابة نفسه. وقِس الفرق في الزمن الجداري بين التشغيلين وأبلغ عنه." },
-      { t: "ex", diff: "senior", en: "Simulate 2,000 concurrent clients against a dependency that fails 40% of calls, under four policies: (a) no retry, (b) three attempts with a fixed 1 s delay, (c) three attempts with exponential backoff and full jitter, (d) (c) plus a retry budget capped at 10% of successes. Record for each: total requests delivered to the dependency, end-to-end success rate, and p99 latency. Then write the two-paragraph recommendation you would put in a design doc, including the specific condition under which you would accept policy (b).", ar: "حاكِ ألفي عميل متزامن مقابل تبعية تفشل في 40% من النداءات، تحت أربع سياسات: (أ) بلا إعادة محاولة، (ب) ثلاث محاولات بتأخير ثابت مقداره ثانية، (ج) ثلاث محاولات بتراجع أسي وfull jitter، (د) الخيار (ج) مع ميزانية إعادة محاولة محدودة عند 10% من النجاحات. وسجّل لكل منها: إجمالي الطلبات المسلَّمة إلى التبعية، ومعدل النجاح من الطرف إلى الطرف، وp99. ثم اكتب التوصية من فقرتين التي ستضعها في مستند تصميم، متضمنةً الشرط المحدد الذي ستقبل عنده السياسة (ب)." }
-    ]},
+        { t: "qa", level: "staff",
+          q: { en: "How do you stop retry bugs from recurring across a whole organisation?", ar: "كيف تمنع تكرار أخطاء الـ retry عبر مؤسسة كاملة؟" },
+          a: { en: "Make the safe path the default path. Ship one internal HttpClient setup where retry is off for POST unless an idempotency key is present, and enabled for the rest. Then make services declare which endpoints are idempotent in their API description, so the rule is data rather than tribal knowledge. Add a dashboard that shows retry rate per client and per dependency, and treat a spike as an incident signal. Finally, put duplicate side effects on the incident review checklist, so the next outage asks the question automatically instead of discovering it from a customer complaint.", ar: "اجعل المسار الآمن هو المسار الافتراضي. أصدر إعداداً داخلياً واحداً لـ HttpClient يكون فيه الـ retry مغلقاً على POST ما لم يوجد idempotency key، ومفتوحاً لغير ذلك. ثم اجعل الخدمات تعلن أي endpoints هي idempotent في وصف الـ API، فتصبح القاعدة بيانات لا معرفة شفوية. وأضف dashboard يعرض نسبة الـ retry لكل عميل ولكل تبعية، وتعامل مع أي ارتفاع مفاجئ كإشارة حادثة. وأخيراً ضع الـ side effects المكرّرة في قائمة مراجعة الحوادث، فيسأل العطل التالي السؤال تلقائياً بدل اكتشافه من شكوى عميل." } }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        { t: "review", severity: "high",
+          title: { en: "One retry policy applied to every request the client sends", ar: "سياسة retry واحدة مطبّقة على كل request يرسله العميل" },
+          bad: "services.AddHttpClient<PaymentsClient>()\n    .AddStandardResilienceHandler(); // retries 5xx, 408, 429 on EVERY request\n\nawait _http.PostAsJsonAsync(\"/payments\", body);   // charges money\nawait _http.GetAsync($\"/payments/{id}\");          // reads only",
+          good: "services.AddHttpClient<PaymentsClient>()\n    .AddStandardResilienceHandler(o =>\n        o.Retry.ShouldHandle = args => ValueTask.FromResult(\n            ShouldRetry(args.Outcome.Result)));\n\nvar req = new HttpRequestMessage(HttpMethod.Post, \"/payments\")\n{\n    Content = JsonContent.Create(body)\n};\nreq.Headers.Add(\"Idempotency-Key\", order.Id.ToString());\nawait _http.SendAsync(req);",
+          why: { en: "The handler cannot see the difference between reading a payment and creating one. The default policy retries both, so a 504 on the POST charges the card again. The fix keeps the retry for reads and makes the write provably safe by sending a key the server deduplicates on.", ar: "الـ handler لا يرى الفرق بين قراءة payment وإنشائه. والسياسة الافتراضية تعيد المحاولة على الاثنين، فيؤدي 504 على الـ POST إلى خصم البطاقة مجدداً. والإصلاح يبقي الـ retry للقراءات ويجعل الكتابة آمنة بشكل مثبت بإرسال key يستخدمه السيرفر لمنع التكرار." } },
 
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "RFC 9110 §9.2.2 — Idempotent Methods", ar: "RFC 9110 §9.2.2 — الـ methods المتماثلة النتيجة" }, url: "https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 9110 §10.2.3 — the Retry-After header field", ar: "RFC 9110 §10.2.3 — ترويسة Retry-After" }, url: "https://www.rfc-editor.org/rfc/rfc9110#field.retry-after", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "Exponential Backoff and Jitter — AWS Architecture Blog", ar: "التراجع الأسي والـ jitter — مدونة AWS المعمارية" }, url: "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/", meta: { en: "Article", ar: "مقال" } },
-      { t: "ref", label: { en: "Addressing Cascading Failures — Google SRE Book", ar: "معالجة الأعطال المتتالية — كتاب SRE من Google" }, url: "https://sre.google/sre-book/addressing-cascading-failures/", meta: { en: "Book", ar: "كتاب" } },
-      { t: "ref", label: { en: "Retry pattern — Azure Architecture Center", ar: "نمط إعادة المحاولة — Azure Architecture Center" }, url: "https://learn.microsoft.com/en-us/azure/architecture/patterns/retry", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "Building resilient HTTP apps with .NET", ar: "بناء تطبيقات HTTP مرنة بـ .NET" }, url: "https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience", meta: { en: "Docs", ar: "توثيق" } }
-    ]}
+        { t: "review", severity: "medium",
+          title: { en: "Retry-After parsed as an integer only", ar: "تحليل Retry-After كعدد صحيح فقط" },
+          bad: "var raw = res.Headers.GetValues(\"Retry-After\").First();\nvar wait = TimeSpan.FromSeconds(int.Parse(raw)); // throws on a date\nawait Task.Delay(wait);                          // and never clamped",
+          good: "var ra = res.Headers.RetryAfter;\nvar wait =\n    ra?.Delta ??\n    (ra?.Date is { } d ? d - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));\n\nif (wait < TimeSpan.Zero) wait = TimeSpan.Zero;\nif (wait > TimeSpan.FromSeconds(30)) wait = TimeSpan.FromSeconds(30);\nawait Task.Delay(wait);",
+          why: { en: "Retry-After may legally be a date, and CDNs send that form often. int.Parse throws on it, and if the exception is swallowed the code falls back to its shortest default delay — so the server's strictest instruction produces the client's most aggressive behaviour. The clamp matters in the other direction: an unbounded value would block a worker for hours.", ar: "الـ Retry-After قد يكون تاريخاً بشكل قانوني، والـ CDNs ترسل هذا الشكل كثيراً. وint.Parse يرمي exception عليه، وإن ابتُلع الـ exception يرتد الكود إلى أقصر تأخير افتراضي — فتنتج أشد تعليمات السيرفر أعنف سلوك من العميل. والتقييد بحدّ أعلى مهم في الاتجاه الآخر: فقيمة غير محدودة ستوقف worker لساعات." } }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        { t: "p",
+          en: "In a real system the retry rule lives in three places, and they must agree. The client library decides which codes to repeat. The server decides which codes to emit — and it must not return 500 for a business rejection, because that turns a permanent no into something clients will hammer. The gateway decides how long to wait before it gives up and emits 504, and that number must be larger than the server's own internal timeout, or the gateway will report failures for work that is still finishing.",
+          ar: "في نظام حقيقي تعيش قاعدة الـ retry في ثلاثة أماكن، ويجب أن تتفق. فمكتبة العميل تقرّر أي أكواد تعيد المحاولة عليها. والسيرفر يقرّر أي أكواد يصدرها — ويجب ألا يعيد 500 لرفض تجاري، لأن ذلك يحوّل رفضاً دائماً إلى شيء سيطرقه العملاء بلا توقف. والـ gateway يقرّر كم ينتظر قبل أن يستسلم ويصدر 504، ويجب أن يكون هذا الرقم أكبر من الـ timeout الداخلي للسيرفر، وإلا أبلغ الـ gateway عن فشل لعمل ما زال يكتمل." },
+
+        { t: "ul",
+          en: [
+            "Checkout calling a payment provider: idempotency key per order, retry only 429/502/503 plus 500 and 504 when the key is present.",
+            "A read API behind a CDN: retry freely on 5xx, because a GET has no side effect and the CDN may serve a stale copy anyway.",
+            "A webhook receiver: the sender retries on any non-2xx, so your handler must be idempotent — return 200 for a duplicate event id.",
+            "A batch importer against a rate-limited partner: honour Retry-After exactly, and run one worker instead of ten when 429s appear.",
+            "Any internal service-to-service call: one retrying layer only, chosen as the caller nearest the failing dependency."
+          ],
+          ar: [
+            "checkout ينادي مزوّد دفع: idempotency key لكل order، وإعادة المحاولة على 429/502/503 فقط، إضافة إلى 500 و504 عند وجود المفتاح.",
+            "API للقراءة خلف CDN: أعد المحاولة بحرية على 5xx، لأن الـ GET بلا side effect وقد يقدّم الـ CDN نسخة قديمة أصلاً.",
+            "مستقبِل webhook: المرسل يعيد المحاولة على أي استجابة غير 2xx، فيجب أن يكون handler عندك idempotent — أعد 200 لأي حدث بمعرّف مكرّر.",
+            "مستورد دفعات ضد partner محدود المعدل: احترم Retry-After بدقة، وشغّل worker واحداً بدل عشرة عند ظهور 429.",
+            "أي نداء داخلي بين الخدمات: طبقة واحدة فقط تعيد المحاولة، وتُختار الأقرب للتبعية الفاشلة."
+          ] },
+
+        { t: "callout", kind: "warn",
+          en: "Check the two timeouts before you tune anything else. If the gateway waits 5 seconds and the service waits 30, every slow request becomes a 504 while the handler keeps running and committing. That single mismatch produces more duplicate writes than any client bug.",
+          ar: "افحص الـ timeout الاثنين قبل ضبط أي شيء آخر. فإن انتظر الـ gateway خمس ثوانٍ وانتظرت الخدمة ثلاثين، تحوّل كل request بطيء إلى 504 بينما يظل الـ handler يعمل ويعمل commit. وهذا التعارض وحده ينتج كتابات مكررة أكثر من أي خطأ في العميل." }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        { t: "kv", rows: [
+          { k: { en: "Latency", ar: "Latency" },
+            v: { en: "Retries add to the time the caller waits. Three attempts with 2-second gaps turn a 200 ms call into a 4.2-second call before it finally fails.", ar: "الـ retries تُضاف إلى زمن انتظار المنادي. فثلاث محاولات بفواصل ثانيتين تحوّل نداء 200 ms إلى نداء 4.2 ثانية قبل أن يفشل أخيراً." } },
+          { k: { en: "Network", ar: "Network" },
+            v: { en: "A retried request re-sends the whole body. A 3-attempt policy on a 2 MB upload moves 6 MB, and it moves it while the network is already unhealthy.", ar: "الـ request المُعاد يرسل الـ body كاملاً من جديد. فسياسة بثلاث محاولات على رفع 2 MB تنقل 6 MB، وتنقلها والشبكة متعبة أصلاً." } },
+          { k: { en: "Scalability", ar: "Scalability" },
+            v: { en: "Retries amplify load exactly during an incident. A dependency failing at 50 percent with 3 attempts receives about double its normal request rate.", ar: "الـ retries تضخّم الحمل تحديداً أثناء الحادثة. فتبعية تفشل بنسبة 50 بالمئة مع ثلاث محاولات تستقبل نحو ضعف معدل requests الطبيعي." } },
+          { k: { en: "Memory", ar: "Memory" },
+            v: { en: "Every in-flight retry keeps its request buffers, cancellation token and response task alive. A stuck dependency with slow retries grows the number of pending calls until the pool is exhausted.", ar: "كل retry قيد التنفيذ يبقي buffers الـ request والـ cancellation token وtask الاستجابة حية. وتبعية عالقة مع retries بطيئة تزيد عدد النداءات المعلّقة حتى ينفد الـ pool." } },
+          { k: { en: "Database", ar: "Database" },
+            v: { en: "A duplicate write from a retry doubles rows and can break totals. With an idempotency key it becomes one extra indexed lookup, which is far cheaper than reconciliation.", ar: "الكتابة المكررة الناتجة عن retry تضاعف الصفوف وقد تفسد الإجماليات. ومع idempotency key تتحول إلى بحث واحد إضافي على index، وهو أرخص بكثير من التسوية اليدوية." } }
+        ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        { t: "ul",
+          en: [
+            "Log the status code, the method and the attempt number on every retry — you are looking for POST plus 500 or 504, which is the duplicate-write signature.",
+            "Compare request count at the caller with request count at the callee. A gap means retries; a gap that grows during incidents means amplification.",
+            "Group your payments table by orderId and amount within a short time window — more than one row per order is a confirmed duplicate.",
+            "Read the raw Retry-After header value in a proxy or capture tool, not the parsed one, to see whether the server sent seconds or a date.",
+            "Compare the gateway timeout setting with the service timeout setting — if the gateway is smaller, your 504 rate is self-inflicted."
+          ],
+          ar: [
+            "سجّل الـ status code والـ method ورقم المحاولة عند كل retry — فأنت تبحث عن POST مع 500 أو 504، وهي بصمة الكتابة المكررة.",
+            "قارن عدد الـ requests عند المنادي بعددها عند المُنادى. الفرق يعني retries، والفرق الذي ينمو أثناء الحوادث يعني تضخيماً.",
+            "اعمل group لجدول الـ payments حسب orderId وamount ضمن نافذة زمنية قصيرة — وجود أكثر من صف لكل order هو تكرار مؤكد.",
+            "اقرأ قيمة Retry-After الخام في proxy أو أداة التقاط، لا القيمة المحلَّلة، لترى هل أرسل السيرفر ثوانيَ أم تاريخاً.",
+            "قارن إعداد timeout في الـ gateway بإعداد timeout في الخدمة — فإن كان الـ gateway أصغر فنسبة 504 عندك من صنعك."
+          ] },
+
+        { t: "callout", kind: "tip",
+          en: "Add a counter that records retries by status code and by method, and put POST retries on their own line. In a healthy system that line stays near zero. The moment it moves, you know a write path is being repeated, and you know it before a customer tells you.",
+          ar: "أضف counter يسجّل الـ retries حسب الـ status code وحسب الـ method، وضع retries الـ POST في سطر مستقل. وفي نظام سليم يبقى هذا السطر قريباً من الصفر. وبمجرد تحركه تعرف أن مسار كتابة يتكرر، وتعرف ذلك قبل أن يخبرك عميل." }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        { t: "p",
+          en: "Anywhere a request causes money to move, a message to be sent, or stock to be reserved, the retry rule is a product decision and not just a client setting. Teams that get this right usually do the same two things: they decide the rule once in a shared client, and they make write endpoints accept an idempotency key so the rule can be generous without being dangerous.",
+          ar: "في أي مكان يتسبب فيه الـ request بتحريك أموال أو إرسال رسالة أو حجز مخزون، تكون قاعدة الـ retry قراراً في المنتج لا مجرد إعداد في العميل. والفرق التي تنجح في ذلك تفعل عادةً شيئين: تقرّر القاعدة مرة واحدة في عميل مشترك، وتجعل endpoints الكتابة تقبل idempotency key حتى تكون القاعدة سخية دون أن تكون خطرة." },
+
+        { t: "ul",
+          en: [
+            "Payment platforms: every charge endpoint takes an idempotency key, and the key is stored with the response for at least 24 hours.",
+            "E-commerce checkout: reserving stock is retried only with a reservation id, because a duplicate reservation blocks inventory nobody bought.",
+            "Messaging and notification systems: senders retry aggressively, so receivers deduplicate on a message id and return 200 for repeats.",
+            "Partner and open-banking integrations: strict rate limits mean Retry-After is the contract, and ignoring it gets a client suspended rather than throttled."
+          ],
+          ar: [
+            "منصات الدفع: كل endpoint للخصم يقبل idempotency key، ويُخزَّن المفتاح مع الاستجابة 24 ساعة على الأقل.",
+            "checkout التجارة الإلكترونية: حجز المخزون يُعاد فقط مع reservation id، لأن الحجز المكرر يعطّل مخزوناً لم يشتره أحد.",
+            "أنظمة الرسائل والإشعارات: المرسلون يعيدون المحاولة بقوة، فيمنع المستقبلون التكرار عبر message id ويعيدون 200 للمكرر.",
+            "تكاملات الـ partners والـ open banking: الحدود الصارمة تجعل Retry-After عقداً، وتجاهله يؤدي إلى إيقاف العميل لا مجرد إبطائه."
+          ] }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        { t: "ex", diff: "easy",
+          en: "Write the ShouldRetry function from this lesson and unit test it. It is correct when GET plus 500 returns true, POST plus 500 returns false, POST plus 503 returns true, and POST plus 400 returns false.",
+          ar: "اكتب دالة ShouldRetry من هذا الدرس واختبرها بـ unit tests. تكون صحيحة عندما يعيد GET مع 500 قيمة true، وPOST مع 500 قيمة false، وPOST مع 503 قيمة true، وPOST مع 400 قيمة false." },
+
+        { t: "ex", diff: "medium",
+          en: "Build a test endpoint that returns 429 with Retry-After set once to 3 and once to a date three seconds in the future. Write a client that honours both forms. It is correct when both cases wait about three seconds and neither throws a parse error.",
+          ar: "ابنِ endpoint اختباري يعيد 429 مع Retry-After بقيمة 3 مرة وبتاريخ بعد ثلاث ثوانٍ مرة. واكتب عميلاً يحترم الشكلين. يكون صحيحاً عندما تنتظر الحالتان نحو ثلاث ثوانٍ ولا يرمي أي منهما خطأ تحليل." },
+
+        { t: "ex", diff: "hard",
+          en: "Add idempotency keys to a POST endpoint: store the key and the response body in the same transaction as the insert. Then fire the same request three times concurrently. It is correct when the table has exactly one row and all three responses are byte-identical.",
+          ar: "أضف idempotency keys إلى endpoint من نوع POST: خزّن المفتاح وجسم الاستجابة في نفس الـ transaction الذي يحوي الـ insert. ثم أطلق نفس الـ request ثلاث مرات بالتوازي. يكون صحيحاً عندما يحوي الجدول صفاً واحداً بالضبط وتكون الاستجابات الثلاث متطابقة بايتاً ببايت." },
+
+        { t: "ex", diff: "senior",
+          en: "Simulate a dependency failing 50 percent of the time under 200 requests per second, with three attempts and no jitter. Record the request rate at the dependency. Then add jitter and a retry budget of ten percent and record it again. It is correct when you can state, with numbers, how much load each control removed.",
+          ar: "حاكِ تبعية تفشل بنسبة 50 بالمئة تحت 200 request في الثانية، مع ثلاث محاولات وبلا jitter. وسجّل معدل الـ requests عند التبعية. ثم أضف jitter وretry budget بعشرة بالمئة وسجّله مجدداً. يكون صحيحاً عندما تستطيع أن تذكر بالأرقام كم حملاً أزاله كل ضابط." }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        { t: "ref", label: { en: "RFC 9110 — HTTP Semantics: status codes, idempotency, Retry-After", ar: "RFC 9110 — دلالات HTTP: status codes والـ idempotency وRetry-After" }, url: "https://www.rfc-editor.org/rfc/rfc9110.html", meta: { en: "Spec", ar: "مواصفة" } },
+        { t: "ref", label: { en: "Building resilient HTTP apps in .NET", ar: "بناء تطبيقات HTTP مرنة في .NET" }, url: "https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience", meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "Retry pattern — Azure Architecture Center", ar: "نمط Retry — Azure Architecture Center" }, url: "https://learn.microsoft.com/en-us/azure/architecture/patterns/retry", meta: { en: "Docs", ar: "توثيق" } },
+        { t: "ref", label: { en: "Timeouts, retries and backoff with jitter — AWS Builders Library", ar: "المُهل وإعادة المحاولة والتراجع مع jitter — AWS Builders Library" }, url: "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/", meta: { en: "Article", ar: "مقالة" } }
+      ]
+    }
   ],
   quiz: [
     {
-      q: { en: "Which of these 5xx codes is the safest to retry, and why?", ar: "أي من أكواد الـ 5xx هذه أأمن لإعادة المحاولة، ولماذا؟" },
+      q: { en: "A POST that creates a payment comes back with 503 Service Unavailable. Is retrying safe?", ar: "POST ينشئ payment يرجع بكود 503 Service Unavailable. هل إعادة المحاولة آمنة؟" },
       options: [
-        { en: "500, because it is the most generic and therefore the most likely to be transient", ar: "500، لأنها الأعمّ وبالتالي الأرجح أن تكون عابرة" },
-        { en: "502, because a proxy error means the request never reached the application", ar: "502، لأن خطأ الـ proxy يعني أن الطلب لم يصل التطبيق أبداً" },
-        { en: "503, because the server refused to start the work, so no side effect exists", ar: "503، لأن السيرفر رفض بدء العمل، فلا وجود لأثر جانبي" },
-        { en: "504, because a timeout proves the upstream never finished processing", ar: "504، لأن انتهاء المهلة يثبت أن المصدر الأعلى لم ينهِ المعالجة أبداً" }
+        { en: "No — any 5xx may mean the work already happened.", ar: "لا — أي 5xx قد يعني أن العمل حدث بالفعل." },
+        { en: "Yes — 503 is sent before the handler runs, so nothing changed.", ar: "نعم — الـ 503 يُرسل قبل تشغيل الـ handler، فلم يتغير شيء." },
+        { en: "Only if the response includes Retry-After.", ar: "فقط إذا كانت الاستجابة تحوي Retry-After." },
+        { en: "Only for GET requests, never for POST.", ar: "فقط لطلبات GET، وأبداً لـ POST." }
+      ],
+      correct: 1,
+      why: { en: "503 means the server is refusing work right now — the load balancer or the server itself answered before your handler ran. No payments row was written, so sending the request again cannot duplicate anything. Retry-After makes the wait smarter but is not what makes the retry safe.", ar: "الـ 503 يعني أن السيرفر يرفض العمل الآن — فقد ردّ الـ load balancer أو السيرفر نفسه قبل تشغيل الـ handler. ولم يُكتب أي صف payments، فإعادة الإرسال لا يمكن أن تكرّر شيئاً. والـ Retry-After يجعل الانتظار أذكى لكنه ليس سبب أمان إعادة المحاولة." }
+    },
+    {
+      q: { en: "Why is 504 Gateway Timeout dangerous to retry on a POST?", ar: "لماذا تكون إعادة المحاولة عند 504 Gateway Timeout خطرة على POST؟" },
+      options: [
+        { en: "Because the gateway blocks the second attempt.", ar: "لأن الـ gateway يحجب المحاولة الثانية." },
+        { en: "Because 504 always means the server rejected the request.", ar: "لأن 504 يعني دائماً أن السيرفر رفض الـ request." },
+        { en: "Because the gateway gave up waiting while the server may still finish the work.", ar: "لأن الـ gateway استسلم عن الانتظار بينما قد ينهي السيرفر العمل فعلاً." },
+        { en: "Because 504 responses have no body to inspect.", ar: "لأن استجابات 504 بلا body يمكن فحصه." }
       ],
       correct: 2,
-      why: { en: "503 is the only one of the four that carries a positive statement about side effects: the server refused to begin, typically while shedding load or shutting down for a deploy, and it usually attaches Retry-After. 500 says only that something threw and cannot tell you whether the commit happened first. 502 means the proxy got a bad or truncated response — the upstream may have completed the work and failed only while responding. 504 is the worst case: the gateway stopped waiting, but the upstream is probably still executing, so retrying doubles in-flight work on something already too slow.", ar: "الـ 503 وحدها من الأربعة تحمل تصريحاً إيجابياً عن الآثار الجانبية: فالسيرفر رفض أن يبدأ، عادةً أثناء إسقاط حمل أو إغلاق لنشر، وهو يرفق Retry-After غالباً. والـ 500 تقول فقط إن شيئاً رُمي ولا تستطيع إخبارك هل تم التثبيت أولاً. والـ 502 تعني أن الـ proxy تلقّى استجابة سيئة أو مبتورة — وقد يكون الأعلى أتمّ العمل وفشل أثناء الردّ فقط. والـ 504 أسوأ الحالات: فالـ gateway توقف عن الانتظار، لكن الأعلى غالباً ما زال ينفّذ، فإعادة المحاولة تضاعف العمل الجاري على شيء بطيء أصلاً." }
+      why: { en: "504 describes the proxy's patience, not the outcome of the work. The handler behind it can still commit its transaction a second later. So the first attempt may succeed after you already sent the second one, and both charge the card.", ar: "الـ 504 يصف صبر الـ proxy لا نتيجة العمل. والـ handler خلفه قد يعمل commit لـ transaction بعد ثانية. فقد تنجح المحاولة الأولى بعد أن أرسلت الثانية، فتخصم البطاقة مرتين." }
     },
     {
-      q: { en: "Your client times out after 2 seconds on a POST. The server actually completed the write in 3 seconds. What is the correct interpretation?", ar: "تنتهي مهلة عميلك بعد ثانيتين على POST. والسيرفر أتمّ الكتابة فعلياً في ثلاث ثوانٍ. ما التفسير الصحيح؟" },
+      q: { en: "Which value can Retry-After legally contain?", ar: "أي قيمة يمكن أن يحملها Retry-After بشكل قانوني؟" },
       options: [
-        { en: "The request failed, so a plain resend is the correct recovery", ar: "الطلب فشل، فإعادة الإرسال المجردة هي التعافي الصحيح" },
-        { en: "The outcome is unknown; treat it like a 504 and resolve it with an idempotency key or a status query", ar: "النتيجة مجهولة؛ عامِلها كـ 504 وحُلّها بـ idempotency key أو باستعلام حالة" },
-        { en: "The request succeeded, because the server returns 200 eventually", ar: "الطلب نجح، لأن السيرفر يرجع 200 في النهاية" },
-        { en: "It is a client bug only; increasing the timeout removes the ambiguity", ar: "إنها علة في العميل فقط؛ وزيادة المهلة تزيل الالتباس" }
+        { en: "Only a number of seconds.", ar: "عدد ثوانٍ فقط." },
+        { en: "Either a number of seconds or an HTTP date.", ar: "إما عدد ثوانٍ وإما HTTP date." },
+        { en: "Only a Unix timestamp in milliseconds.", ar: "طابع زمني Unix بالميلي ثانية فقط." },
+        { en: "A percentage of the server's remaining capacity.", ar: "نسبة مئوية من السعة المتبقية للسيرفر." }
       ],
       correct: 1,
-      why: { en: "A client-side timeout tells you only that you stopped listening — it is not evidence that the server did nothing. This is structurally identical to a 504 and carries the same danger: a blind resend produces a second execution of work that already succeeded. Resolve it with an idempotency key so the resend is deduplicated server-side, or with a status endpoint keyed on the operation id. Raising the timeout narrows the window but never closes it; the ambiguity is inherent to any deadline.", ar: "مهلة جهة العميل تخبرك فقط بأنك توقفت عن الإصغاء — وليست دليلاً على أن السيرفر لم يفعل شيئاً. وهذا مطابق بنيوياً لـ 504 ويحمل الخطر نفسه: فإعادة الإرسال العمياء تنتج تنفيذاً ثانياً لعمل نجح أصلاً. حُلّها بـ idempotency key فتُزال تكرارية إعادة الإرسال على السيرفر، أو بـ endpoint حالة مفهرس بمعرّف العملية. ورفع المهلة يضيّق النافذة ولا يغلقها أبداً؛ فالالتباس متأصل في أي موعد نهائي." }
+      why: { en: "Both forms are legal on any response, and gateways emit the date form regularly. Code that only calls int.Parse throws on the date form. In .NET, HttpResponseHeaders.RetryAfter exposes Delta for the seconds form and Date for the date form.", ar: "الشكلان قانونيان على أي استجابة، والـ gateways تصدر شكل التاريخ بانتظام. والكود الذي ينادي int.Parse فقط يرمي exception على شكل التاريخ. وفي .NET يوفّر HttpResponseHeaders.RetryAfter خاصية Delta لشكل الثواني وDate لشكل التاريخ." }
     },
     {
-      q: { en: "Why is full jitter preferred over plain exponential backoff?", ar: "لماذا يُفضَّل الـ full jitter على التراجع الأسي المجرد؟" },
+      q: { en: "What makes a POST safe to retry after a 500?", ar: "ما الذي يجعل POST آمناً لإعادة المحاولة بعد 500؟" },
       options: [
-        { en: "It reduces the average delay, so requests complete faster", ar: "يقلّل متوسط التأخير، فتكتمل الطلبات أسرع" },
-        { en: "It decorrelates clients that all failed at the same instant, so a recovering node is not hit by a synchronised herd", ar: "يفكّ ارتباط العملاء الذين فشلوا جميعاً في اللحظة نفسها، فلا تُضرب العقدة المتعافية بقطيع متزامن" },
-        { en: "It guarantees each client retries a different number of times", ar: "يضمن أن يعيد كل عميل المحاولة عدداً مختلفاً من المرات" },
-        { en: "It is required by RFC 9110 for any automatic retry", ar: "يوجبه RFC 9110 لأي إعادة محاولة تلقائية" }
+        { en: "Waiting longer between attempts.", ar: "الانتظار مدة أطول بين المحاولات." },
+        { en: "Limiting the policy to two attempts instead of three.", ar: "تحديد السياسة بمحاولتين بدل ثلاث." },
+        { en: "An idempotency key the server stores and deduplicates on.", ar: "idempotency key يخزّنه السيرفر ويمنع به التكرار." },
+        { en: "Sending the retry over a brand new connection.", ar: "إرسال إعادة المحاولة عبر connection جديد تماماً." }
       ],
-      correct: 1,
-      why: { en: "Exponential backoff controls the rate at which a single client retries but does nothing about correlation between clients. When a node restarts, thousands of callers fail within the same few milliseconds and then wake within the same few milliseconds, hitting a process with a cold cache and an empty connection pool. Full jitter samples uniformly from [0, ceiling] instead of waiting the ceiling, spreading that population across the whole window. It changes neither the retry count nor the ceiling, and nothing in RFC 9110 mandates it — it is an engineering practice, measured by AWS at roughly an order-of-magnitude reduction in contention.", ar: "التراجع الأسي يتحكم في معدل إعادة محاولة عميل واحد ولا يفعل شيئاً حيال الارتباط بين العملاء. فحين تُعاد تهيئة عقدة، يفشل آلاف المستدعين خلال المللي ثوانٍ القليلة نفسها ثم يستيقظون خلال المللي ثوانٍ القليلة نفسها، فيصطدمون بعملية ذات ذاكرة مؤقتة باردة ومجمّع اتصالات فارغ. أما الـ full jitter فيأخذ عيّنة موحّدة من [0, السقف] بدل انتظار السقف، فينشر ذلك الجمهور عبر النافذة كاملة. وهو لا يغيّر عدد المحاولات ولا السقف، ولا شيء في RFC 9110 يوجبه — بل هو ممارسة هندسية قاست AWS أثرها بنحو رتبة كاملة من خفض التنازع." }
+      correct: 2,
+      why: { en: "Only the server can make the repeat harmless. It stores the client-generated key alongside the response, in the same transaction as the side effect, and returns the stored response when the key comes back. Longer waits and fewer attempts reduce how often you duplicate, not whether you can.", ar: "السيرفر وحده يستطيع جعل التكرار غير ضار. فهو يخزّن المفتاح الذي أنشأه العميل مع الاستجابة، في نفس الـ transaction الذي يحوي الـ side effect، ويعيد الاستجابة المخزّنة عند عودة المفتاح. أما الانتظار الأطول والمحاولات الأقل فتقلّل تكرار المشكلة لا إمكانها." }
     },
     {
-      q: { en: "Service A retries 3×, its SDK retries 3×, and the queue consumer retries 3×. During an outage, how many executions can one logical operation cause, and what is the standard fix?", ar: "الخدمة A تعيد ثلاث مرات، وSDK لديها يعيد ثلاث مرات، ومستهلك الطابور يعيد ثلاث مرات. أثناء انقطاع، كم تنفيذاً يمكن أن تسبّبه عملية منطقية واحدة، وما الحل المعياري؟" },
+      q: { en: "A mobile app, a gateway and a service each retry three times. What is the effect on a failing dependency?", ar: "تطبيق موبايل وgateway وخدمة، كلٌّ يعيد المحاولة ثلاث مرات. ما الأثر على تبعية فاشلة؟" },
       options: [
-        { en: "9, and the fix is to lower each layer to 2 attempts", ar: "9، والحل خفض كل طبقة إلى محاولتين" },
-        { en: "27, and the fix is to let exactly one layer own retries and explicitly disable the others", ar: "27، والحل أن تملك طبقة واحدة بالضبط إعادات المحاولة وتُعطَّل الأخرى صراحةً" },
-        { en: "3, because the layers share a single retry counter", ar: "3، لأن الطبقات تتشارك عدّاد إعادة محاولة واحداً" },
-        { en: "27, and the fix is to increase the backoff at each layer", ar: "27، والحل زيادة التراجع عند كل طبقة" }
+        { en: "Up to 27 requests reach it for one user action.", ar: "يصلها حتى 27 request لإجراء مستخدم واحد." },
+        { en: "Nine requests, because the layers share a budget.", ar: "تسعة requests، لأن الطبقات تتشارك budget واحداً." },
+        { en: "Three requests — only the innermost layer actually retries.", ar: "ثلاثة requests — فالطبقة الداخلية وحدها تعيد المحاولة فعلاً." },
+        { en: "No change, since retries only fire on 4xx.", ar: "لا تغيير، لأن الـ retries تعمل على 4xx فقط." }
       ],
-      correct: 1,
-      why: { en: "Retries at independent layers multiply rather than add: 3 × 3 × 3 = 27 executions of one logical operation, delivered to a dependency that is already failing. Increasing backoff does not reduce the count — it only stretches the amplification over a longer window while holding worker threads and connection-pool slots hostage for the duration. Lowering each layer to 2 still gives 8×. The only structural fix is single ownership: pick the layer with enough context to know whether the operation is replayable — usually the outermost in-process resilience pipeline — and turn retries off everywhere else, then bound the total with a fleet-wide retry budget.", ar: "إعادات المحاولة عند طبقات مستقلة تتضاعف ضرباً لا جمعاً: 3 × 3 × 3 = 27 تنفيذاً لعملية منطقية واحدة، تُسلَّم إلى تبعية فاشلة أصلاً. وزيادة التراجع لا تخفّض العدد — بل تمدّ التضخيم عبر نافذة أطول فقط بينما تحتجز خيوط العمال وخانات مجمّع الاتصالات طوال المدة. وخفض كل طبقة إلى اثنتين يعطي 8 أضعاف. والحل البنيوي الوحيد هو الملكية المفردة: اختر الطبقة التي تملك سياقاً كافياً لتعرف هل العملية قابلة لإعادة التشغيل — عادةً خط المرونة الأخارجي داخل العملية — وأطفئ الإعادات في كل موضع آخر، ثم قيّد الإجمالي بميزانية إعادة محاولة على مستوى الأسطول." }
-    },
-    {
-      q: { en: "A server responds with Retry-After: Wed, 21 Oct 2026 07:28:00 GMT. What must a correct client do?", ar: "سيرفر يردّ بـ Retry-After: Wed, 21 Oct 2026 07:28:00 GMT. ما الذي يجب أن يفعله عميل صحيح؟" },
-      options: [
-        { en: "Reject the response, since Retry-After only accepts an integer number of seconds", ar: "يرفض الاستجابة، لأن Retry-After لا يقبل إلا عدداً صحيحاً من الثواني" },
-        { en: "Parse the HTTP-date form as well, wait until that instant, and clamp the result to a sane maximum", ar: "يحلّل شكل HTTP-date أيضاً، وينتظر حتى تلك اللحظة، ويقيّد الناتج بحدّ أقصى معقول" },
-        { en: "Ignore the header and use its own exponential backoff, which is always more accurate", ar: "يتجاهل الترويسة ويستخدم تراجعه الأسي الخاص، فهو أدق دائماً" },
-        { en: "Wait exactly the number of seconds since the Unix epoch encoded in the date", ar: "ينتظر بالضبط عدد الثواني منذ حقبة Unix المشفَّرة في التاريخ" }
-      ],
-      correct: 1,
-      why: { en: "RFC 9110 §10.2.3 defines Retry-After as either delay-seconds or an HTTP-date, and both are legal on any response; CDNs and gateways emit the date form regularly. A client that only handles integers throws on this value, and if the exception is swallowed it falls back to a default delay — turning the server's strictest instruction into the client's most aggressive behaviour. In .NET, HttpResponseHeaders.RetryAfter parses both into Delta and Date. Clamping is equally important in the other direction: honouring an unbounded value like 86400 blindly would park a worker for a day, so a ceiling of tens of seconds belongs in the same code path.", ar: "الـ RFC 9110 §10.2.3 يعرّف Retry-After بأنه إما delay-seconds وإما HTTP-date، وكلاهما قانوني على أي استجابة؛ والـ CDNs والـ gateways تصدر شكل التاريخ بانتظام. والعميل الذي يعالج الأعداد الصحيحة وحدها يرمي عند هذه القيمة، وإن ابتُلع الاستثناء ارتدّ إلى تأخير افتراضي — فتتحول أشدّ تعليمات السيرفر إلى أكثر سلوكيات العميل عدوانية. وفي .NET يحلّل HttpResponseHeaders.RetryAfter الشكلين إلى Delta وDate. والتقييد بحدّ أعلى لا يقل أهمية في الاتجاه الآخر: فاحترام قيمة غير محدودة مثل 86400 بعمى سيوقف عاملاً يوماً كاملاً، فالسقف بعشرات الثواني ينتمي إلى مسار الكود نفسه." }
+      correct: 0,
+      why: { en: "Retries multiply rather than add: three layers of three attempts is three times three times three. The extra load keeps the dependency slow, which produces more timeouts and more retries. Pick one layer to retry at, normally the caller nearest the failing dependency, and make the others fail fast.", ar: "الـ retries تتضاعف ولا تُجمع: ثلاث طبقات بثلاث محاولات تعني ثلاثة في ثلاثة في ثلاثة. والحمل الزائد يبقي التبعية بطيئة، فينتج timeouts أكثر وretries أكثر. اختر طبقة واحدة لإعادة المحاولة، وهي عادةً المنادي الأقرب للتبعية الفاشلة، واجعل البقية تفشل بسرعة." }
     }
   ]
 };

@@ -4,335 +4,665 @@ const statusChooseLesson = {
   moduleId: "foundations",
   title: { en: "Choosing the right code", ar: "اختيار الكود الصحيح" },
   summary: {
-    en: "A working decision procedure for 400 vs 422 vs 409 vs 404 vs 403 vs 401 — and the operational bill you pay when the code you return does not match what actually went wrong.",
-    ar: "إجراء قرار عملي بين 400 و422 و409 و404 و403 و401 — والفاتورة التشغيلية التي تدفعها حين لا يطابق الكود الذي ترجعه ما حدث فعلاً."
+    en: "A practical decision tree between 400, 401, 403, 404, 409 and 422 — and the misuses that leave clients guessing.",
+    ar: "شجرة قرار عملية بين 400 و401 و403 و404 و409 و422، والأخطاء الشائعة التي تترك الـ client يخمّن."
   },
   mins: 10,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "The status code is the only part of your response that every participant on the path understands without knowing anything about your domain: the browser, the CDN, the reverse proxy, the API gateway, the client's HTTP library, your own metrics pipeline, and the dashboard your SLO is computed from. The body is yours to design; the status line is a shared vocabulary you are borrowing. Choosing a code is therefore not a lookup in a table — it is an instruction to five pieces of infrastructure you did not write.", ar: "الـ status code هو الجزء الوحيد من استجابتك الذي يفهمه كل مشارك على المسار دون أن يعرف شيئاً عن مجالك: المتصفح، والـ CDN، والـ reverse proxy، والـ API gateway، ومكتبة الـ HTTP لدى العميل، وخط أنابيب المقاييس لديك، واللوحة التي يُحسب منها الـ SLO. فالجسم ملكك تصمّمه، أما سطر الحالة فمفردات مشتركة أنت مستعيرها. واختيار كود إذن ليس بحثاً في جدول — بل تعليمة موجّهة إلى خمس قطع بنية تحتية لم تكتبها أنت." },
-      { t: "p", en: "Most teams get the two big classes right — 4xx means the caller has to change something, 5xx means the server has to — and then flatten everything inside 4xx into 400. That flattening is where the cost lives. A 400 and a 409 mean opposite things to a retry policy: the first says never send this again, the second says refetch and resend. A 404 and a 503 mean opposite things to a cache: the first is cacheable by default under RFC 9110, the second is not. Collapsing them does not make the API simpler; it makes it lie to the machinery built to react to it.", ar: "معظم الفرق تصيب الصنفين الكبيرين — 4xx تعني أن على المستدعي تغيير شيء، و5xx تعني أن على السيرفر ذلك — ثم تسطّح كل ما داخل الـ 4xx إلى 400. وفي ذلك التسطيح تكمن التكلفة. فالـ 400 والـ 409 يعنيان عكسين لسياسة إعادة المحاولة: الأول يقول لا ترسل هذا مجدداً أبداً، والثاني يقول أعد الجلب ثم أعد الإرسال. والـ 404 والـ 503 يعنيان عكسين للـ cache: الأول قابل للتخزين افتراضياً بموجب RFC 9110، والثاني ليس كذلك. ودمجهما لا يجعل الـ API أبسط؛ بل يجعله يكذب على الآلية المبنية للتفاعل معه." },
-      { t: "p", en: "There is also a human cost that shows up on a rota. Status codes are what page people. If a user typing a malformed email address produces a 500, your error-budget burn rate and your alerting both treat a data-entry mistake as a production incident. Teams in that position learn to ignore the alert, which is exactly the failure mode alerting exists to prevent. Choosing codes accurately is, in practice, one of the cheapest available improvements to on-call quality.", ar: "وهناك تكلفة بشرية تظهر في جدول المناوبات. فأكواد الحالة هي ما يستدعي الناس. فإن أنتج مستخدمٌ يكتب بريداً إلكترونياً مشوّهاً خطأ 500، عاملت كلٌّ من معدل استهلاك ميزانية الأخطاء ونظام التنبيه خطأً في إدخال بيانات كحادثة إنتاج. والفرق في هذا الوضع تتعلّم تجاهل التنبيه، وهو بالضبط نمط الفشل الذي وُجد التنبيه لمنعه. واختيار الأكواد بدقة، عملياً، من أرخص التحسينات المتاحة لجودة المناوبة." },
-      { t: "callout", kind: "note", en: "RFC 9110 (June 2022) is the current definition of HTTP semantics and status codes; it obsoletes RFC 7231 and folds in 422 Unprocessable Content, which used to live only in the WebDAV spec RFC 4918. When someone says \"422 is not a real HTTP code\", they are quoting a document that has been obsolete since 2022.", ar: "الـ RFC 9110 (يونيو 2022) هو التعريف الحالي لدلالات الـ HTTP وأكواد الحالة؛ وهو يلغي الـ RFC 7231 ويضمّ 422 Unprocessable Content التي كانت تعيش سابقاً في مواصفة الـ WebDAV أي RFC 4918. فحين يقول أحدهم «422 ليس كود HTTP حقيقياً» فهو يقتبس من مستند مُلغى منذ 2022." }
-    ]},
-
-    { key: "problem", blocks: [
-      { t: "p", en: "Consider a checkout endpoint in a service that never wrote down a status-code policy. A missing postcode returns 400. A coupon that expired yesterday returns 400. A second submit of the same order — the user double-tapped — returns 400 because the unique index rejected it. A request for someone else's order returns 400 because a guard clause threw and the catch-all mapped it. Four causes, one code, and every one of them tells the mobile client the same thing: your request was wrong, do not send it again.", ar: "خذ endpoint دفع في خدمة لم تكتب يوماً سياسة لأكواد الحالة. فعنوان بلا رمز بريدي يرجع 400. وقسيمة انتهت أمس ترجع 400. وإرسال ثانٍ لنفس الطلب — إذ نقر المستخدم مرتين — يرجع 400 لأن الفهرس الفريد رفضه. وطلب لطلبية شخص آخر يرجع 400 لأن guard clause رمى فربطه المعالج الشامل. أربعة أسباب وكود واحد، وكل واحد منها يقول لعميل الموبايل الشيء نفسه: طلبك كان خاطئاً، لا ترسله مجدداً." },
-      { t: "p", en: "The observable damage is asymmetric and mostly invisible in staging. The double-submit case should have been a 409 that the client resolves by refetching the order and showing \"already placed\" — instead the user sees \"invalid request\" and taps again, generating a third attempt. The cross-tenant access should have been 403 or 404 and should have fired a security alert — instead it is indistinguishable from a typo in the daily 400 count, so nobody ever sees the probe. And because the 400 rate is dominated by ordinary validation noise, the one anomaly worth investigating is buried under a baseline of a few thousand per day.", ar: "والضرر الملحوظ غير متماثل وغير مرئي غالباً في الـ staging. فحالة الإرسال المزدوج كان يجب أن تكون 409 يحلّها العميل بإعادة جلب الطلبية وعرض «تم الطلب أصلاً» — وبدلاً من ذلك يرى المستخدم «طلب غير صالح» فينقر مجدداً، مولّداً محاولة ثالثة. والوصول عبر المستأجرين كان يجب أن يكون 403 أو 404 وأن يطلق تنبيهاً أمنياً — وبدلاً من ذلك لا يتميّز عن خطأ إملائي داخل عدّاد الـ 400 اليومي، فلا يرى أحد عملية السبر أبداً. ولأن معدل الـ 400 تهيمن عليه ضوضاء التحقّق العادية، يُدفن الشذوذ الوحيد الجدير بالتحقيق تحت خط أساس من بضعة آلاف يومياً." },
-      { t: "kv", rows: [
-        { k: { en: "Validation failure returned as 500", ar: "فشل تحقّق يُرجَع كـ 500" }, v: { en: "A 2% invalid-input rate on a 3k req/s endpoint reads as 60 server errors per second. A 99.9% availability SLO is exhausted in under an hour by user typos, and on-call is paged for a form field", ar: "معدل إدخال غير صالح بنسبة 2% على endpoint بثلاثة آلاف request/ثانية يُقرأ كستين خطأ سيرفر في الثانية. فتُستنزف ميزانية SLO بنسبة 99.9% في أقل من ساعة بسبب أخطاء إملائية للمستخدمين، ويُستدعى المناوب من أجل حقل نموذج" } },
-        { k: { en: "Conflict returned as 400", ar: "تعارض يُرجَع كـ 400" }, v: { en: "The client's retry policy treats it as permanent and abandons the operation. A double-submitted order that a 409 would have resolved in one refetch becomes an abandoned checkout and a support ticket", ar: "سياسة إعادة المحاولة لدى العميل تعتبره دائماً فتتخلّى عن العملية. فطلبية أُرسلت مرتين وكانت 409 لتحلّها بإعادة جلب واحدة تصير عملية دفع مهجورة وتذكرة دعم" } },
-        { k: { en: "Rate limit returned as 403", ar: "حدّ معدل يُرجَع كـ 403" }, v: { en: "No standard client backs off on 403 and no Retry-After is expected on it, so the caller keeps hammering at full rate — the limiter now protects nothing and you pay for the rejected traffic", ar: "لا عميل قياسي يتراجع عند 403 ولا يُتوقّع فيها Retry-After، فيواصل المستدعي الطَرق بالمعدل الكامل — فلا يحمي المحدِّد شيئاً وتدفع أنت ثمن الحمل المرفوض" } },
-        { k: { en: "404 for a resource that exists but is lagging", ar: "404 لمورد موجود لكنه متأخر في المزامنة" }, v: { en: "404 is cacheable by default under RFC 9110. A CDN or shared proxy can store the miss and serve it for the whole freshness window, so a resource created 200 ms ago appears absent for minutes", ar: "الـ 404 قابلة للتخزين افتراضياً بموجب RFC 9110. فيستطيع CDN أو proxy مشترك تخزين الإخفاق وتقديمه طوال نافذة الحداثة، فيبدو مورد أُنشئ قبل 200 مللي ثانية غائباً لدقائق" } },
-        { k: { en: "401 sent without WWW-Authenticate", ar: "401 تُرسل بلا ترويسة WWW-Authenticate" }, v: { en: "RFC 9110 makes that header mandatory on 401. Token-refresh middleware in several SDKs keys off it, so the client never attempts a refresh and the user is logged out instead of transparently re-authenticated", ar: "الـ RFC 9110 يجعل تلك الترويسة إلزامية على 401. وبرمجيات تحديث الـ token في عدة SDKs تعتمد عليها، فلا يحاول العميل التحديث أبداً ويُسجَّل خروج المستخدم بدل إعادة مصادقته بشفافية" } },
-        { k: { en: "One code for every 4xx cause", ar: "كود واحد لكل أسباب الـ 4xx" }, v: { en: "The error dashboard loses its diagnostic value: a probe, a client bug, and a bad deploy of a partner integration all land in the same bucket, so mean time to detection is bounded by how long someone stares at raw logs", ar: "لوحة الأخطاء تفقد قيمتها التشخيصية: فعملية سبر، وعلة في عميل، ونشر سيئ لتكامل شريك، كلها تسقط في نفس السلة، فيصير زمن الاكتشاف محكوماً بمدة تحديق أحدهم في السجلات الخام" } }
-      ]}
-    ]},
-
-    { key: "internals", blocks: [
-      { t: "p", en: "Start from what RFC 9110 actually says, because the folklore and the specification diverge on exactly the codes people argue about. 400 is defined as \"the server cannot or will not process the request due to something that is perceived to be a client error\" — deliberately broad, and no longer restricted to malformed syntax as the older RFC 2616 wording implied. 422 Unprocessable Content is narrower: the content type was understood and the syntax was correct, but the instructions could not be followed. So 422 is not a competitor to 400; it is a refinement inside it, and both are defensible for a failed business rule. What is not defensible is using them inconsistently across two endpoints of the same API.", ar: "ابدأ مما يقوله الـ RFC 9110 فعلاً، لأن الفولكلور والمواصفة يفترقان تحديداً عند الأكواد التي يتجادل الناس حولها. فالـ 400 معرّفة بأن «السيرفر لا يستطيع أو لا يريد معالجة الـ request بسبب شيء يُرى أنه خطأ من العميل» — تعريف واسع عن قصد، ولم يعد مقيّداً بالصياغة المشوّهة كما كانت توحي صياغة الـ RFC 2616 الأقدم. والـ 422 Unprocessable Content أضيق: نوع المحتوى مفهوم والصياغة صحيحة، لكن التعليمات تعذّر اتّباعها. فالـ 422 ليست منافسة للـ 400؛ بل تنقيح داخلها، وكلاهما قابل للدفاع عنه لقاعدة عمل فاشلة. أما ما لا يمكن الدفاع عنه فهو استخدامهما بغير اتساق عبر endpointين في نفس الـ API." },
-      { t: "p", en: "The distinction that carries real weight is not 400 versus 422 but 4xx-permanent versus 4xx-resolvable. A permanent client error means the same bytes sent again will fail again forever: malformed JSON, an unknown field under strict binding, a value out of range. A resolvable client error means the same intent can succeed once something changes: the resource state (409), a precondition (412), a token (401), a quota window (429). Every retry policy, every SDK, and every queue consumer branches on that distinction, so it is the one your code table must express clearly even if you never settle the 400/422 debate.", ar: "والتمييز الذي يحمل وزناً حقيقياً ليس 400 مقابل 422 بل 4xx-دائم مقابل 4xx-قابل-للحل. فخطأ العميل الدائم يعني أن نفس البايتات إن أُرسلت مجدداً ستفشل مجدداً إلى الأبد: JSON مشوّه، أو حقل غير معروف تحت ربط صارم، أو قيمة خارج المدى. وخطأ العميل القابل للحل يعني أن نفس النية يمكن أن تنجح متى تغيّر شيء: حالة المورد (409)، أو شرط مسبق (412)، أو token (401)، أو نافذة حصة (429). وكل سياسة إعادة محاولة، وكل SDK، وكل مستهلك طابور، يتفرّع على ذلك التمييز، فهو الذي يجب أن يعبّر عنه جدول أكوادك بوضوح حتى لو لم تحسم جدال 400/422 أبداً." },
-      { t: "kv", rows: [
-        { k: { en: "400 Bad Request", ar: "400 Bad Request" }, v: { en: "The request itself is unusable: malformed JSON, a query parameter that will not parse, a required header missing. Permanent — resending identical bytes cannot succeed. This is the correct home for model-binding and deserialisation failures.", ar: "الـ request نفسه غير صالح للاستعمال: JSON مشوّه، أو query parameter لا يمكن تحليله، أو ترويسة مطلوبة مفقودة. دائم — فإعادة إرسال بايتات مطابقة لا يمكن أن تنجح. وهذا هو الموضع الصحيح لأعطال الـ model binding وفكّ التسلسل." } },
-        { k: { en: "422 Unprocessable Content", ar: "422 Unprocessable Content" }, v: { en: "Syntactically valid and understood, semantically rejected: a date in the past where a future date is required, a total that does not match its line items. Permanent until the caller changes the values. Use it or use 400 — but pick one and enforce it everywhere.", ar: "صحيح صياغياً ومفهوم، لكنه مرفوض دلالياً: تاريخ في الماضي حيث يُطلب تاريخ مستقبلي، أو مجموع لا يطابق بنوده. دائم إلى أن يغيّر المستدعي القيم. استخدمه أو استخدم 400 — لكن اختر واحداً وافرضه في كل مكان." } },
-        { k: { en: "401 Unauthorized", ar: "401 Unauthorized" }, v: { en: "Actually means unauthenticated. Credentials are missing, expired or invalid. RFC 9110 requires a WWW-Authenticate header on every 401 — omitting it breaks token-refresh logic in client SDKs that key off the challenge.", ar: "تعني فعلياً «غير مُصادَق». فالاعتماديات مفقودة أو منتهية أو غير صالحة. والـ RFC 9110 يوجب ترويسة WWW-Authenticate على كل 401 — وحذفها يكسر منطق تحديث الـ token في SDKs العملاء التي تعتمد على التحدّي." } },
-        { k: { en: "403 Forbidden", ar: "403 Forbidden" }, v: { en: "Authenticated and understood, but the server refuses and re-authenticating will not help. This is an authorization decision, not a credential problem. Never use it for rate limiting — no client backs off on 403.", ar: "مُصادَق ومفهوم، لكن السيرفر يرفض وإعادة المصادقة لن تفيد. فهذا قرار تفويض لا مشكلة اعتماديات. ولا تستخدمها أبداً لتحديد المعدل — فلا عميل يتراجع عند 403." } },
-        { k: { en: "404 Not Found", ar: "404 Not Found" }, v: { en: "No current representation, and the server does not say whether that is permanent. Cacheable by default under RFC 9110 §15.1 — the property that makes it dangerous for anything transient. Also the correct answer when existence itself is confidential.", ar: "لا تمثيل حالياً، والسيرفر لا يقول هل ذلك دائم. قابلة للتخزين افتراضياً بموجب RFC 9110 §15.1 — وهي الخاصية التي تجعلها خطرة لأي شيء عابر. وهي أيضاً الجواب الصحيح حين يكون الوجود نفسه سرياً." } },
-        { k: { en: "405 / 409 / 412 / 428", ar: "405 / 409 / 412 / 428" }, v: { en: "405 = route exists, method does not (an Allow header is mandatory). 409 = conflict with current resource state, resolvable by refetch. 412 = an If-Match/If-Unmodified-Since precondition failed. 428 = you must send a precondition; I refuse unconditional writes.", ar: "الـ 405 = المسار موجود والـ method لا (وترويسة Allow إلزامية). والـ 409 = تعارض مع الحالة الراهنة للمورد، قابل للحل بإعادة الجلب. والـ 412 = فشل شرط If-Match أو If-Unmodified-Since. والـ 428 = عليك إرسال شرط مسبق؛ فأنا أرفض الكتابات غير المشروطة." } },
-        { k: { en: "429 / 503", ar: "429 / 503" }, v: { en: "Both mean try again later and both carry Retry-After. 429 blames the caller's rate; 503 blames the server's current capacity. Both are non-cacheable by default, which is exactly what you want for a transient state.", ar: "كلاهما يعني «حاول لاحقاً» وكلاهما يحمل Retry-After. فالـ 429 تلوم معدل المستدعي؛ والـ 503 تلوم سعة السيرفر الراهنة. وكلاهما غير قابل للتخزين افتراضياً، وهو بالضبط ما تريده لحالة عابرة." } }
-      ]},
-      { t: "p", en: "The default-cacheability list is the detail most people have never read, and it explains a whole category of \"ghost\" bugs. RFC 9110 §15.1 marks 200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414 and 501 as heuristically cacheable when no explicit freshness information is present. That means a 404 with no Cache-Control header may legitimately be stored by a shared cache and replayed to other users. If your 404 was really \"not replicated to this read replica yet\", you have just published a wrong answer with a lifetime chosen by someone else's heuristic. Either return a code that is not cacheable by default, or send Cache-Control: no-store on the negative path.", ar: "وقائمة القابلية الافتراضية للتخزين هي التفصيل الذي لم يقرأه معظم الناس، وهي تفسّر صنفاً كاملاً من العلل «الشبحية». فالـ RFC 9110 §15.1 يعلّم 200 و203 و204 و206 و300 و301 و308 و404 و405 و410 و414 و501 كقابلة للتخزين استدلالياً حين لا توجد معلومات حداثة صريحة. أي أن 404 بلا ترويسة Cache-Control يجوز أن يخزّنها cache مشترك ويعيد تقديمها لمستخدمين آخرين. فإن كانت 404 لديك تعني فعلياً «لم تُنسخ بعد إلى هذه الـ read replica»، فقد نشرت جواباً خاطئاً بعمر يختاره استدلال شخص آخر. فإما أن ترجع كوداً غير قابل للتخزين افتراضياً، وإما أن ترسل Cache-Control: no-store على المسار السلبي." },
-      { t: "code", lang: "csharp", label: { en: "The decision procedure, written down once", ar: "إجراء القرار، مكتوباً مرة واحدة" }, code: "// Read top to bottom; the first matching question wins.\n// This ordering matters: authentication is decided before existence,\n// and existence before semantics, so you never leak state to a stranger.\n\nstatic int Choose(RequestFacts f) =>\n      !f.CanParseBody              ? 400   // bytes are unusable, permanent\n    : !f.HasCredentials            ? 401   // + WWW-Authenticate, ALWAYS\n    :  f.CredentialsExpired        ? 401   // client can refresh and retry\n    : !f.RouteExistsForMethod      ? 405   // + Allow: GET, PUT\n    : !f.CallerMaySeeResource      ? (f.ExistenceIsConfidential ? 404 : 403)\n    : !f.ResourceExists            ? 404   // remember: cacheable by default\n    :  f.RequiresPreconditionOnly  ? 428   // refuse blind overwrite\n    :  f.PreconditionFailed        ? 412   // If-Match did not match current ETag\n    :  f.ConflictsWithCurrentState ? 409   // refetch, reconcile, resend\n    :  f.OverRateLimit             ? 429   // + Retry-After\n    : !f.SemanticallyValid         ? 422   // syntax fine, rules say no\n    :                                200;\n\n// The two rules that survive every argument about 400 vs 422:\n//   1. If resending the identical request can never succeed -> 4xx permanent.\n//   2. If it can succeed after something changes -> 4xx resolvable, and say what changed." },
-      { t: "p", en: "The ordering in that procedure is a security decision, not a stylistic one. Authentication is evaluated before existence so an unauthenticated caller cannot use response codes to enumerate resources. Authorization is evaluated before existence for the same reason, with one branch: when the mere existence of a resource is itself confidential — another tenant's account, a private repository, an unlisted document — the correct answer is 404, because a 403 tells the caller \"this exists and is not yours\", which is precisely the fact you were protecting. GitHub's public API is the canonical implementation of that rule.", ar: "والترتيب في ذلك الإجراء قرار أمني لا أسلوبي. فالمصادقة تُقيَّم قبل الوجود كي لا يستطيع مستدعٍ غير مُصادَق استخدام أكواد الاستجابة لتعداد الموارد. والتفويض يُقيَّم قبل الوجود للسبب نفسه، مع فرع واحد: حين يكون مجرد وجود المورد سرياً — حساب مستأجر آخر، أو مستودع خاص، أو مستند غير مُدرَج — يكون الجواب الصحيح 404، لأن 403 تقول للمستدعي «هذا موجود وليس لك»، وهي بالضبط الحقيقة التي كنت تحميها. وواجهة GitHub العامة هي التطبيق النموذجي لتلك القاعدة." },
-      { t: "p", en: "One more asymmetry worth internalising: 4xx and 5xx are not two halves of a symmetric split, they are two different owners of the fix. A 5xx is a promise that the caller did nothing wrong and that someone on your side must act. That promise is what makes 5xx worth alerting on and worth counting against an availability SLO. Every time you return a 5xx for something a caller could have prevented, you devalue that promise a little; after enough of them, the alert is muted and a real outage arrives unannounced.", ar: "ولا تماثل آخر يستحق الاستيعاب: الـ 4xx والـ 5xx ليسا نصفي انقسام متماثل، بل مالكَين مختلفين للإصلاح. فالـ 5xx وعد بأن المستدعي لم يخطئ وأن على أحدهم في جهتك أن يتحرك. وهذا الوعد هو ما يجعل الـ 5xx جديرة بالتنبيه وجديرة بالاحتساب على SLO التوافر. وكلما أرجعت 5xx لشيء كان بوسع المستدعي منعه، أنقصت من قيمة ذلك الوعد قليلاً؛ وبعد ما يكفي منها يُكتَم التنبيه ويصل انقطاع حقيقي دون إعلان." },
-      { t: "callout", kind: "warn", en: "418 is not a joke you should ship, and neither is a custom code like 460. Intermediaries are required to treat an unknown 4xx as 400 and an unknown 5xx as 500, so a custom code buys you nothing a type URI in the body would not, and it silently loses its meaning at the first proxy. Extend the body, never the status registry.", ar: "الـ 418 ليست مزحة تشحنها، ولا كود مخصص مثل 460. فالوسطاء ملزمون بمعاملة أي 4xx غير معروفة كـ 400 وأي 5xx غير معروفة كـ 500، فالكود المخصص لا يمنحك شيئاً لا يمنحه type URI في الجسم، ويفقد معناه بصمت عند أول proxy. وسّع الجسم لا سجل الحالات." }
-    ]},
-
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
-          en: [
-            "A precise code lets a generic retry policy behave correctly with zero domain knowledge — 409 refetch, 429 back off, 400 give up",
-            "4xx and 5xx separate cleanly, so the availability SLO measures your reliability instead of your users' typing",
-            "Distinct codes make the error dashboard diagnostic: a spike in 403 is a permissions or probing story, a spike in 409 is a concurrency story",
-            "Standard codes are understood by CDNs, gateways and circuit breakers you do not control and cannot teach",
-            "Security-relevant codes (401, 403, 404-instead-of-403) become auditable events instead of anonymous entries in a 400 counter"
-          ],
-          ar: [
-            "الكود الدقيق يجعل سياسة إعادة محاولة عامة تتصرف بصواب دون أي معرفة بالمجال — 409 أعد الجلب، و429 تراجع، و400 استسلم",
-            "الـ 4xx والـ 5xx ينفصلان بنظافة، فيقيس SLO التوافر موثوقيتك أنت لا أخطاء كتابة مستخدميك",
-            "الأكواد المتمايزة تجعل لوحة الأخطاء تشخيصية: فارتفاع الـ 403 قصة صلاحيات أو سبر، وارتفاع الـ 409 قصة تزامن",
-            "الأكواد القياسية يفهمها CDNs و gateways و circuit breakers لا تسيطر عليها ولا تستطيع تعليمها",
-            "الأكواد ذات الدلالة الأمنية (401 و403 و404-بدل-403) تصير أحداثاً قابلة للتدقيق بدل مدخلات مجهولة في عدّاد 400"
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "Every HTTP response starts with a three-digit number called the status code. It is the one part of the response a client can branch on without reading any text. Choosing it well means the caller knows what to do next: fix the input, sign in, give up, or try again later.",
+          ar: "كل HTTP response يبدأ برقم من ثلاث خانات اسمه status code. هو الجزء الوحيد الذي يستطيع الـ client أن يبني عليه قراراً دون قراءة أي نص. اختياره بشكل صحيح يعني أن المستدعي يعرف الخطوة التالية: يصلح المدخلات، أو يسجّل الدخول، أو يتوقف، أو يعيد المحاولة لاحقاً."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Status code", ar: "Status code" },
+              v: {
+                en: "The three-digit number at the start of a response. 200 means it worked, 404 means not found, and so on.",
+                ar: "الرقم ذو الثلاث خانات في بداية الـ response. 200 يعني نجح، و404 يعني غير موجود، وهكذا."
+              }
+            },
+            {
+              k: { en: "4xx family", ar: "عائلة 4xx" },
+              v: {
+                en: "The server refuses because of something in the request. Sending the identical request again gives the identical answer.",
+                ar: "الـ server يرفض بسبب شيء في الـ request. إرسال نفس الـ request مرة أخرى يعطي نفس الجواب."
+              }
+            },
+            {
+              k: { en: "5xx family", ar: "عائلة 5xx" },
+              v: {
+                en: "The server failed at its own job. The request may have been perfectly valid, so retrying can work.",
+                ar: "الـ server فشل في عمله هو. الـ request قد يكون صحيحاً تماماً، لذلك إعادة المحاولة قد تنجح."
+              }
+            },
+            {
+              k: { en: "Resource", ar: "Resource" },
+              v: {
+                en: "The thing a URL points at — one order, one user, one list of products.",
+                ar: "الشيء الذي يشير إليه الـ URL — order واحد، أو user واحد، أو قائمة منتجات."
+              }
+            },
+            {
+              k: { en: "Validation", ar: "Validation" },
+              v: {
+                en: "Checking the values in a request against fixed rules: required, maximum length, allowed range, correct format.",
+                ar: "فحص القيم في الـ request مقابل قواعد ثابتة: مطلوب، أقصى طول، مدى مسموح، صيغة صحيحة."
+              }
+            },
+            {
+              k: { en: "Business rule", ar: "Business rule" },
+              v: {
+                en: "A rule about the current state of the system, not about the shape of the request. Example: a shipped order cannot be cancelled.",
+                ar: "قاعدة عن الحالة الحالية للنظام، لا عن شكل الـ request. مثال: order تم شحنه لا يمكن إلغاؤه."
+              }
+            }
           ]
         },
-        cons: {
-          en: [
-            "The 400-vs-422 argument is genuinely unresolvable on merit and will consume review time on every new endpoint unless you settle it by decree",
-            "A wide palette invites cargo-culting: 428 and 451 appear in code written by someone who read a blog post, with no client that handles them",
-            "Some legacy clients, WAFs and older gateways mishandle less common codes, collapsing 422 or 428 into a generic 400 anyway",
-            "Precision in the status line tempts teams to skip the body, and a bare 409 with no detail is barely more actionable than a 400",
-            "Enforcing a table across many services needs tooling; a wiki page alone decays within two quarters"
-          ],
-          ar: [
-            "جدال 400 مقابل 422 غير قابل للحسم موضوعياً فعلاً، وسيستهلك وقت المراجعة عند كل endpoint جديد ما لم تحسمه بقرار",
-            "اللوحة الواسعة تغري بالتقليد الأعمى: فتظهر 428 و451 في كود كتبه من قرأ تدوينة، ولا عميل يعالجها",
-            "بعض العملاء القدامى وجدران الحماية والـ gateways الأقدم تسيء التعامل مع الأكواد الأقل شيوعاً، فتُرجع 422 أو 428 إلى 400 عامة على أي حال",
-            "الدقة في سطر الحالة تغري الفرق بإهمال الجسم، و409 مجردة بلا تفصيل بالكاد تفوق 400 في قابلية التنفيذ",
-            "فرض الجدول عبر خدمات كثيرة يحتاج أدوات؛ فصفحة wiki وحدها تتحلّل خلال ربعين"
-          ]
+        {
+          t: "p",
+          en: "Think of a clerk at a government counter. If your handwriting is unreadable, they hand the form back untouched. If the form is readable but you left the date empty, they point at the empty box. If your file was closed last year, they tell you the case is already finished. Three different refusals, three different things you should do. Status codes are that same set of refusals, written as numbers.",
+          ar: "تخيّل موظفاً خلف شبّاك في دائرة حكومية. إذا كانت كتابتك غير مقروءة، يعيد لك الورقة دون قراءتها. وإذا كانت مقروءة لكنك تركت خانة التاريخ فارغة، يشير إلى الخانة الفارغة. وإذا كان ملفك أُغلق العام الماضي، يقول لك إن المعاملة انتهت أصلاً. ثلاثة رفوض مختلفة، وثلاثة تصرّفات مختلفة مطلوبة منك. الـ status codes هي نفس مجموعة الرفوض، مكتوبة كأرقام."
         },
-        limits: {
-          en: [
-            "The status code is a single coarse signal: it can say which class of failure, never which field or which record",
-            "It cannot express partial success — 97 of 100 bulk items succeeded has no code, only a per-item body design",
-            "Two causes with the same client reaction legitimately share a code, so the code alone can never drive a user-facing message",
-            "Nothing in HTTP tells the caller whether a 500 happened before or after the write committed; only idempotency keys answer that",
-            "Once headers are flushed on a streamed response, no status code can be chosen any more, whatever fails next"
-          ],
-          ar: [
-            "الـ status code إشارة خشنة واحدة: تستطيع قول أي صنف عطل، ولا تستطيع أبداً قول أي حقل أو أي سجل",
-            "لا يستطيع التعبير عن نجاح جزئي — فنجاح 97 من 100 عنصر مجمّع لا كود له، بل تصميم جسم لكل عنصر",
-            "سببان بنفس ردّ فعل العميل يتشاركان كوداً بحق، فلا يستطيع الكود وحده أن يقود رسالة موجّهة للمستخدم أبداً",
-            "لا شيء في الـ HTTP يخبر المستدعي هل حدثت الـ 500 قبل تثبيت الكتابة أم بعدها؛ ولا يجيب على ذلك إلا مفاتيح الـ idempotency",
-            "بمجرد دفع الترويسات في استجابة بثّية، لا يمكن اختيار أي status code بعدها مهما فشل التالي"
-          ]
+        {
+          t: "p",
+          en: "This lesson uses one running example: a shop API with the endpoint POST /api/orders/1234/cancel. Cancelling an order can fail in six different ways, and each way maps to a different code. By the end you will be able to place any failure on that map.",
+          ar: "هذا الدرس يستخدم مثالاً واحداً متكرراً: shop API فيه endpoint اسمه POST /api/orders/1234/cancel. إلغاء الـ order يمكن أن يفشل بست طرق مختلفة، وكل طريقة تقابل كوداً مختلفاً. في النهاية ستستطيع وضع أي فشل على هذه الخريطة."
         },
-        alts: {
-          en: [
-            "Collapse all client errors to 400 and carry the real identity in a problem+json type URI — simple, and fine if every client is yours",
-            "Use only 400/401/403/404/409/429/500 as a deliberately small house palette, documented as a closed set",
-            "gRPC's 16 status codes — a smaller, more prescriptive vocabulary with explicit FAILED_PRECONDITION vs ABORTED vs OUT_OF_RANGE guidance",
-            "GraphQL, where transport status is almost always 200 and everything moves into errors[].extensions.code",
-            "Event-driven flows, where there is no synchronous response at all and failure becomes a message on a dead-letter queue"
-          ],
-          ar: [
-            "ادمج كل أخطاء العميل في 400 واحمل الهوية الحقيقية في type URI داخل problem+json — بسيط، ومقبول إن كان كل العملاء لك",
-            "استخدم 400/401/403/404/409/429/500 فقط كلوحة داخلية صغيرة عن قصد، موثّقة كمجموعة مغلقة",
-            "أكواد الـ gRPC الستة عشر — مفردات أصغر وأكثر إلزاماً مع توجيه صريح بين FAILED_PRECONDITION و ABORTED و OUT_OF_RANGE",
-            "الـ GraphQL، حيث يكون status النقل 200 دائماً تقريباً وينتقل كل شيء إلى errors[].extensions.code",
-            "التدفقات المدفوعة بالأحداث، حيث لا استجابة متزامنة أصلاً ويصير الفشل رسالة في طابور dead-letter"
+        {
+          t: "callout",
+          kind: "note",
+          en: "The status code is for machines. The response body is for humans and for detail. Never put the real reason only in the body — a client that must read English text to decide what to do is a client that will get it wrong.",
+          ar: "الـ status code موجّه للآلة، وجسم الـ response موجّه للتفاصيل وللبشر. لا تضع السبب الحقيقي في الـ body فقط — الـ client الذي يضطر لقراءة نص إنجليزي ليقرر ماذا يفعل سيخطئ عاجلاً أم آجلاً."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "A team shipped the cancel endpoint returning 400 for every failure. In one week it produced 12,000 failed calls. About 9,600 of them — four out of five — were 400 with no way to tell them apart. The mobile app had one screen for all of them: Something went wrong, try again.",
+          ar: "فريق أطلق الـ cancel endpoint وهو يُرجع 400 لكل فشل. خلال أسبوع واحد أنتج 12,000 نداء فاشل. حوالي 9,600 منها — أربعة من كل خمسة — كانت 400 دون أي طريقة للتفريق بينها. تطبيق الموبايل كان يعرض شاشة واحدة لها جميعاً: حدث خطأ ما، حاول مرة أخرى."
+        },
+        {
+          t: "p",
+          en: "That single screen caused two real problems. Users whose session had expired kept tapping retry instead of signing in again, so the same failing call was sent an average of four times per user. And users trying to cancel an order that had already shipped were told to try again forever, because that call could never succeed.",
+          ar: "هذه الشاشة الواحدة سبّبت مشكلتين حقيقيتين. المستخدمون الذين انتهت جلستهم استمروا بالضغط على إعادة المحاولة بدل تسجيل الدخول من جديد، فأُرسل نفس النداء الفاشل بمعدل أربع مرات لكل مستخدم. والمستخدمون الذين حاولوا إلغاء order تم شحنه أصلاً طُلب منهم إعادة المحاولة إلى الأبد، لأن ذلك النداء لا يمكن أن ينجح أبداً."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Before: one code", ar: "قبل: كود واحد" },
+              v: {
+                en: "9,600 responses were 400. The client could not tell an expired session from a shipped order, so it retried both.",
+                ar: "9,600 response كانت 400. الـ client لم يستطع التمييز بين جلسة منتهية وorder تم شحنه، فأعاد المحاولة في الحالتين."
+              }
+            },
+            {
+              k: { en: "After: split by cause", ar: "بعد: تقسيم حسب السبب" },
+              v: {
+                en: "5,100 became 401 (sign in again), 2,900 became 409 (state forbids it), 1,600 stayed 400 or became 422 (fix the input).",
+                ar: "5,100 صارت 401 (سجّل الدخول من جديد)، و2,900 صارت 409 (الحالة تمنع ذلك)، و1,600 بقيت 400 أو صارت 422 (صحّح المدخلات)."
+              }
+            },
+            {
+              k: { en: "Measured effect", ar: "الأثر المقاس" },
+              v: {
+                en: "Repeat calls per failure dropped from about 4 to about 1.2, because the client stopped retrying calls that could never succeed.",
+                ar: "عدد النداءات المكررة لكل فشل انخفض من حوالي 4 إلى حوالي 1.2، لأن الـ client توقّف عن إعادة نداءات لا يمكن أن تنجح."
+              }
+            }
           ]
         }
-      }
-    ]},
-
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "Validation failures leaving as 500", ar: "أعطال التحقّق تخرج كـ 500" },
-        body: { en: "A domain guard throws ArgumentException, no mapping exists for it, and the catch-all turns it into 500. On an endpoint taking 3,000 req/s with a 2% bad-input rate, that is 60 server errors per second of pure user typing. A 99.9% monthly availability budget is roughly 43 minutes; this burns it in under an hour of normal traffic. The second-order damage is worse than the SLO: the on-call rota learns that the 5xx alert means nothing, and three weeks later a genuine dependency outage is acknowledged and ignored for 25 minutes.", ar: "guard في المجال يرمي ArgumentException، ولا ربط موجود له، فيحوّله المعالج الشامل إلى 500. وعلى endpoint يستقبل ثلاثة آلاف request/ثانية بمعدل إدخال سيئ 2%، فذلك ستون خطأ سيرفر في الثانية من كتابة المستخدمين المحضة. وميزانية توافر شهرية بنسبة 99.9% تساوي نحو 43 دقيقة؛ وهذا يحرقها في أقل من ساعة من الحمل الطبيعي. والضرر من الدرجة الثانية أسوأ من الـ SLO: فجدول المناوبة يتعلّم أن تنبيه الـ 5xx لا يعني شيئاً، وبعد ثلاثة أسابيع يُستلم انقطاع تبعية حقيقي ويُتجاهل 25 دقيقة." },
-        fix: "// map every known domain failure explicitly; 5xx is reserved for \"we broke it\"\nInvalidInputException  => 422,   // or 400 — but the same one everywhere\nConcurrencyException   => 409,\nQuotaExceededException => 429,\n_                      => 500;   // and this bucket should be near-empty in prod" },
-      { t: "mistake",
-        title: { en: "404 for a resource that exists but has not replicated", ar: "404 لمورد موجود لكنه لم يُنسخ بعد" },
-        body: { en: "A write goes to the primary, the immediate follow-up read is routed to a replica 300 ms behind, and the service returns 404. Two things then go wrong. The client's create-then-fetch flow reports failure for a resource that exists. Worse, 404 is cacheable by default under RFC 9110 §15.1, so a shared CDN or proxy applying a heuristic freshness window stores the miss and replays it to every subsequent reader for minutes — long after the replica caught up. The bug then looks intermittent and is unreproducible from an engineer's machine, which bypasses the CDN entirely.", ar: "كتابة تذهب إلى الـ primary، والقراءة التالية مباشرة تُوجَّه إلى replica متأخرة 300 مللي ثانية، فترجع الخدمة 404. عندها يخطئ شيئان. فتدفّق الإنشاء ثم الجلب لدى العميل يبلّغ عن فشل لمورد موجود. والأسوأ أن 404 قابلة للتخزين افتراضياً بموجب RFC 9110 §15.1، فيخزّن CDN أو proxy مشترك يطبّق نافذة حداثة استدلالية ذلك الإخفاق ويعيد تقديمه لكل قارئ لاحق لدقائق — بعد أن تكون الـ replica قد لحقت بمدة طويلة. فتبدو العلة متقطعة وغير قابلة لإعادة الإنتاج من جهاز مهندس، إذ يتجاوز جهازه الـ CDN كلياً." },
-        fix: "// read-your-writes, and never let a negative answer be cached\nif (!found && WithinReplicationWindow(request))\n{\n    Response.Headers.RetryAfter = \"1\";\n    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);\n}\n\nResponse.Headers.CacheControl = \"no-store\";   // on every 404 you emit" },
-      { t: "mistake",
-        title: { en: "403 for rate limiting", ar: "403 لتحديد المعدل" },
-        body: { en: "A gateway rejects over-quota callers with 403 Forbidden. No mainstream HTTP client, Polly policy or SDK retry handler backs off on 403 — it is a permanent authorization verdict, so the caller either fails immediately or, more often, retries at full speed because the app-level code treats any failure as worth one more try. The limiter is now doing rejection work at full request volume without ever reducing load: you pay the TLS handshake, the routing and the auth check for traffic you refuse. Switching to 429 with Retry-After typically cuts rejected-request volume by an order of magnitude within a day.", ar: "gateway يرفض المستدعين المتجاوزين للحصة بـ 403 Forbidden. ولا عميل HTTP شائع ولا سياسة Polly ولا معالج إعادة محاولة في SDK يتراجع عند 403 — فهي حكم تفويض دائم، فإما يفشل المستدعي فوراً، أو — وهو الأكثر — يعيد المحاولة بأقصى سرعة لأن كود التطبيق يعتبر أي عطل جديراً بمحاولة إضافية. فيصير المحدِّد يؤدي عمل الرفض بحجم الطلبات الكامل دون أن يخفّض الحمل قط: تدفع مصافحة TLS والتوجيه وفحص المصادقة لحمل ترفضه. والتحوّل إلى 429 مع Retry-After يخفّض عادةً حجم الطلبات المرفوضة بمقدار رتبة خلال يوم." },
-        fix: "Response.Headers.RetryAfter = \"30\";\nResponse.Headers[\"RateLimit-Reset\"] = resetEpochSeconds.ToString();\nreturn Results.StatusCode(StatusCodes.Status429TooManyRequests);" },
-      { t: "mistake",
-        title: { en: "401 without a WWW-Authenticate challenge", ar: "401 بلا تحدّي WWW-Authenticate" },
-        body: { en: "The token expired, the API returns a bare 401 with an empty body and no headers. RFC 9110 makes WWW-Authenticate mandatory on 401, and several client SDKs — including common OIDC and MSAL-style refresh handlers — only trigger a silent token refresh when they see the challenge. Without it, the client treats the 401 as a hard authentication failure and logs the user out. The visible symptom is users being kicked to the login screen every hour on the dot, which gets reported as a session-length bug and investigated in the wrong service for a week.", ar: "الـ token انتهى، فيرجع الـ API خطأ 401 مجرداً بجسم فارغ وبلا ترويسات. والـ RFC 9110 يجعل WWW-Authenticate إلزامية على 401، وعدة SDKs للعملاء — منها معالجات التحديث بأسلوب OIDC و MSAL الشائعة — لا تطلق تحديثاً صامتاً للـ token إلا حين ترى التحدّي. وبدونه يعامل العميل الـ 401 كفشل مصادقة قاطع فيسجّل خروج المستخدم. والعرَض الظاهر هو ركل المستخدمين إلى شاشة الدخول كل ساعة بالضبط، فيُبلَّغ عنه كعلة في طول الجلسة ويُحقَّق فيه في الخدمة الخطأ لأسبوع." },
-        fix: "Response.Headers.WWWAuthenticate =\n    \"Bearer realm=\\\"api\\\", error=\\\"invalid_token\\\", \" +\n    \"error_description=\\\"The access token expired\\\"\";\nreturn Results.Unauthorized();" },
-      { t: "mistake",
-        title: { en: "400 for a duplicate create caused by a retry", ar: "400 لإنشاء مكرر ناتج عن إعادة محاولة" },
-        body: { en: "The first POST succeeded but its response was lost to a timeout; the client retries; the unique index rejects the insert; a DbUpdateException is caught and turned into 400 \"invalid request\". The client now believes its perfectly valid request was malformed and abandons it, while the order actually exists — a phantom failure that produces a support ticket and, frequently, a manual duplicate created by the user. Either the endpoint is idempotent and should replay 200 with the existing resource, or the state genuinely conflicts and the answer is 409 with a pointer to it.", ar: "الـ POST الأول نجح لكن استجابته ضاعت في مهلة؛ فيعيد العميل المحاولة؛ فيرفض الفهرس الفريد الإدراج؛ فيُلتقط DbUpdateException ويُحوَّل إلى 400 «طلب غير صالح». فيصدّق العميل الآن أن طلبه الصحيح تماماً كان مشوّهاً فيتخلّى عنه، بينما الطلبية موجودة فعلاً — عطل وهمي ينتج تذكرة دعم، وغالباً نسخة يدوية مكررة ينشئها المستخدم. فإما أن يكون الـ endpoint متكافئ الاستدعاء ويجب أن يعيد 200 بالمورد القائم، وإما أن تكون الحالة متعارضة فعلاً والجواب 409 مع إشارة إليه." },
-        fix: "catch (DbUpdateException e) when (e.IsUniqueViolation())\n{\n    var existing = await _orders.FindByIdempotencyKeyAsync(key, ct);\n    return existing is not null\n        ? Results.Ok(existing)                                   // safe replay\n        : Results.Conflict(new ProblemDetails { Status = 409 }); // real conflict\n}" },
-      { t: "mistake",
-        title: { en: "405 with no Allow header, or 404 for the wrong verb", ar: "405 بلا ترويسة Allow، أو 404 للـ verb الخاطئ" },
-        body: { en: "A client calls DELETE on a route that only supports GET and PUT. Returning 404 tells them the resource does not exist, sending them off to debug their identifier for an hour; returning 405 without the mandatory Allow header tells them the verb is wrong but not which verb is right. Both codes are also cacheable by default, so an intermediary can memorise the wrong answer for the freshness window. This is a five-minute fix that removes an entire category of integration support questions from a public API.", ar: "عميل يستدعي DELETE على مسار لا يدعم إلا GET و PUT. فإرجاع 404 يخبره أن المورد غير موجود، فيرسله لتصحيح معرّفه لساعة؛ وإرجاع 405 بلا ترويسة Allow الإلزامية يخبره أن الـ verb خاطئ لكن لا يقول أيّها الصحيح. وكلا الكودين قابل للتخزين افتراضياً أيضاً، فيستطيع وسيط حفظ الجواب الخاطئ طوال نافذة الحداثة. وهذا إصلاح في خمس دقائق يزيل صنفاً كاملاً من أسئلة دعم التكامل عن API عام." },
-        fix: "Response.Headers.Allow = \"GET, PUT\";\nreturn Results.StatusCode(StatusCodes.Status405MethodNotAllowed);" }
-    ]},
-
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "What is the difference between 401 and 403?", ar: "ما الفرق بين 401 و403؟" },
-        a: { en: "401 means unauthenticated — the credentials are missing, expired or unreadable, and the server is inviting the caller to try again with valid ones. That is why RFC 9110 requires a WWW-Authenticate header on every 401: it states which scheme to authenticate with. 403 means authenticated and understood, but refused: the identity is known and does not have permission, so presenting the same credentials again cannot help. The one-line test is \"would sending better credentials fix this?\" — yes is 401, no is 403.", ar: "الـ 401 تعني «غير مُصادَق» — فالاعتماديات مفقودة أو منتهية أو غير قابلة للقراءة، والسيرفر يدعو المستدعي للمحاولة مجدداً باعتماديات صالحة. ولهذا يوجب الـ RFC 9110 ترويسة WWW-Authenticate على كل 401: فهي تبيّن بأي scheme يُصادِق. أما 403 فتعني «مُصادَق ومفهوم لكن مرفوض»: فالهوية معروفة ولا تملك الصلاحية، وتقديم نفس الاعتماديات مجدداً لا يفيد. والاختبار في سطر واحد: «هل يصلح إرسال اعتماديات أفضل هذا؟» — نعم فهي 401، ولا فهي 403." } },
-      { t: "qa", level: "mid",
-        q: { en: "400 or 422 for a business-rule failure? Defend your answer.", ar: "400 أم 422 لفشل قاعدة عمل؟ دافع عن جوابك." },
-        a: { en: "Both are defensible, which is why I would argue for consistency over purity. RFC 9110 defines 400 broadly as anything the server perceives as a client error, so a failed business rule fits. 422 is narrower and more informative: the content type was understood, the syntax was correct, and the instructions still could not be followed. My preference is 400 for anything that failed before the payload became a valid object — malformed JSON, unparseable query parameters, model-binding failures — and 422 once binding succeeded and a semantic rule rejected it. What matters far more than the choice is that both are permanent, that the same rule holds on every endpoint, and that the machine-readable identity lives in a problem+json type URI rather than in the status code.", ar: "كلاهما قابل للدفاع، ولهذا سأحتجّ للاتساق على النقاء. فالـ RFC 9110 يعرّف 400 بعمومية كأي شيء يراه السيرفر خطأ من العميل، فيندرج فشل قاعدة العمل تحته. والـ 422 أضيق وأكثر إفادة: نوع المحتوى مفهوم، والصياغة صحيحة، ومع ذلك تعذّر اتّباع التعليمات. وتفضيلي هو 400 لكل ما فشل قبل أن تصير الحمولة كائناً صالحاً — JSON مشوّه، وquery parameters غير قابلة للتحليل، وأعطال model binding — و422 بعد نجاح الربط ورفض قاعدة دلالية. وما يهم أكثر بكثير من الاختيار هو أن كليهما دائم، وأن نفس القاعدة تسري على كل endpoint، وأن الهوية القابلة للقراءة آلياً تعيش في type URI داخل problem+json لا في الـ status code." } },
-      { t: "qa", level: "mid",
-        q: { en: "When is 409 the right code, and how does it differ from 412?", ar: "متى تكون 409 هي الكود الصحيح، وكيف تختلف عن 412؟" },
-        a: { en: "409 means the request conflicts with the current state of the target resource — cancelling an order that already shipped, creating a username that now exists, or an optimistic-concurrency loss detected server-side. It implies the caller can resolve it: refetch, reconcile, resend. 412 is narrower and only applies when the caller supplied a precondition: If-Match with an ETag, or If-Unmodified-Since. The server checked that precondition and it did not hold. The practical difference is who stated the expectation. If the client said \"only apply this if the version is still abc\", a failure is 412. If the client said nothing and the server discovered the conflict on its own, it is 409. If you want to force clients to state their expectation, reject unconditional writes with 428 Precondition Required.", ar: "الـ 409 تعني أن الـ request يتعارض مع الحالة الراهنة للمورد المستهدف — إلغاء طلبية شُحنت أصلاً، أو إنشاء اسم مستخدم صار موجوداً، أو خسارة optimistic concurrency كشفها السيرفر. وهي تشير إلى أن المستدعي يستطيع حلّها: إعادة الجلب، والتوفيق، وإعادة الإرسال. أما 412 فأضيق ولا تسري إلا حين قدّم المستدعي شرطاً مسبقاً: If-Match مع ETag، أو If-Unmodified-Since. فقد فحص السيرفر ذلك الشرط ولم يتحقق. والفرق العملي هو مَن أعلن التوقّع. فإن قال العميل «طبّق هذا فقط إن كانت النسخة ما زالت abc» فالفشل 412. وإن لم يقل العميل شيئاً واكتشف السيرفر التعارض بنفسه فهي 409. وإن أردت إلزام العملاء بإعلان توقّعهم، فارفض الكتابات غير المشروطة بـ 428 Precondition Required." } },
-      { t: "qa", level: "mid",
-        q: { en: "A caller asks for a record that belongs to another tenant. 403 or 404?", ar: "مستدعٍ يطلب سجلاً يملكه مستأجر آخر. 403 أم 404؟" },
-        a: { en: "404, if the existence of that record is itself confidential — which in a multi-tenant system it almost always is. A 403 confirms that the id is real and simply not yours, which turns the endpoint into an enumeration oracle: an attacker walking ids can map your customer base by distinguishing 403 from 404. The rule I apply is that response codes must not reveal anything the caller is not entitled to know, so authorization is evaluated before existence and both answers collapse to the same 404. The important corollary is that the internal signal must not collapse with it: log the event as an authorization denial, tag it as cross-tenant, and alert on the rate — otherwise you have hidden the probe from yourself as well as from the attacker.", ar: "الـ 404، إن كان وجود ذلك السجل نفسه سرياً — وهو كذلك دائماً تقريباً في نظام multi-tenant. فالـ 403 تؤكد أن المعرّف حقيقي وأنه ليس لك فقط، فيتحوّل الـ endpoint إلى وسيلة تعداد: فمهاجم يمشي على المعرّفات يستطيع رسم قاعدة عملائك بالتمييز بين 403 و404. والقاعدة التي أطبّقها أن أكواد الاستجابة يجب ألا تكشف شيئاً لا يحق للمستدعي معرفته، فيُقيَّم التفويض قبل الوجود ويسقط الجوابان في نفس 404. والنتيجة المهمة أن الإشارة الداخلية يجب ألا تسقط معهما: سجّل الحدث كرفض تفويض، وعلّمه كعبور بين المستأجرين، ونبّه على معدله — وإلا كنت قد خبّأت عملية السبر عن نفسك كما عن المهاجم." } },
-      { t: "qa", level: "senior",
-        q: { en: "Why is returning 500 for a validation failure an operational problem, not just an aesthetic one?", ar: "لماذا يكون إرجاع 500 لفشل تحقّق مشكلة تشغيلية لا جمالية فقط؟" },
-        a: { en: "Because 5xx is the input to three separate automated systems. It is counted against the availability SLO, so a 2% invalid-input rate on a 3k req/s endpoint burns a 99.9% monthly budget — about 43 minutes — in under an hour of ordinary traffic. It fires alerts, so on-call is paged for user typos and quickly learns to ignore the page, which is how a real outage later goes unacknowledged for twenty minutes. And it feeds circuit breakers and load-balancer health signals, so a healthy instance serving predictable client errors can be marked unhealthy and shed, reducing capacity precisely when traffic is high. Every one of those systems trusts a specific promise — \"the caller did nothing wrong\" — and mis-coding breaks all three at once.", ar: "لأن الـ 5xx مُدخَل لثلاثة أنظمة آلية منفصلة. فهي تُحتسب على SLO التوافر، فمعدل إدخال غير صالح بنسبة 2% على endpoint بثلاثة آلاف request/ثانية يحرق ميزانية شهرية بنسبة 99.9% — نحو 43 دقيقة — في أقل من ساعة من الحمل العادي. وهي تطلق التنبيهات، فيُستدعى المناوب من أجل أخطاء إملائية للمستخدمين ويتعلّم سريعاً تجاهل الاستدعاء، وهكذا يبقى انقطاع حقيقي لاحقاً غير مُستلَم عشرين دقيقة. وهي تُغذّي الـ circuit breakers وإشارات صحة موازن الأحمال، فقد تُعلَّم نسخة سليمة تخدم أخطاء عميل متوقعة كغير سليمة فتُستبعَد، فتنقص السعة تحديداً حين يكون الحمل عالياً. وكل واحد من تلك الأنظمة يثق بوعد محدد — «المستدعي لم يخطئ» — وسوء الترميز يكسر الثلاثة دفعة واحدة." } },
-      { t: "qa", level: "senior",
-        q: { en: "Which 4xx responses are cacheable by default, and why does that change how you code a not-found?", ar: "أي استجابات 4xx قابلة للتخزين افتراضياً، ولماذا يغيّر ذلك طريقة ترميزك لحالة عدم الوجود؟" },
-        a: { en: "RFC 9110 §15.1 lists the heuristically cacheable status codes: 200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414 and 501. So 404 and 405 can be stored by a shared cache with no explicit Cache-Control at all, with a freshness lifetime the cache invents. That is fine when the resource genuinely does not exist and never will, and dangerous when the 404 actually meant \"not on this replica yet\" or \"not visible to this caller\" — the CDN then serves a wrong negative answer to everyone for minutes. So: send Cache-Control: no-store on any 404 whose cause could be transient or caller-specific, use 410 Gone only when the absence really is permanent, and return 503 with Retry-After for replication lag instead of pretending the resource is missing.", ar: "الـ RFC 9110 §15.1 يسرد أكواد الحالة القابلة للتخزين استدلالياً: 200 و203 و204 و206 و300 و301 و308 و404 و405 و410 و414 و501. فتستطيع 404 و405 أن تُخزَّن في cache مشترك دون أي Cache-Control صريح، بعمر حداثة يخترعه الـ cache. وذلك مقبول حين لا يوجد المورد فعلاً ولن يوجد، وخطر حين كانت 404 تعني فعلياً «ليس على هذه الـ replica بعد» أو «غير مرئي لهذا المستدعي» — فيقدّم الـ CDN جواباً سلبياً خاطئاً للجميع لدقائق. لذا: أرسل Cache-Control: no-store على أي 404 قد يكون سببها عابراً أو خاصاً بالمستدعي، واستخدم 410 Gone فقط حين يكون الغياب دائماً فعلاً، وأرجع 503 مع Retry-After لتأخّر النسخ بدل التظاهر بأن المورد مفقود." } },
-      { t: "qa", level: "senior",
-        q: { en: "How would you decide between 200-with-empty-array and 404 for a collection endpoint that matches nothing?", ar: "كيف تقرّر بين 200 بمصفوفة فارغة و404 لـ endpoint مجموعة لا يطابق شيئاً؟" },
-        a: { en: "200 with an empty array, because the resource being addressed is the collection, not its members, and the collection exists. A 404 would say \"there is no such endpoint\", which is a different fact and one that sends an integrator to check their URL rather than their filter. It also forces every client into a special case: an empty list is a normal, expected result that renders as an empty-state screen, whereas a 404 is an error path that usually renders as a failure. The only time 404 is right on a collection is when a parent segment in the path does not exist — /customers/{missingId}/orders is a 404 about the customer, not about the orders.", ar: "الـ 200 بمصفوفة فارغة، لأن المورد المُخاطَب هو المجموعة لا أعضاؤها، والمجموعة موجودة. فالـ 404 ستقول «لا endpoint كهذا»، وهي حقيقة مختلفة ترسل المتكامل ليفحص عنوانه لا مرشّحه. كما تجبر كل عميل على حالة خاصة: فالقائمة الفارغة نتيجة عادية متوقعة تُعرض كشاشة حالة فارغة، بينما 404 مسار خطأ يُعرض عادةً كفشل. والحالة الوحيدة التي تصح فيها 404 على مجموعة هي عدم وجود مقطع أبٍ في المسار — فـ /customers/{missingId}/orders هي 404 بشأن العميل لا بشأن الطلبيات." } },
-      { t: "qa", level: "staff",
-        q: { en: "Twelve teams, twelve interpretations of 400/422/409. How do you converge them without a standards war?", ar: "اثنا عشر فريقاً واثنا عشر تفسيراً للـ 400/422/409. كيف توحّدها دون حرب معايير؟" },
-        a: { en: "I would take the argument off the table rather than win it. First, publish a one-page decision table — not a philosophy document — that resolves every disputed case by decree, including the arbitrary ones: binding failure is 400, semantic rule is 422, state conflict is 409, precondition is 412, rate limit is 429. Arbitrary and consistent beats correct and contested. Second, make conformance cheaper than deviation: ship the mapping in a shared exception-handler package so the default behaviour is the standard, and adopting it is a one-line change. Third, measure instead of mandating — a dashboard of 5xx-rate excluding known-client-error causes exposes teams whose validation failures are inflating their own error budget, and self-interest converges them faster than any mandate. Fourth, enforce only at the public boundary: the API review gate rejects a new external route whose OpenAPI document declares a code outside the table. Finally, accept a long tail: internal endpoints with two known callers are not worth a migration, so I would let them converge whenever they are next touched and spend the political capital on the external surface, where the cost of inconsistency is paid by people who cannot ask us in Slack.", ar: "سأزيل الجدال من الطاولة بدل أن أكسبه. أولاً، أنشر جدول قرار من صفحة واحدة — لا مستند فلسفة — يحسم كل حالة متنازع عليها بقرار، بما في ذلك الاعتباطية منها: فشل الربط 400، والقاعدة الدلالية 422، وتعارض الحالة 409، والشرط المسبق 412، وحدّ المعدل 429. فالاعتباطي المتّسق يتفوّق على الصحيح المتنازع عليه. ثانياً، أجعل المطابقة أرخص من الانحراف: أشحن الربط في حزمة معالج exceptions مشتركة فيصير السلوك الافتراضي هو المعيار، ويصير تبنّيه تغييراً بسطر واحد. ثالثاً، أقيس ولا أفرض — فلوحة لمعدل الـ 5xx مستبعِدةً أسباب أخطاء العميل المعروفة تكشف الفرق التي تنفخ أعطال تحققها ميزانية أخطائها، والمصلحة الذاتية توحّدهم أسرع من أي فرض. رابعاً، أفرض عند الحد العام فقط: فبوابة مراجعة الـ APIs ترفض مساراً خارجياً جديداً يعلن مستند OpenAPI الخاص به كوداً خارج الجدول. وأخيراً، أقبل ذيلاً طويلاً: فـ endpoints داخلية بمستدعيين معروفين لا تستحق هجرة، فأدعها تتقارب متى لُمست تالياً وأصرف الرصيد السياسي على السطح الخارجي، حيث يدفع ثمن عدم الاتساق أناس لا يستطيعون سؤالنا على Slack." } }
-    ]},
-
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Unique-constraint violation returned as 500", ar: "خرق قيد فريد يُرجَع كـ 500" },
-        bad: "[HttpPost(\"orders\")]\npublic async Task<IActionResult> Create(CreateOrderDto dto)\n{\n    try\n    {\n        var order = await _orders.CreateAsync(dto);\n        return Ok(order);\n    }\n    catch (DbUpdateException)\n    {\n        // every write conflict becomes a server error\n        return StatusCode(500, \"Could not create order\");\n    }\n}",
-        good: "[HttpPost(\"orders\")]\npublic async Task<IActionResult> Create(\n    CreateOrderDto dto,\n    [FromHeader(Name = \"Idempotency-Key\")] string key,\n    CancellationToken ct)\n{\n    var result = await _orders.CreateAsync(dto, key, ct);\n\n    return result switch\n    {\n        // the retry of a request that already succeeded: replay, do not fail\n        { Kind: Replayed } r => Ok(r.Order),\n        { Kind: Created  } r => CreatedAtAction(nameof(GetById), new { id = r.Order.Id }, r.Order),\n        // a genuine state conflict: caller can refetch and reconcile\n        { Kind: Conflict } r => Conflict(new ProblemDetails\n        {\n            Status = StatusCodes.Status409Conflict,\n            Type   = \"https://api.example.com/problems/order-already-exists\",\n            Title  = \"An order already exists for this key.\",\n            Instance = $\"/orders/{r.ExistingId}\"\n        }),\n        _ => throw new UnreachableException()\n    };\n}",
-        why: { en: "The bad version misclassifies the single most common cause of a duplicate insert — a client retry after a lost response — as a server failure. Three things break at once. The 500 counts against the availability SLO and pages on-call for what is normal retry behaviour, so a busy checkout endpoint can burn an entire monthly error budget on successful orders. The client is told the server broke, so its retry policy either gives up on an order that actually exists or retries a request that will conflict forever. And the operator loses the signal: a real database outage and a double-tapped submit button land in the same 500 bucket. Separating replay (200) from conflict (409) makes the same code path correct for both the caller and the dashboard.", ar: "النسخة السيئة تصنّف أشيع سبب لإدراج مكرر — إعادة محاولة من العميل بعد فقدان استجابة — كعطل سيرفر. فتنكسر ثلاثة أمور دفعة واحدة. فالـ 500 تُحتسب على SLO التوافر وتستدعي المناوب لأجل سلوك إعادة محاولة طبيعي، فيستطيع endpoint دفع مزدحم أن يحرق ميزانية أخطاء شهرية كاملة على طلبيات ناجحة. ويُقال للعميل إن السيرفر تعطّل، فسياسة إعادة المحاولة لديه إما تتخلّى عن طلبية موجودة فعلاً أو تعيد request سيتعارض إلى الأبد. ويفقد المشغّل الإشارة: فانقطاع قاعدة بيانات حقيقي وزر إرسال نُقر مرتين يسقطان في نفس سلة الـ 500. وفصل إعادة التقديم (200) عن التعارض (409) يجعل نفس مسار الكود صحيحاً للمستدعي وللوحة معاً." }
-      },
-      { t: "review", severity: "medium",
-        title: { en: "404 for an empty collection result", ar: "404 لنتيجة مجموعة فارغة" },
-        bad: "[HttpGet(\"customers/{id}/orders\")]\npublic async Task<IActionResult> List(Guid id, [FromQuery] string? status)\n{\n    var orders = await _orders.QueryAsync(id, status);\n\n    if (orders.Count == 0)\n        return NotFound();      // \"no results\" reported as \"no endpoint\"\n\n    return Ok(orders);\n}",
-        good: "[HttpGet(\"customers/{id}/orders\")]\npublic async Task<IActionResult> List(Guid id, [FromQuery] string? status, CancellationToken ct)\n{\n    // 404 belongs to the parent segment, not to the result set\n    if (!await _customers.ExistsAsync(id, ct))\n        return NotFound();\n\n    var orders = await _orders.QueryAsync(id, status, ct);\n    return Ok(new { items = orders, total = orders.Count });   // 200 + [] is a valid answer\n}",
-        why: { en: "The collection resource exists whether or not it currently has members, so an empty match is a successful query with zero rows — 200 with an empty array. Returning 404 conflates two unrelated facts and pushes the cost onto every client: an empty state, which should render as \"no orders yet\", arrives on the error branch and typically renders as a failure toast. It also misleads integrators, who see 404 and spend an hour verifying the URL and the customer id rather than the status filter. And because 404 is cacheable by default, a shared cache may store the empty answer and keep serving it after the first order is placed. The corrected version reserves 404 for the one thing it should mean here — the parent customer does not exist.", ar: "مورد المجموعة موجود سواء كان له أعضاء حالياً أم لا، فالمطابقة الفارغة استعلام ناجح بصفر صفوف — أي 200 بمصفوفة فارغة. وإرجاع 404 يخلط حقيقتين غير مترابطتين ويدفع التكلفة إلى كل عميل: فالحالة الفارغة، التي يجب أن تُعرض كـ «لا طلبيات بعد»، تصل على فرع الخطأ وتُعرض عادةً كإشعار فشل. كما تضلّل المتكاملين، فيرون 404 ويصرفون ساعة في التحقق من العنوان ومن معرّف العميل بدل مرشّح الحالة. ولأن 404 قابلة للتخزين افتراضياً، فقد يخزّن cache مشترك الجواب الفارغ ويواصل تقديمه بعد إنشاء أول طلبية. والنسخة المصححة تحفظ 404 للشيء الوحيد الذي يجب أن تعنيه هنا — أن العميل الأب غير موجود." }
-      }
-    ]},
-
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a design review, the status-code table is not documentation — it is the contract between your application and every reliability mechanism in the diagram. The retry policy, the circuit breaker, the timeout budget, the CDN's negative caching and the availability SLO all read the status line and nothing else. That is why the code table should be agreed at the same moment as the retry policy: if you decide that clients retry 409 after a refetch and back off on 429, you have just committed to emitting exactly those codes for exactly those causes, and any endpoint that returns 400 for a conflict silently opts out of the design.", ar: "في مراجعة تصميم، لا يكون جدول أكواد الحالة توثيقاً — بل عقداً بين تطبيقك وكل آلية موثوقية في المخطط. فسياسة إعادة المحاولة، والـ circuit breaker، وميزانية المهل، والتخزين السلبي في الـ CDN، وSLO التوافر، كلها تقرأ سطر الحالة ولا شيء غيره. ولهذا يجب الاتفاق على جدول الأكواد في نفس لحظة الاتفاق على سياسة إعادة المحاولة: فإن قررت أن العملاء يعيدون المحاولة على 409 بعد إعادة جلب ويتراجعون عند 429، فقد التزمت بإصدار تلك الأكواد بالضبط لتلك الأسباب بالضبط، وأي endpoint يرجع 400 لتعارض ينسحب من التصميم بصمت." },
-      { t: "p", en: "The second structural question is where the code is chosen. If each controller picks its own, the table exists only in prose and drifts within a quarter. If a gateway rewrites codes, it must infer domain meaning it does not have, and it will get 409 versus 422 wrong. The arrangement that holds is that the service edge chooses the code from a shared, tested mapping, and the gateway only normalises what the service could not produce — its own timeouts as 504, its own rate limiting as 429 with Retry-After, its auth rejections as 401 with a challenge — so a client sees one coherent vocabulary whether the failure came from your code or from the infrastructure in front of it.", ar: "والسؤال البنيوي الثاني هو أين يُختار الكود. فإن اختار كل controller كوده، وُجد الجدول في النثر فقط وانحرف خلال ربع. وإن أعاد gateway كتابة الأكواد، وجب عليه استنتاج معنى مجال لا يملكه، وسيخطئ في 409 مقابل 422. والترتيب الذي يصمد هو أن تختار حافة الخدمة الكود من ربط مشترك مُختبَر، وأن يوحّد الـ gateway فقط ما لم تستطع الخدمة إنتاجه — مهله هو كـ 504، وتحديد معدله كـ 429 مع Retry-After، ورفض مصادقته كـ 401 مع تحدٍّ — فيرى العميل مفردات متسقة واحدة سواء جاء العطل من كودك أو من البنية أمامه." },
-      { t: "ul",
-        en: [
-          "Write the code table alongside the retry policy, not after it — they are the two halves of one decision and disagreeing versions cause blind retries",
-          "Define the SLO as 5xx-only and exclude known client-error causes, so user typos cannot burn an availability budget",
-          "Decide the tenant-isolation rule explicitly: 404 instead of 403 for confidential existence, with an internal authorization-denied event either way",
-          "Send Cache-Control: no-store on any negative response whose cause is transient or caller-specific — 404, 405 and 410 are cacheable by default",
-          "Make the gateway normalise its own failures into the same vocabulary (504, 429 + Retry-After, 401 + challenge) rather than translating the service's",
-          "Never invent a custom code: intermediaries collapse an unknown 4xx to 400, so put the fine-grained identity in a problem+json type URI instead"
-        ],
-        ar: [
-          "اكتب جدول الأكواد بجوار سياسة إعادة المحاولة لا بعدها — فهما نصفا قرار واحد، والنسختان المتناقضتان تسبّبان إعادة محاولة عمياء",
-          "عرّف الـ SLO على الـ 5xx فقط واستبعِد أسباب أخطاء العميل المعروفة، فلا تحرق أخطاء كتابة المستخدمين ميزانية توافر",
-          "احسم قاعدة عزل المستأجرين صريحاً: 404 بدل 403 حين يكون الوجود سرياً، مع حدث «رفض تفويض» داخلي في الحالتين",
-          "أرسل Cache-Control: no-store على أي استجابة سلبية سببها عابر أو خاص بالمستدعي — فـ 404 و405 و410 قابلة للتخزين افتراضياً",
-          "اجعل الـ gateway يوحّد أعطاله هو إلى نفس المفردات (504، و429 مع Retry-After، و401 مع تحدٍّ) بدل ترجمة أكواد الخدمة",
-          "لا تخترع كوداً مخصصاً أبداً: فالوسطاء يُرجعون أي 4xx غير معروفة إلى 400، فضع الهوية الدقيقة في type URI داخل problem+json بدلاً منها"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "A useful review question for any endpoint: \"if a client retries this exact request in five seconds, should it succeed?\" Yes means the code must be 409/412/429/503 — something resolvable. No means 400/401/403/404/422. If the team cannot answer, the code is being chosen by whichever exception happened to bubble up.", ar: "سؤال مراجعة مفيد لأي endpoint: «إن أعاد عميل هذا الـ request نفسه بعد خمس ثوانٍ، هل يجب أن ينجح؟» فنعم تعني أن الكود لا بد أن يكون 409 أو 412 أو 429 أو 503 — أي شيئاً قابلاً للحل. ولا تعني 400 أو 401 أو 403 أو 404 أو 422. وإن لم يستطع الفريق الإجابة، فالكود يختاره أي exception صادف أن طفا." }
-    ]},
-
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "A conflict coded as 400 makes the client abandon and re-drive the whole flow from the UI: a 409 that a single refetch would have resolved in one extra 40 ms round trip becomes a user-visible failure and a fresh checkout attempt seconds later", ar: "تعارض مُرمَّز كـ 400 يجعل العميل يتخلّى ويعيد قيادة التدفق كله من الواجهة: فـ 409 كانت إعادة جلب واحدة لتحلّها في رحلة إضافية بـ 40 مللي ثانية تصير عطلاً مرئياً للمستخدم ومحاولة دفع جديدة بعد ثوانٍ" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "403 instead of 429 removes the only backoff signal clients honour, so a misbehaving integrator keeps sending at full rate. You still pay TLS, routing and auth for every rejected call — the limiter sheds load from the database but not from the edge", ar: "الـ 403 بدل 429 تحذف إشارة التراجع الوحيدة التي يحترمها العملاء، فيواصل متكامل مخطئ الإرسال بالمعدل الكامل. وما زلت تدفع TLS والتوجيه والمصادقة لكل استدعاء مرفوض — فالمحدِّد يخفّف الحمل عن قاعدة البيانات لا عن الحافة" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "404 and 405 are heuristically cacheable under RFC 9110 §15.1, so a wrongly coded negative answer can be served from a CDN for its whole invented freshness window — cheap in bytes, expensive in correctness, and invisible from any developer machine that bypasses the CDN", ar: "الـ 404 و405 قابلتان للتخزين استدلالياً بموجب RFC 9110 §15.1، فيمكن تقديم جواب سلبي مُرمَّز خطأً من CDN طوال نافذة الحداثة التي اخترعها — رخيص بالبايتات، مكلف بالصحة، وغير مرئي من أي جهاز مطوّر يتجاوز الـ CDN" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Choosing the code by throwing costs tens of microseconds per throw for stack capture and unwinding versus nanoseconds for a returned result. An endpoint that throws on 30% of calls at 2k req/s spends measurable CPU on control flow, and the flame graph blames the exception handler", ar: "اختيار الكود بالرمي يكلّف عشرات الميكروثواني لكل رمي لالتقاط المكدّس وفكّه مقابل نانوثوانٍ لنتيجة مُرجَعة. و endpoint يرمي في 30% من الاستدعاءات عند ألفي request/ثانية يصرف معالجاً قابلاً للقياس على تدفق التحكم، ويلوم الـ flame graph معالج الـ exceptions" } },
-        { k: { en: "Database", ar: "قاعدة البيانات" }, v: { en: "Distinguishing 409 from 422 correctly often means one extra existence check before the write. Prefer letting the unique index reject the insert and translating the violation — a pre-check doubles the round trips on the hot path and is still racy", ar: "تمييز 409 من 422 بصواب يعني غالباً فحص وجود إضافياً قبل الكتابة. ففضّل ترك الفهرس الفريد يرفض الإدراج وترجمة الخرق — فالفحص المسبق يضاعف الرحلات على المسار الساخن ويبقى عرضةً للتسابق" } },
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Every exception used to pick a status code allocates a message string, a stack trace and often a dictionary of data. At a few thousand client errors per second that is steady Gen0 pressure attributed to the wrong code in a memory profile", ar: "كل exception يُستخدم لاختيار status code يخصّص نص رسالة و stack trace وغالباً قاموس بيانات. وعند بضعة آلاف خطأ عميل في الثانية يكون ذلك ضغط Gen0 مستمراً يُنسب إلى الكود الخطأ في مُحلّل الذاكرة" } }
-      ]}
-    ]},
-
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Build a status-code histogram per route from access logs or your APM (a single group-by on route × status); any route whose 500 count is comparable to its 400 count is mis-coding client errors",
-          "curl -i every failure case you can construct — bad JSON, expired token, wrong verb, foreign tenant id, over-quota — and read the status line plus the mandatory headers, not just the body",
-          "Assert the mandatory headers exist: WWW-Authenticate on every 401, Allow on every 405, Retry-After on every 429 and 503. Missing headers are spec violations that break client SDK behaviour",
-          "Check the Age and X-Cache headers on a 404 from behind your CDN — a non-zero Age proves the negative answer is being cached and replayed",
-          "grep for StatusCode(500), throw new Exception( and catch (Exception inside controllers; those three patterns produce most mis-coded 5xx responses",
-          "Diff your OpenAPI document against reality: for each documented status per operation, fire a request that should produce it. Endpoints that emit undocumented codes are where the table has already drifted"
-        ],
-        ar: [
-          "ابنِ مدرّجاً لأكواد الحالة لكل مسار من سجلات الوصول أو من الـ APM لديك (تجميع واحد على المسار × الحالة)؛ فأي مسار يقارب عدّاد الـ 500 فيه عدّاد الـ 400 يسيء ترميز أخطاء العميل",
-          "أرسل curl -i لكل حالة عطل تستطيع تركيبها — JSON خاطئ، وtoken منتهٍ، وverb خاطئ، ومعرّف مستأجر غريب، وتجاوز حصة — واقرأ سطر الحالة والترويسات الإلزامية لا الجسم وحده",
-          "تأكد من وجود الترويسات الإلزامية: WWW-Authenticate على كل 401، وAllow على كل 405، وRetry-After على كل 429 و503. فالترويسات المفقودة خروق للمواصفة تكسر سلوك SDKs العملاء",
-          "افحص ترويستي Age و X-Cache على 404 قادمة من خلف الـ CDN لديك — فقيمة Age غير صفرية تثبت أن الجواب السلبي يُخزَّن ويُعاد تقديمه",
-          "ابحث عن StatusCode(500) و throw new Exception( و catch (Exception داخل الـ controllers؛ فهذه الأنماط الثلاثة تنتج معظم استجابات الـ 5xx المُرمَّزة خطأً",
-          "قارن مستند الـ OpenAPI لديك بالواقع: لكل status موثّق لكل عملية، أطلق request يُفترض أن ينتجه. فالـ endpoints التي تصدر أكواداً غير موثّقة هي حيث انحرف الجدول أصلاً"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "The single highest-yield check takes ten minutes: group last week's responses by route and status, then sort routes by 5xx share descending. The top of that list is almost never a broken dependency — it is validation, conflicts and auth failures wearing a 500, and each one you reclassify gives back error budget and removes a page from the rota.", ar: "أعلى فحص مردوداً يستغرق عشر دقائق: جمّع استجابات الأسبوع الماضي حسب المسار والحالة، ثم رتّب المسارات بنسبة الـ 5xx تنازلياً. فأعلى تلك القائمة لا يكون تبعية معطّلة أبداً تقريباً — بل تحقّقاً وتعارضات وأعطال مصادقة تلبس 500، وكل واحدة تعيد تصنيفها تُعيد لك ميزانية أخطاء وتحذف استدعاءً من جدول المناوبة." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "How much status-code precision an API needs scales with how automated its callers are. A backend consumed only by your own web front end can survive on 400 and 500, because a human reads the message and decides what to do next. The moment the caller is a retry policy, a queue consumer, a partner SDK or a mobile app you cannot patch this week, the status line stops being a label and becomes the input to an automated decision — and every imprecision becomes either a lost operation or an amplified one.", ar: "مقدار الدقة التي يحتاجها API في أكواد الحالة يتناسب مع مدى آلية مستدعيه. فخدمة خلفية لا تستهلكها إلا واجهتك الأمامية تستطيع العيش على 400 و500، لأن إنساناً يقرأ الرسالة ويقرّر ما التالي. ولحظة أن يكون المستدعي سياسة إعادة محاولة، أو مستهلك طابور، أو SDK شريك، أو تطبيق موبايل لا تستطيع ترقيعه هذا الأسبوع، يتوقف سطر الحالة عن كونه تسمية ويصير مُدخَلاً لقرار آلي — فتصير كل عدم دقة إما عملية مفقودة وإما عملية مُضخَّمة." },
-      { t: "ul",
-        en: [
-          "Payment and ordering systems: the distinction between 409 (already placed, refetch and show it) and 400 (invalid, give up) is the difference between one duplicate charge prevented and a customer double-paying, so these APIs are usually the strictest about conflict codes",
-          "Multi-tenant SaaS platforms: the 403-versus-404 rule is a security control, because a 403 confirms that an id exists and turns sequential probing into a customer-list export",
-          "Public developer platforms and partner integrations: 429 with Retry-After and 401 with a challenge are load-bearing, since thousands of independently written clients will only behave correctly if the standard signals are present",
-          "CDN-fronted content and catalogue APIs: default cacheability of 404, 405 and 410 means a mis-coded negative response propagates to every edge location and outlives the condition that caused it"
-        ],
-        ar: [
-          "أنظمة الدفع والطلبات: التمييز بين 409 (تم الطلب أصلاً، أعد الجلب واعرضه) و400 (غير صالح، استسلم) هو الفرق بين منع خصم مكرر وبين دفع العميل مرتين، فتكون هذه الـ APIs عادةً الأكثر تشدداً في أكواد التعارض",
-          "منصات SaaS متعددة المستأجرين: قاعدة 403 مقابل 404 ضابط أمني، لأن 403 تؤكد وجود معرّف فتحوّل السبر المتسلسل إلى تصدير لقائمة العملاء",
-          "منصات المطوّرين العامة وتكاملات الشركاء: الـ 429 مع Retry-After والـ 401 مع تحدٍّ حاملة للحمل، إذ آلاف العملاء المكتوبين باستقلال لن يتصرفوا بصواب إلا بوجود الإشارات القياسية",
-          "APIs المحتوى والكتالوجات الموضوعة خلف CDN: القابلية الافتراضية لتخزين 404 و405 و410 تعني أن استجابة سلبية مُرمَّزة خطأً تنتشر إلى كل موقع حافة وتعيش أطول من الحالة التي سبّبتها"
-        ]
-      }
-    ]},
-
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Pick one endpoint you own and produce five failures with curl -i: malformed JSON, missing token, expired token, wrong HTTP verb, and a resource id belonging to someone else. Write down the status code and headers for each, then mark which of the five you believe is wrong and why.", ar: "اختر endpoint تملكه وأنتج خمسة أعطال بـ curl -i: JSON مشوّه، وtoken مفقود، وtoken منتهٍ، وverb خاطئ، ومعرّف مورد يملكه شخص آخر. دوّن الـ status code والترويسات لكل حالة، ثم علّم أيّ الخمسة تعتقد أنه خاطئ ولماذا." },
-      { t: "ex", diff: "medium", en: "Query last week's logs for a status-code histogram grouped by route. Take the route with the highest 5xx share, find out what actually causes those responses, and reclassify every client-caused one to the correct 4xx. Report the before/after 5xx rate and how much error budget you reclaimed.", ar: "استعلم سجلات الأسبوع الماضي لمدرّج أكواد حالة مجمّع حسب المسار. خذ المسار بأعلى نسبة 5xx، واكتشف ما يسبّب تلك الاستجابات فعلاً، وأعد تصنيف كل ما سبّبه العميل إلى الـ 4xx الصحيحة. وأبلغ بمعدل الـ 5xx قبل وبعد، وبمقدار ميزانية الأخطاء التي استعدتها." },
-      { t: "ex", diff: "hard", en: "Write a contract test over your whole route table asserting: no 5xx is produced by any malformed or unauthorised request; every 401 carries WWW-Authenticate; every 405 carries Allow; every 429 and 503 carries Retry-After; and every 404 whose cause could be transient carries Cache-Control: no-store. Fix what it finds, then make it a blocking CI check.", ar: "اكتب اختبار عقد على جدول مساراتك كاملاً يؤكد: ألا ينتج أي 5xx عن أي request مشوّه أو غير مفوّض؛ وأن كل 401 تحمل WWW-Authenticate؛ وأن كل 405 تحمل Allow؛ وأن كل 429 و503 تحمل Retry-After؛ وأن كل 404 قد يكون سببها عابراً تحمل Cache-Control: no-store. أصلح ما يجده، ثم اجعله فحص CI مانعاً." },
-      { t: "ex", diff: "senior", en: "Publish a one-page status-code decision table for your organisation that resolves 400 vs 422, 403 vs 404 for confidential existence, 409 vs 412, and rate limiting, then ship it as the default behaviour of a shared exception-handler package. Measure adoption as the percentage of services whose 5xx rate excludes client-caused failures, and report what convinced the slowest team to move.", ar: "انشر جدول قرار لأكواد الحالة من صفحة واحدة لمنظمتك يحسم 400 مقابل 422، و403 مقابل 404 حين يكون الوجود سرياً، و409 مقابل 412، وتحديد المعدل، ثم اشحنه كسلوك افتراضي لحزمة معالج exceptions مشتركة. وقِس التبنّي كنسبة الخدمات التي يستبعد معدل الـ 5xx فيها الأعطال التي يسبّبها العميل، وأبلغ بما أقنع أبطأ فريق بالتحرّك." }
-    ]},
-
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "RFC 9110 §15 — HTTP Status Codes", ar: "RFC 9110 §15 — أكواد حالة الـ HTTP" }, url: "https://www.rfc-editor.org/rfc/rfc9110.html#name-status-codes", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 9111 — HTTP Caching (heuristic freshness)", ar: "RFC 9111 — تخزين الـ HTTP (الحداثة الاستدلالية)" }, url: "https://www.rfc-editor.org/rfc/rfc9111.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 6585 — Additional HTTP Status Codes (428, 429, 431)", ar: "RFC 6585 — أكواد حالة HTTP إضافية (428 و429 و431)" }, url: "https://www.rfc-editor.org/rfc/rfc6585.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "IANA HTTP Status Code Registry", ar: "سجل IANA لأكواد حالة الـ HTTP" }, url: "https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml", meta: { en: "Registry", ar: "سجل" } },
-      { t: "ref", label: { en: "MDN — HTTP response status codes", ar: "MDN — أكواد حالة استجابة الـ HTTP" }, url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status", meta: { en: "Reference", ar: "مرجع" } },
-      { t: "ref", label: { en: "Handle errors in ASP.NET Core", ar: "معالجة الأخطاء في ASP.NET Core" }, url: "https://learn.microsoft.com/aspnet/core/fundamentals/error-handling", meta: { en: "Docs", ar: "توثيق" } }
-    ]}
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "A request passes through a fixed series of checks before your business code runs, and each check owns one status code. Nothing later can rescue a request that failed an earlier check, so the order of the checks decides which code the caller sees.",
+          ar: "الـ request يمر عبر سلسلة ثابتة من الفحوص قبل أن يعمل كود المجال عندك، وكل فحص يملك كوداً واحداً. لا شيء لاحق ينقذ request فشل في فحص سابق، لذلك ترتيب الفحوص هو الذي يقرر أي كود يراه المستدعي."
+        },
+        {
+          t: "p",
+          en: "Think of the gates at an airport. The first gate checks your ticket is a ticket at all. The second checks your name is on the list. The third checks you are allowed in this lounge. The fourth checks the flight exists. Each gate turns you back for its own reason, and you never reach gate four if gate one stopped you. The HTTP pipeline works the same way.",
+          ar: "تخيّل بوابات المطار. البوابة الأولى تتحقق أن ما تحمله تذكرة أصلاً. والثانية تتحقق أن اسمك في القائمة. والثالثة تتحقق أنك مسموح لك بهذه الصالة. والرابعة تتحقق أن الرحلة موجودة. كل بوابة تعيدك لسبب يخصّها، ولن تصل للبوابة الرابعة إذا أوقفتك الأولى. الـ HTTP pipeline يعمل بنفس الطريقة."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "1. Parsing and binding", ar: "1. التحليل والربط" },
+              v: {
+                en: "The body is not valid JSON, or a field has the wrong type. The framework answers 400 before your method runs at all.",
+                ar: "الـ body ليس JSON صالحاً، أو حقل من نوع خاطئ. الـ framework يُرجع 400 قبل أن تعمل الدالة عندك أصلاً."
+              }
+            },
+            {
+              k: { en: "2. Authentication", ar: "2. Authentication" },
+              v: {
+                en: "No token, or an expired one. 401 means: I do not know who you are — prove it and come back.",
+                ar: "لا يوجد token أو أنه منتهي. 401 تعني: لا أعرف من أنت — أثبت هويتك وعُد."
+              }
+            },
+            {
+              k: { en: "3. Authorization", ar: "3. Authorization" },
+              v: {
+                en: "I know who you are, and you are not allowed. 403 means: signing in again will not help.",
+                ar: "أعرف من أنت، ولستَ مسموحاً لك. 403 تعني: تسجيل الدخول من جديد لن يفيد."
+              }
+            },
+            {
+              k: { en: "4. Resource lookup", ar: "4. البحث عن الـ resource" },
+              v: {
+                en: "Order 1234 does not exist, or was deleted. 404 means: this URL points at nothing.",
+                ar: "الـ order رقم 1234 غير موجود أو حُذف. 404 تعني: هذا الـ URL لا يشير إلى شيء."
+              }
+            },
+            {
+              k: { en: "5. Semantic validation", ar: "5. التحقق الدلالي" },
+              v: {
+                en: "The JSON parsed fine but a value breaks a rule — an empty reason, a quantity of -3. 422 means: I understood you, the values are wrong.",
+                ar: "الـ JSON تم تحليله بنجاح لكن قيمة تكسر قاعدة — reason فارغ، أو كمية -3. 422 تعني: فهمتك، لكن القيم خاطئة."
+              }
+            },
+            {
+              k: { en: "6. Business rule", ar: "6. قاعدة العمل" },
+              v: {
+                en: "Everything is valid but the order is already shipped. 409 means: the request is fine, the current state forbids it.",
+                ar: "كل شيء صالح لكن الـ order تم شحنه. 409 تعني: الـ request سليم، لكن الحالة الحالية تمنعه."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "The line that trips people is between 400 and 422. Use 400 when the server could not even read the request — broken JSON, a string where a number belongs, a missing required header. Use 422 when the request was read successfully and the values themselves are unacceptable. A useful test: if you had to parse the body to discover the problem, it is 422.",
+          ar: "الخط الذي يربك الناس هو بين 400 و422. استخدم 400 عندما لا يستطيع الـ server قراءة الـ request أصلاً — JSON مكسور، أو نص مكان رقم، أو header مطلوب مفقود. واستخدم 422 عندما تمت قراءة الـ request بنجاح والقيم نفسها غير مقبولة. اختبار مفيد: إذا اضطررت لتحليل الـ body لتكتشف المشكلة، فهي 422."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "The six checks in one handler", ar: "الفحوص الستة في handler واحد" },
+          code: "[Authorize] // stage 2: no or expired token -> 401, before this method runs\n[HttpPost(\"/api/orders/{id}/cancel\")]\npublic async Task<IActionResult> Cancel(int id, CancelRequest body)\n{\n    // stage 1 already happened: malformed JSON -> 400 from model binding\n\n    // stage 5: values are readable but wrong\n    if (string.IsNullOrWhiteSpace(body.Reason))\n        return UnprocessableEntity(new { field = \"reason\", error = \"required\" });\n\n    var order = await _db.Orders.FindAsync(id);\n\n    // stage 4: nothing at this URL\n    if (order is null)\n        return NotFound();\n\n    // stage 3: known caller, not their order\n    if (order.CustomerId != CurrentUserId)\n        return Forbid();\n\n    // stage 6: valid request, wrong state\n    if (order.Status == OrderStatus.Shipped)\n        return Conflict(new { error = \"order_already_shipped\" });\n\n    order.Cancel(body.Reason);\n    await _db.SaveChangesAsync();\n    return NoContent(); // 204: it worked, nothing to send back\n}"
+        },
+        {
+          t: "p",
+          en: "One deliberate choice above: the lookup runs before the ownership check, so a caller asking about someone else's order gets 403 rather than 404. That tells them the order exists. For a shop that is fine. For anything where the mere existence of a record is private — medical files, private repositories — return 404 instead, so a stranger cannot map out what exists by watching which code comes back.",
+          ar: "هناك خيار مقصود في الأعلى: البحث يسبق فحص الملكية، فالمستدعي الذي يسأل عن order لشخص آخر يحصل على 403 لا 404. هذا يخبره أن الـ order موجود. في متجر هذا مقبول. أما فيما تكون مجرّد معرفة وجود السجل معلومة خاصة — ملفات طبية، مستودعات خاصة — فأرجع 404 بدلاً منها، حتى لا يستطيع غريب رسم خريطة الموجود بمراقبة الكود العائد."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "Clients can decide what to do without reading any text",
+              "Retry logic becomes automatic: retry 5xx and 429, never retry 4xx",
+              "Dashboards split by code show you which failure is growing",
+              "Support can read a log line and know the cause"
+            ],
+            ar: [
+              "الـ clients تقرر ماذا تفعل دون قراءة أي نص",
+              "منطق إعادة المحاولة يصير آلياً: أعد على 5xx و429، ولا تعد على 4xx",
+              "لوحات المراقبة المقسّمة حسب الكود تُظهر أي فشل يتصاعد",
+              "الدعم يقرأ سطر log ويعرف السبب"
+            ]
+          },
+          cons: {
+            en: [
+              "More codes means more branches to write and test in every client",
+              "Teams argue over 400 vs 422 and burn review time",
+              "Precise codes can leak information, like whether a record exists",
+              "Changing a code later is a breaking change for existing clients"
+            ],
+            ar: [
+              "أكواد أكثر تعني فروعاً أكثر تُكتب وتُختبر في كل client",
+              "الفرق تتجادل بين 400 و422 وتستهلك وقت المراجعة",
+              "الأكواد الدقيقة قد تسرّب معلومات، مثل وجود سجل من عدمه",
+              "تغيير كود لاحقاً هو breaking change للـ clients الحالية"
+            ]
+          },
+          limits: {
+            en: [
+              "A code says what class of thing went wrong, never which field",
+              "Some proxies and gateways rewrite unusual codes on the way out",
+              "Browsers treat 401 specially and may pop a login box",
+              "Codes cannot express partial success in a batch call"
+            ],
+            ar: [
+              "الكود يقول أي صنف من الخطأ حدث، ولا يقول أي حقل",
+              "بعض الـ proxies والـ gateways تعيد كتابة الأكواد غير المألوفة في طريق الخروج",
+              "المتصفحات تعامل 401 معاملة خاصة وقد تُظهر نافذة تسجيل دخول",
+              "الأكواد لا تعبّر عن نجاح جزئي في نداء دفعي"
+            ]
+          },
+          alts: {
+            en: [
+              "One error body shape (problem details) carrying a machine-readable code string",
+              "A small fixed set: 400, 401, 403, 404, 409, 500 only",
+              "GraphQL style: always 200, errors described in the body",
+              "Per-field validation errors listed inside a 422 body"
+            ],
+            ar: [
+              "شكل موحّد لجسم الخطأ (problem details) يحمل code نصياً تقرأه الآلة",
+              "مجموعة صغيرة ثابتة: 400 و401 و403 و404 و409 و500 فقط",
+              "أسلوب GraphQL: دائماً 200، والأخطاء موصوفة في الـ body",
+              "أخطاء التحقق لكل حقل مسرودة داخل جسم 422"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Returning 200 with an error inside", ar: "إرجاع 200 مع خطأ في الداخل" },
+          body: {
+            en: "The cancel endpoint returned 200 with a body of success false, message order already shipped. Every monitoring dashboard showed a 100% success rate while a third of cancellations were failing. Nobody noticed for six weeks, because alerts were wired to the status code, not the body.",
+            ar: "الـ cancel endpoint أرجع 200 مع body فيه success = false ورسالة تقول إن الـ order تم شحنه. كل لوحات المراقبة أظهرت نسبة نجاح 100% بينما ثلث عمليات الإلغاء كانت تفشل. لم ينتبه أحد لستة أسابيع، لأن التنبيهات مربوطة بالـ status code لا بالـ body."
+          },
+          fix: "// wrong\nreturn Ok(new { success = false, message = \"order already shipped\" });\n\n// right\nreturn Conflict(new { error = \"order_already_shipped\" });"
+        },
+        {
+          t: "mistake",
+          title: { en: "Using 401 when you mean 403", ar: "استخدام 401 بينما المقصود 403" },
+          body: {
+            en: "A support agent tried to cancel a customer's order and got 401. The mobile client saw 401, deleted the stored token and forced a logout. The agent was signed in correctly — she simply lacked the cancel permission. That is 403: the answer is the same no matter how many times you sign in.",
+            ar: "موظف دعم حاول إلغاء order لعميل فحصل على 401. الـ client رأى 401 فحذف الـ token المخزّن وأجبر على تسجيل الخروج. الموظفة كانت مسجّلة دخول بشكل صحيح — كانت فقط لا تملك صلاحية الإلغاء. هذه 403: الجواب نفسه مهما أعدت تسجيل الدخول."
+          }
+        },
+        {
+          t: "mistake",
+          title: { en: "404 for a failed business rule", ar: "404 لقاعدة عمل فشلت" },
+          body: {
+            en: "Cancelling an already-cancelled order returned 404, because the query filtered on status equals Active and found no row. The client showed the order does not exist, and a customer opened a ticket saying the app lost her order. The order existed; only its state blocked the action. That is 409.",
+            ar: "إلغاء order مُلغى مسبقاً أرجع 404، لأن الاستعلام كان يفلتر على status = Active فلم يجد صفاً. الـ client عرض أن الـ order غير موجود، وفتحت عميلة تذكرة تقول إن التطبيق فقد الـ order الخاص بها. الـ order كان موجوداً؛ حالته فقط منعت العملية. هذه 409."
+          },
+          fix: "// wrong: filter hides the row, so you cannot tell missing from ineligible\nvar order = await _db.Orders\n    .FirstOrDefaultAsync(o => o.Id == id && o.Status == OrderStatus.Active);\nif (order is null) return NotFound();\n\n// right: load it, then judge its state\nvar order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == id);\nif (order is null) return NotFound();\nif (order.Status != OrderStatus.Active) return Conflict();"
+        },
+        {
+          t: "mistake",
+          title: { en: "500 for a caller's bad input", ar: "500 لمدخلات سيئة من المستدعي" },
+          body: {
+            en: "An unhandled FormatException from parsing a date turned into a 500. The client library treated 500 as retryable and sent the same broken date four more times with backoff. Five copies of a request that could never succeed, plus a page for the on-call engineer. Bad input is 4xx; it must never be retried.",
+            ar: "استثناء FormatException غير مُعالج من تحليل تاريخ تحوّل إلى 500. مكتبة الـ client اعتبرت 500 قابلة لإعادة المحاولة فأرسلت نفس التاريخ المكسور أربع مرات إضافية مع backoff. خمس نسخ من request لا يمكن أن ينجح، مع تنبيه لمهندس المناوبة. المدخلات السيئة هي 4xx، ويجب ألا يُعاد إرسالها أبداً."
+          }
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "What is the difference between 4xx and 5xx?", ar: "ما الفرق بين 4xx و5xx؟" },
+          a: {
+            en: "4xx means the problem is in the request, so sending it again unchanged gives the same failure. 5xx means the server broke while doing its own work, so the exact same request might succeed on a second try. That split is what retry logic is built on.",
+            ar: "4xx تعني أن المشكلة في الـ request، فإعادة إرساله دون تغيير تعطي نفس الفشل. و5xx تعني أن الـ server تعطّل أثناء عمله هو، فنفس الـ request قد ينجح في محاولة ثانية. هذا الفصل هو ما يُبنى عليه منطق إعادة المحاولة."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "When do you return 400 and when 422?", ar: "متى تُرجع 400 ومتى 422؟" },
+          a: {
+            en: "400 when the server could not read the request at all — broken JSON, a string where a number was expected, a missing required header. 422 when it read the request fine but a value breaks a rule, like an empty cancel reason or a quantity of -3. My rule of thumb: if I had to parse the body to find the problem, it is 422.",
+            ar: "400 عندما لا يستطيع الـ server قراءة الـ request أصلاً — JSON مكسور، أو نص مكان رقم، أو header مطلوب مفقود. و422 عندما قرأه بنجاح لكن قيمة تكسر قاعدة، مثل reason فارغ أو كمية -3. قاعدتي العملية: إذا اضطررت لتحليل الـ body لأجد المشكلة، فهي 422."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "401 or 403 for a user who lacks a permission?", ar: "401 أم 403 لمستخدم لا يملك صلاحية؟" },
+          a: {
+            en: "403. 401 says I do not know who you are, so the client should send credentials and try again. 403 says I know exactly who you are and the answer is no, so retrying with the same identity is pointless. Mixing them up makes clients log people out for no reason.",
+            ar: "403. الـ 401 تقول لا أعرف من أنت، فالـ client يجب أن يرسل بيانات اعتماد ويحاول مجدداً. والـ 403 تقول أعرفك تماماً والجواب لا، فإعادة المحاولة بنفس الهوية بلا فائدة. الخلط بينهما يجعل الـ clients تُخرج المستخدمين من حساباتهم بلا سبب."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "Should a caller who is not allowed to see a record get 403 or 404?", ar: "هل يحصل مستدعٍ غير مسموح له برؤية سجل على 403 أم 404؟" },
+          a: {
+            en: "It depends on whether existence itself is secret. In a shop, 403 is fine and clearer. In a system where knowing a record exists is already a leak — a private repository, a patient file — return 404, because otherwise someone can walk through identifiers and learn which ones are real just from the code they get back. Decide this once and apply it to the whole API.",
+            ar: "يعتمد على ما إذا كان الوجود نفسه سراً. في متجر، 403 مقبولة وأوضح. أما في نظام تكون فيه معرفة وجود السجل تسريباً بحد ذاته — مستودع خاص، ملف مريض — فأرجع 404، وإلا استطاع أحدهم المرور على المعرّفات ومعرفة الحقيقي منها من الكود العائد فقط. اتخذ هذا القرار مرة واحدة وطبّقه على الـ API كله."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "What does 409 mean beyond the word conflict?", ar: "ماذا تعني 409 أبعد من كلمة تعارض؟" },
+          a: {
+            en: "409 means the request is well-formed and you are allowed to make it, but the current state of the resource makes it impossible right now. Cancelling a shipped order, or writing with an ETag that no longer matches because someone else edited the record first. The distinguishing feature is that the same request could have succeeded a minute earlier, or could succeed later if the state changes.",
+            ar: "409 تعني أن الـ request سليم البنية ومسموح لك به، لكن الحالة الحالية للـ resource تجعله مستحيلاً الآن. مثل إلغاء order تم شحنه، أو كتابة بـ ETag لم يعد مطابقاً لأن شخصاً آخر عدّل السجل قبلك. الميزة الفارقة أن نفس الـ request كان يمكن أن ينجح قبل دقيقة، أو قد ينجح لاحقاً إذا تغيّرت الحالة."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "Twelve teams pick codes differently. How do you fix that?", ar: "اثنا عشر فريقاً يختارون الأكواد بطرق مختلفة. كيف تعالج ذلك؟" },
+          a: {
+            en: "Not by writing a wiki page nobody reads. I would put the decision in shared code: one error-mapping library that turns a small set of domain failure types — NotFound, Forbidden, InvalidInput, StateConflict — into codes and a single body shape, and have every service use it. Then add a contract test in the shared pipeline that fails a build if an endpoint returns 200 with an error body or a 500 on a validation path. Make the correct choice the path of least effort, and the debate disappears.",
+            ar: "ليس بكتابة صفحة wiki لا يقرأها أحد. سأضع القرار في كود مشترك: مكتبة واحدة لتحويل الأخطاء تأخذ مجموعة صغيرة من أنواع الفشل في المجال — NotFound وForbidden وInvalidInput وStateConflict — وتحوّلها إلى أكواد وشكل body موحّد، وتستخدمها كل الخدمات. ثم أضيف contract test في الـ pipeline المشترك يُفشل البناء إذا أرجع endpoint كود 200 مع جسم خطأ، أو 500 في مسار تحقق. اجعل الخيار الصحيح هو الأسهل، ويختفي الجدل."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "A catch-all that turns every failure into 500", ar: "catch شامل يحوّل كل فشل إلى 500" },
+          bad: "try\n{\n    await _orders.CancelAsync(id, body.Reason);\n    return NoContent();\n}\ncatch (Exception ex)\n{\n    _log.LogError(ex, \"cancel failed\");\n    return StatusCode(500);\n}",
+          good: "try\n{\n    await _orders.CancelAsync(id, body.Reason);\n    return NoContent();\n}\ncatch (OrderNotFoundException)\n{\n    return NotFound();\n}\ncatch (OrderStateException ex)\n{\n    return Conflict(new { error = ex.Code });\n}\n// anything else falls through to the global handler, which logs and returns 500",
+          why: {
+            en: "The bad version reports a caller mistake as a server failure. Clients retry 5xx, so a request that can never succeed gets sent again and again, and the on-call engineer is paged for a bug that does not exist. Catch the failures you can classify, and let genuine surprises reach the global handler that returns 500.",
+            ar: "النسخة السيئة تبلّغ عن خطأ من المستدعي كأنه فشل في الـ server. الـ clients تعيد المحاولة على 5xx، فيُرسل request لا يمكن أن ينجح مراراً وتكراراً، ويُستدعى مهندس المناوبة لعطل غير موجود. التقط الأخطاء التي تستطيع تصنيفها، ودع المفاجآت الحقيقية تصل إلى المعالج العام الذي يُرجع 500."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "Validation errors with no field names", ar: "أخطاء تحقق بلا أسماء حقول" },
+          bad: "if (!ModelState.IsValid)\n    return BadRequest(\"Invalid request\");",
+          good: "if (!ModelState.IsValid)\n    return UnprocessableEntity(new ValidationProblemDetails(ModelState));\n// body lists each field and what is wrong with it, so the UI\n// can highlight the exact input the user must fix",
+          why: {
+            en: "A form with nine fields and the message Invalid request forces the user to guess. ValidationProblemDetails is the built-in ASP.NET Core shape that lists each bad field with its reason, so the client can put the message under the right input box. The code also moves to 422, because the request parsed fine and only the values are wrong.",
+            ar: "نموذج فيه تسعة حقول ورسالة تقول طلب غير صالح تجبر المستخدم على التخمين. الـ ValidationProblemDetails هو الشكل الجاهز في ASP.NET Core الذي يسرد كل حقل خاطئ وسببه، فيستطيع الـ client وضع الرسالة تحت الحقل الصحيح. والكود ينتقل أيضاً إلى 422، لأن الـ request تم تحليله بنجاح والقيم وحدها خاطئة."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a system with several services behind a gateway, status codes are the only shared language between them. An order service calling a payment service decides whether to retry, fail the whole operation, or return a message to the user based purely on the code it gets back. If the payment service answers 500 for a declined card, the order service will retry a decline five times and slow every checkout behind it.",
+          ar: "في نظام فيه عدة خدمات خلف gateway، الـ status codes هي اللغة المشتركة الوحيدة بينها. خدمة الـ orders التي تنادي خدمة الدفع تقرر هل تعيد المحاولة، أم تُفشل العملية كلها، أم تُرجع رسالة للمستخدم، بناءً على الكود العائد وحده. وإذا أجابت خدمة الدفع بـ 500 على بطاقة مرفوضة، ستعيد خدمة الـ orders محاولة الرفض خمس مرات وتبطئ كل عمليات الدفع خلفها."
+        },
+        {
+          t: "ul",
+          en: [
+            "Gateways and load balancers add their own codes: 502 when the upstream service crashed, 503 when it is unreachable, 504 when it did not answer in time.",
+            "429 means you are sending too fast. Pair it with a Retry-After header saying how many seconds to wait, so clients back off by instruction instead of by guess.",
+            "Circuit breakers and retry policies are configured by code class, not by message, so an internal service returning the wrong class quietly breaks them.",
+            "Keep the code-to-cause mapping identical across services; a caller should not need to learn which service it is talking to."
+          ],
+          ar: [
+            "الـ gateways وموزّعات الحمل تضيف أكوادها: 502 عند انهيار الخدمة الخلفية، و503 عند تعذّر الوصول إليها، و504 عندما لا تجيب في الوقت المحدد.",
+            "الكود 429 يعني أنك ترسل بسرعة زائدة. اقرنه بـ header اسمه Retry-After يقول كم ثانية يجب الانتظار، ليتراجع الـ client بتعليمات لا بتخمين.",
+            "الـ circuit breakers وسياسات إعادة المحاولة تُضبط حسب صنف الكود لا حسب الرسالة، فخدمة داخلية تُرجع الصنف الخاطئ تكسرها بصمت.",
+            "أبقِ ربط الكود بالسبب متطابقاً عبر كل الخدمات؛ المستدعي يجب ألا يحتاج لمعرفة أي خدمة يكلّم."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "warn",
+          en: "Never map an upstream 4xx straight through to your caller. If the payment service says 400 because your service sent a malformed field, that is your bug, not your caller's — surface it as 500 to them and fix the field.",
+          ar: "لا تمرّر كود 4xx من خدمة خلفية كما هو إلى المستدعي عندك. إذا قالت خدمة الدفع 400 لأن خدمتك أرسلت حقلاً مشوّهاً، فهذا خطؤك لا خطأ المستدعي — أظهره له كـ 500 وأصلح الحقل."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Latency", ar: "Latency" },
+              v: {
+                en: "Reject early. A 422 decided from the request body costs microseconds; a 404 decided after a database lookup costs a full round trip, often 2-10 ms.",
+                ar: "ارفض مبكراً. الـ 422 المقرّرة من جسم الـ request تكلّف ميكروثواني؛ أما 404 المقرّرة بعد استعلام قاعدة بيانات فتكلّف رحلة كاملة، غالباً 2-10 ميلي ثانية."
+              }
+            },
+            {
+              k: { en: "Network", ar: "Network" },
+              v: {
+                en: "A wrong 5xx multiplies traffic. A client retrying four times turns 1,000 failures into 5,000 requests for the same never-succeeding call.",
+                ar: "كود 5xx خاطئ يضاعف الـ traffic. الـ client الذي يعيد المحاولة أربع مرات يحوّل 1,000 فشل إلى 5,000 request لنفس النداء الذي لن ينجح."
+              }
+            },
+            {
+              k: { en: "Database", ar: "Database" },
+              v: {
+                en: "Doing authorization before the lookup saves a query on every forbidden call, but costs you the ability to answer 404 accurately. Pick per endpoint.",
+                ar: "تنفيذ الـ authorization قبل البحث يوفّر استعلاماً في كل نداء ممنوع، لكنه يكلّفك القدرة على إرجاع 404 بدقة. اختر لكل endpoint على حدة."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "Scalability" },
+              v: {
+                en: "429 with Retry-After is your pressure valve. Without it, overloaded services return 500 and the retries make the overload worse.",
+                ar: "الكود 429 مع Retry-After هو صمّام الضغط. بدونه تُرجع الخدمات المحمّلة 500 فتزيد إعادات المحاولة الحمل سوءاً."
+              }
+            },
+            {
+              k: { en: "CPU", ar: "CPU" },
+              v: {
+                en: "Throwing an exception per rejected request is far more expensive than returning a result object. On a validation path taking thousands of requests per second, that shows up.",
+                ar: "رمي exception لكل request مرفوض أغلى بكثير من إرجاع كائن نتيجة. في مسار تحقق يستقبل آلاف الـ requests في الثانية، يظهر هذا الفرق."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "curl -i https://api.example.com/api/orders/1234/cancel -X POST -d '{}' — the -i flag prints the status line and headers; look at the first line to see the code the server really sent, before any client library reshaped it.",
+            "Browser DevTools, Network tab — the Status column shows the code per call; sort by it to find which endpoint is producing 500s.",
+            "Your access log with status and route on every line — group by both to spot an endpoint returning 200 for failures, which shows up as a suspiciously perfect success rate.",
+            "A metrics counter tagged with the status class (2xx, 4xx, 5xx) per route — a rising 4xx line usually means a client deployed a change, a rising 5xx line means you did.",
+            "An integration test per failure path asserting the exact code — this is the only check that stops a refactor from silently turning a 409 back into a 500."
+          ],
+          ar: [
+            "curl -i https://api.example.com/api/orders/1234/cancel -X POST -d '{}' — الخيار -i يطبع سطر الحالة والـ headers؛ انظر إلى السطر الأول لترى الكود الذي أرسله الـ server فعلاً قبل أن تعيد أي مكتبة تشكيله.",
+            "أدوات المطوّر في المتصفح، تبويب Network — عمود Status يعرض الكود لكل نداء؛ رتّب حسبه لتجد أي endpoint ينتج 500.",
+            "سجل الوصول عندك مع status والمسار في كل سطر — جمّع حسبهما لاكتشاف endpoint يُرجع 200 للفشل، ويظهر ذلك كنسبة نجاح مثالية بشكل مريب.",
+            "عدّاد metrics موسوم بصنف الكود (2xx و4xx و5xx) لكل مسار — ارتفاع خط 4xx يعني عادة أن client نشر تغييراً، وارتفاع خط 5xx يعني أنك أنت نشرت.",
+            "اختبار تكامل لكل مسار فشل يتحقق من الكود بدقة — هذا هو الفحص الوحيد الذي يمنع إعادة هيكلة من تحويل 409 إلى 500 بصمت."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "When a code looks wrong, check the layers between you and the caller before you change the handler. A gateway, a proxy or a client SDK can rewrite the code on the way out — curl straight at the service and compare.",
+          ar: "عندما يبدو الكود خاطئاً، افحص الطبقات بينك وبين المستدعي قبل أن تعدّل الـ handler. الـ gateway أو الـ proxy أو الـ SDK قد يعيد كتابة الكود في طريق الخروج — نفّذ curl مباشرة على الخدمة وقارن."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "Any system where a client must decide automatically what to do after a failure depends on these codes being right. The higher the cost of a wrong retry — money moved twice, a seat double-booked — the more the exact code matters.",
+          ar: "أي نظام يجب فيه على الـ client أن يقرر آلياً ماذا يفعل بعد الفشل يعتمد على صحة هذه الأكواد. وكلما ارتفعت تكلفة إعادة المحاولة الخاطئة — مبلغ يُحوَّل مرتين، أو مقعد يُحجز مرتين — زادت أهمية دقة الكود."
+        },
+        {
+          t: "ul",
+          en: [
+            "Payment systems: a declined card is 402 or 422, never 500, because a retried charge can take the money twice.",
+            "Booking and ticketing: the seat taken between your search and your confirm is the textbook 409 — the request was valid when you built it, the state changed underneath.",
+            "File and media upload services: a file larger than the limit is 413, a type the service cannot handle is 415, and neither should be retried.",
+            "Multi-tenant SaaS platforms: asking for another tenant's record returns 404 rather than 403, so no customer can discover that another customer's data exists."
+          ],
+          ar: [
+            "أنظمة الدفع: البطاقة المرفوضة هي 402 أو 422 ولا تكون 500 أبداً، لأن إعادة محاولة الخصم قد تأخذ المبلغ مرتين.",
+            "الحجز والتذاكر: المقعد الذي حُجز بين بحثك وتأكيدك هو المثال الكلاسيكي لـ 409 — الـ request كان صالحاً عند بنائه، والحالة تغيّرت تحته.",
+            "خدمات رفع الملفات والوسائط: ملف أكبر من الحد هو 413، ونوع لا تدعمه الخدمة هو 415، ولا يجوز إعادة المحاولة في الحالتين.",
+            "منصات SaaS متعددة المستأجرين: طلب سجل لمستأجر آخر يُرجع 404 لا 403، حتى لا يكتشف عميل وجود بيانات عميل آخر."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Write the cancel endpoint from this lesson and produce all six failures by hand with curl -i: malformed JSON, no token, wrong user, missing order, empty reason, already shipped. You are done when the six calls print 400, 401, 403, 404, 422 and 409 in that order.",
+          ar: "اكتب الـ cancel endpoint من هذا الدرس وأنتج الفشول الستة يدوياً بـ curl -i: JSON مشوّه، وبلا token، ومستخدم خاطئ، وorder غير موجود، وreason فارغ، وorder تم شحنه. تنتهي عندما تطبع النداءات الستة 400 و401 و403 و404 و422 و409 بهذا الترتيب."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Replace the string error bodies with ValidationProblemDetails and ProblemDetails, so every failure returns the same JSON shape with a type, title, status and a machine-readable error code. You are done when a client can branch on one field for every error in the API.",
+          ar: "استبدل أجسام الأخطاء النصية بـ ValidationProblemDetails وProblemDetails، بحيث يُرجع كل فشل نفس شكل الـ JSON مع type وtitle وstatus وerror code تقرأه الآلة. تنتهي عندما يستطيع الـ client أن يبني قراره على حقل واحد لكل خطأ في الـ API."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Add optimistic concurrency: the client sends the ETag it read, and if the order changed since then the server answers 409. Prove it by running two cancel requests with the same stale ETag and showing that the first gets 204 and the second gets 409.",
+          ar: "أضف optimistic concurrency: الـ client يرسل الـ ETag الذي قرأه، وإذا تغيّر الـ order منذ ذلك الحين يُجيب الـ server بـ 409. أثبت ذلك بتشغيل نداءي إلغاء بنفس الـ ETag القديم وإظهار أن الأول يحصل على 204 والثاني على 409."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Write a shared exception-to-status mapper for four domain failure types (NotFound, Forbidden, InvalidInput, StateConflict) plus a test that fails the build if any endpoint returns 200 with an error body or 500 on a validation path. You are done when a deliberately wrong endpoint breaks the build.",
+          ar: "اكتب mapper مشتركاً يحوّل أربعة أنواع فشل في المجال (NotFound وForbidden وInvalidInput وStateConflict) إلى status codes، مع اختبار يُفشل البناء إذا أرجع أي endpoint كود 200 مع جسم خطأ أو 500 في مسار تحقق. تنتهي عندما يكسر endpoint خاطئ عمداً عمليةَ البناء."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "RFC 9110 — HTTP Semantics, status code definitions", ar: "RFC 9110 — دلالات HTTP وتعريفات الـ status codes" },
+          url: "https://www.rfc-editor.org/rfc/rfc9110.html#name-status-codes",
+          meta: { en: "Spec", ar: "مواصفة" }
+        },
+        {
+          t: "ref",
+          label: { en: "RFC 9457 — Problem Details for HTTP APIs", ar: "RFC 9457 — تفاصيل المشكلة لواجهات HTTP" },
+          url: "https://www.rfc-editor.org/rfc/rfc9457.html",
+          meta: { en: "Spec", ar: "مواصفة" }
+        },
+        {
+          t: "ref",
+          label: { en: "MDN — HTTP response status codes", ar: "MDN — أكواد حالة استجابة HTTP" },
+          url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status",
+          meta: { en: "Reference", ar: "مرجع" }
+        },
+        {
+          t: "ref",
+          label: { en: "Handle errors in ASP.NET Core web APIs", ar: "معالجة الأخطاء في ASP.NET Core web APIs" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/web-api/handle-errors",
+          meta: { en: "Docs", ar: "توثيق" }
+        }
+      ]
+    }
   ],
-
   quiz: [
     {
-      q: { en: "Which header does RFC 9110 make mandatory on a 401 response?", ar: "أي ترويسة يجعلها الـ RFC 9110 إلزامية على استجابة 401؟" },
+      q: {
+        en: "A request arrives with valid JSON, but the quantity field is -3. Which code fits best?",
+        ar: "وصل request بـ JSON صالح، لكن حقل الكمية فيه -3. أي كود هو الأنسب؟"
+      },
       options: [
-        { en: "Retry-After", ar: "Retry-After" },
-        { en: "WWW-Authenticate", ar: "WWW-Authenticate" },
-        { en: "Allow", ar: "Allow" },
-        { en: "Authorization", ar: "Authorization" }
+        { en: "400 — the request was unreadable", ar: "400 — الـ request غير قابل للقراءة" },
+        { en: "422 — it was read fine, the value breaks a rule", ar: "422 — قُرئ بنجاح، لكن القيمة تكسر قاعدة" },
+        { en: "409 — the current state forbids it", ar: "409 — الحالة الحالية تمنعه" },
+        { en: "500 — the server could not handle it", ar: "500 — الـ server لم يستطع معالجته" }
       ],
       correct: 1,
-      why: { en: "A 401 must carry WWW-Authenticate, which states the authentication scheme the client should use. This is not a formality: several client SDKs and OIDC refresh handlers only attempt a silent token refresh when they see the challenge, so a bare 401 makes them log the user out instead. Retry-After belongs on 429 and 503, and Allow belongs on 405.", ar: "الـ 401 يجب أن تحمل WWW-Authenticate التي تبيّن scheme المصادقة التي على العميل استخدامها. وهذه ليست شكليات: فعدة SDKs للعملاء ومعالجات تحديث OIDC لا تحاول تحديثاً صامتاً للـ token إلا حين ترى التحدّي، فتجعلها 401 مجردة تسجّل خروج المستخدم بدلاً من ذلك. أما Retry-After فتنتمي إلى 429 و503، و Allow تنتمي إلى 405." }
+      why: {
+        en: "The body parsed successfully, so the server understood the request; only the value is unacceptable. That is exactly what 422 means.",
+        ar: "الـ body تم تحليله بنجاح، فالـ server فهم الـ request؛ القيمة وحدها غير مقبولة. وهذا بالضبط معنى 422."
+      }
     },
     {
-      q: { en: "Which of these status codes is cacheable by default under RFC 9110, even with no Cache-Control header?", ar: "أي من أكواد الحالة هذه قابل للتخزين افتراضياً بموجب RFC 9110، حتى بلا ترويسة Cache-Control؟" },
+      q: {
+        en: "A signed-in support agent lacks the cancel permission. What should the server return?",
+        ar: "موظف دعم مسجّل الدخول لا يملك صلاحية الإلغاء. ماذا يجب أن يُرجع الـ server؟"
+      },
       options: [
-        { en: "409 Conflict", ar: "409 Conflict" },
-        { en: "422 Unprocessable Content", ar: "422 Unprocessable Content" },
-        { en: "404 Not Found", ar: "404 Not Found" },
-        { en: "503 Service Unavailable", ar: "503 Service Unavailable" }
+        { en: "401, so the client asks for credentials again", ar: "401، ليطلب الـ client بيانات الاعتماد مجدداً" },
+        { en: "403, because identity is known and the answer is no", ar: "403، لأن الهوية معروفة والجواب لا" },
+        { en: "404, to hide the endpoint", ar: "404، لإخفاء الـ endpoint" },
+        { en: "200 with an error message in the body", ar: "200 مع رسالة خطأ في الـ body" }
+      ],
+      correct: 1,
+      why: {
+        en: "401 tells the client to authenticate again, which cannot help here — the agent is already authenticated. 403 says the identity is known and still not allowed.",
+        ar: "الـ 401 تطلب من الـ client إعادة المصادقة، وهذا لا يفيد هنا لأن الموظف مصادَق أصلاً. والـ 403 تقول إن الهوية معروفة ومع ذلك غير مسموح."
+      }
+    },
+    {
+      q: {
+        en: "Why is returning 500 for bad caller input actively harmful?",
+        ar: "لماذا يُعد إرجاع 500 لمدخلات سيئة من المستدعي ضاراً فعلياً؟"
+      },
+      options: [
+        { en: "It is slower to serialize", ar: "لأنه أبطأ في التسلسل" },
+        { en: "Clients treat 5xx as retryable and resend a call that can never succeed", ar: "لأن الـ clients تعتبر 5xx قابلة لإعادة المحاولة فتعيد إرسال نداء لن ينجح أبداً" },
+        { en: "Browsers block 500 responses", ar: "لأن المتصفحات تحجب استجابات 500" },
+        { en: "500 cannot carry a response body", ar: "لأن 500 لا تستطيع حمل جسم استجابة" }
+      ],
+      correct: 1,
+      why: {
+        en: "The 4xx/5xx split is what retry logic reads. Labelling a client mistake as a server failure multiplies the traffic and pages an engineer for a non-existent outage.",
+        ar: "الفصل بين 4xx و5xx هو ما يقرأه منطق إعادة المحاولة. ووسم خطأ المستدعي كفشل في الـ server يضاعف الـ traffic ويستدعي مهندساً لعطل غير موجود."
+      }
+    },
+    {
+      q: {
+        en: "Cancelling an order that has already shipped should return which code?",
+        ar: "إلغاء order تم شحنه مسبقاً يجب أن يُرجع أي كود؟"
+      },
+      options: [
+        { en: "404, since no cancellable order was found", ar: "404، لأنه لم يُعثر على order قابل للإلغاء" },
+        { en: "400, since the request is wrong", ar: "400، لأن الـ request خاطئ" },
+        { en: "409, since the request is valid but the state forbids it", ar: "409، لأن الـ request صالح لكن الحالة تمنعه" },
+        { en: "403, since the action is not permitted", ar: "403، لأن العملية غير مسموحة" }
       ],
       correct: 2,
-      why: { en: "RFC 9110 §15.1 lists 200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414 and 501 as heuristically cacheable. So a 404 with no explicit freshness information can be stored by a shared cache and replayed to other users for a lifetime the cache invents — which is why a 404 caused by replication lag or by per-caller visibility must either carry Cache-Control: no-store or be replaced by 503 with Retry-After.", ar: "الـ RFC 9110 §15.1 يسرد 200 و203 و204 و206 و300 و301 و308 و404 و405 و410 و414 و501 كقابلة للتخزين استدلالياً. فـ 404 بلا معلومات حداثة صريحة يمكن أن يخزّنها cache مشترك ويعيد تقديمها لمستخدمين آخرين بعمر يخترعه الـ cache — ولهذا يجب أن تحمل 404 الناتجة عن تأخّر النسخ أو عن رؤية خاصة بالمستدعي ترويسة Cache-Control: no-store أو أن تُستبدل بـ 503 مع Retry-After." }
+      why: {
+        en: "The order exists and the caller is allowed to ask; only the current state blocks the action. 404 would tell the user their order vanished, which is false and generates support tickets.",
+        ar: "الـ order موجود والمستدعي مسموح له بالسؤال؛ الحالة الحالية وحدها تمنع العملية. و404 ستخبر المستخدم أن الـ order اختفى، وهذا غير صحيح ويولّد تذاكر دعم."
+      }
     },
     {
-      q: { en: "A POST retry hits a unique-index violation because the original request had already succeeded. What should the endpoint return?", ar: "إعادة محاولة POST تصطدم بخرق فهرس فريد لأن الـ request الأصلي كان قد نجح. ماذا يجب أن يرجع الـ endpoint؟" },
+      q: {
+        en: "In a multi-tenant system, a caller requests another tenant's record. Which behaviour is safest?",
+        ar: "في نظام متعدد المستأجرين، يطلب مستدعٍ سجلاً لمستأجر آخر. أي سلوك هو الأكثر أماناً؟"
+      },
       options: [
-        { en: "500, since a database exception was thrown", ar: "500، لأن exception من قاعدة البيانات قد رُمي" },
-        { en: "400, since the request could not be processed", ar: "400، لأن الـ request لم يُعالَج" },
-        { en: "200 replaying the existing resource if an idempotency key matches, otherwise 409", ar: "200 بإعادة تقديم المورد القائم إن طابق مفتاح idempotency، وإلا 409" },
-        { en: "204, since nothing new was created", ar: "204، لأن شيئاً جديداً لم يُنشأ" }
-      ],
-      correct: 2,
-      why: { en: "A lost response followed by a client retry is the single most common cause of a duplicate insert, and it is not a server failure. With an idempotency key you can recognise the retry and replay the original outcome as 200, which is what the caller actually wanted. Without one, the state genuinely conflicts and 409 tells the client to refetch and reconcile. Returning 500 charges normal retry behaviour against your availability SLO and pages on-call; returning 400 tells a valid client its request was malformed.", ar: "استجابة ضائعة تتبعها إعادة محاولة من العميل هي أشيع سبب لإدراج مكرر، وهي ليست عطل سيرفر. فبوجود مفتاح idempotency تستطيع التعرّف على إعادة المحاولة وإعادة تقديم النتيجة الأصلية كـ 200، وهو ما أراده المستدعي فعلاً. وبدونه تتعارض الحالة فعلاً فتخبر 409 العميل بإعادة الجلب والتوفيق. وإرجاع 500 يحمّل سلوك إعادة محاولة طبيعياً على SLO التوافر ويستدعي المناوب؛ وإرجاع 400 يخبر عميلاً صحيحاً أن طلبه كان مشوّهاً." }
-    },
-    {
-      q: { en: "Why is 403 the wrong code for a rate-limit rejection?", ar: "لماذا تكون 403 الكود الخطأ لرفض بسبب حدّ المعدل؟" },
-      options: [
-        { en: "403 cannot carry a response body", ar: "الـ 403 لا تستطيع حمل جسم استجابة" },
-        { en: "403 signals a permanent authorization verdict, so no client backs off and the caller keeps sending at full rate", ar: "الـ 403 تشير إلى حكم تفويض دائم، فلا عميل يتراجع ويواصل المستدعي الإرسال بالمعدل الكامل" },
-        { en: "403 is only valid for GET requests", ar: "الـ 403 صالحة لطلبات GET فقط" },
-        { en: "403 is not in the IANA status code registry", ar: "الـ 403 ليست في سجل IANA لأكواد الحالة" }
+        { en: "403, which is the most accurate description", ar: "403، لأنها الوصف الأدق" },
+        { en: "404, so existence of the record is not revealed", ar: "404، حتى لا يُكشف وجود السجل" },
+        { en: "401, to force a fresh login", ar: "401، لإجبار تسجيل دخول جديد" },
+        { en: "200 with an empty body", ar: "200 مع body فارغ" }
       ],
       correct: 1,
-      why: { en: "403 means authenticated, understood and refused, with no suggestion that waiting will help — so no standard client, Polly policy or SDK retry handler treats it as retryable, and none expects a Retry-After. The caller therefore either gives up on work it should have completed or, more commonly, retries immediately at application level. 429 with Retry-After is the signal every mainstream client already implements, and switching to it typically cuts rejected-request volume by an order of magnitude.", ar: "الـ 403 تعني «مُصادَق ومفهوم ومرفوض» دون أي إيحاء بأن الانتظار يفيد — فلا عميل قياسي ولا سياسة Polly ولا معالج إعادة محاولة في SDK يعتبرها قابلة لإعادة المحاولة، ولا أحد يتوقع فيها Retry-After. فيتخلّى المستدعي إذن عن عمل كان يجب إتمامه، أو — وهو الأشيع — يعيد المحاولة فوراً على مستوى التطبيق. والـ 429 مع Retry-After هي الإشارة التي ينفّذها كل عميل شائع أصلاً، والتحوّل إليها يخفّض عادةً حجم الطلبات المرفوضة بمقدار رتبة." }
-    },
-    {
-      q: { en: "A client sends PUT with If-Match: \"v3\" but the resource is now at \"v5\". What is the correct status code?", ar: "عميل يرسل PUT مع If-Match: \"v3\" لكن المورد الآن عند \"v5\". ما الـ status code الصحيح؟" },
-      options: [
-        { en: "409 Conflict", ar: "409 Conflict" },
-        { en: "412 Precondition Failed", ar: "412 Precondition Failed" },
-        { en: "428 Precondition Required", ar: "428 Precondition Required" },
-        { en: "422 Unprocessable Content", ar: "422 Unprocessable Content" }
-      ],
-      correct: 1,
-      why: { en: "The client stated an explicit expectation via If-Match and the server evaluated it and found it false, which is exactly what 412 Precondition Failed means. 409 is the right answer when the server discovers a state conflict on its own, with no precondition supplied. 428 is what you return to refuse an unconditional write — \"send me an If-Match first\". 422 is about semantics of the content, not about resource version.", ar: "العميل أعلن توقعاً صريحاً عبر If-Match، وقيّمه السيرفر فوجده غير صحيح، وهو بالضبط ما تعنيه 412 Precondition Failed. أما 409 فهي الجواب الصحيح حين يكتشف السيرفر تعارض حالة بنفسه دون شرط مسبق مقدَّم. والـ 428 هي ما ترجعه لرفض كتابة غير مشروطة — أي «أرسل لي If-Match أولاً». والـ 422 تتعلق بدلالات المحتوى لا بنسخة المورد." }
+      why: {
+        en: "403 confirms the record exists. Someone walking through identifiers could map out which ones are real. When existence itself is private, 404 is the correct answer even though it is less precise.",
+        ar: "الـ 403 تؤكد أن السجل موجود، فيستطيع من يمرّ على المعرّفات أن يرسم خريطة الحقيقي منها. وعندما يكون الوجود نفسه معلومة خاصة، تكون 404 هي الجواب الصحيح رغم أنها أقل دقة."
+      }
     }
   ]
 };

@@ -4,328 +4,685 @@ const apiErrorsLesson = {
   moduleId: "foundations",
   title: { en: "Error contracts", ar: "عقود الأخطاء" },
   summary: {
-    en: "Failures are part of your API's public contract: what a client actually needs to decide retry, fix, or escalate — and why an inconsistent error shape costs more than the failure itself.",
-    ar: "الأعطال جزء من العقد العلني لـ API لديك: ما الذي يحتاجه الـ client فعلاً ليقرّر هل يعيد المحاولة أم يصحّح أم يصعّد — ولماذا يكلّف شكل الخطأ غير المتّسق أكثر من العطل نفسه."
+    en: "Give every failure the same shape, so a caller can read one field and know exactly what to do next.",
+    ar: "اجعل كل فشل يخرج بنفس الشكل، حتى يقرأ الـ caller حقلاً واحداً ويعرف ماذا يفعل بالضبط."
   },
   mins: 11,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "Most API design effort goes into the success path: the resource shape, the field names, the pagination cursor. The error path is then left to whatever happens to bubble out of the framework — a model-binding dictionary from one layer, an exception message from another, a hand-rolled anonymous object from a third. The result is that the half of your contract that clients hit under stress is the half nobody designed.", ar: "معظم جهد تصميم الـ API يذهب إلى مسار النجاح: شكل المورد، وأسماء الحقول، ومؤشر التقسيم. ثم يُترك مسار الخطأ لما يصادف أن يطفو من الـ framework — قاموس model binding من طبقة، ورسالة exception من أخرى، وكائن مجهول مكتوب يدوياً من ثالثة. والنتيجة أن نصف عقدك الذي يصطدم به العملاء تحت الضغط هو النصف الذي لم يصمّمه أحد." },
-      { t: "p", en: "A client receiving a failure has to answer exactly three questions: is this my fault or yours, should I retry, and can I show the user something actionable. A status code alone answers the first two roughly and the third not at all. A free-text message answers the third for a human reading a log and none of them for code. What an error contract does is make all three answerable programmatically, from stable fields that survive a copy edit and a translation.", ar: "الـ client الذي يستقبل عطلاً عليه أن يجيب على ثلاثة أسئلة بالضبط: هل الخطأ مني أم منك، وهل أعيد المحاولة، وهل أستطيع عرض شيء قابل للتنفيذ للمستخدم. والـ status code وحده يجيب على الأولين تقريبياً وعلى الثالث إطلاقاً. والرسالة النصية الحرة تجيب على الثالث لإنسان يقرأ سجلاً ولا تجيب على أي منها للكود. وما يفعله عقد الأخطاء هو جعل الثلاثة قابلة للإجابة برمجياً، من حقول ثابتة تنجو من تحرير لغوي ومن ترجمة." },
-      { t: "p", en: "The economic argument is simpler still. Every distinct error shape in your API is a branch every client must write, and a branch nobody tests. Ten shapes across five clients is fifty pieces of parsing code, of which the ones that matter are exercised only during an incident. One shape across the same surface is five, and they get exercised on the first bad request in development. Consistency here is not aesthetics — it is the difference between a client that degrades gracefully and one that shows a blank screen.", ar: "والحجة الاقتصادية أبسط. فكل شكل خطأ مختلف في الـ API لديك هو فرع يجب أن يكتبه كل client، وفرع لا يختبره أحد. عشرة أشكال عبر خمسة عملاء تعني خمسين قطعة كود تحليل، وما يهم منها لا يُنفَّذ إلا أثناء حادثة. وشكل واحد عبر نفس المساحة يعني خمساً، وتُنفَّذ عند أول request خاطئ في بيئة التطوير. والاتساق هنا ليس جمالاً — بل الفرق بين client يتدهور بلطف وآخر يعرض شاشة فارغة." },
-      { t: "callout", kind: "note", en: "RFC 9457 (July 2023) obsoletes RFC 7807 and is the current specification for Problem Details for HTTP APIs. The media type and member names are unchanged, so anything written against 7807 remains valid — cite 9457 when you write the guideline.", ar: "الـ RFC 9457 (يوليو 2023) يلغي الـ RFC 7807 وهو المواصفة الحالية لـ Problem Details for HTTP APIs. والـ media type وأسماء الأعضاء لم تتغير، فكل ما كُتب مقابل 7807 يبقى صالحاً — لكن استشهد بـ 9457 حين تكتب الدليل." }
-    ]},
-
-    { key: "problem", blocks: [
-      { t: "p", en: "Take a realistic ASP.NET Core service that grew for two years without an error guideline. A 400 from model binding returns a ValidationProblemDetails with an errors dictionary. A 400 from a domain guard clause returns { \"message\": \"Order already shipped\" }. A 400 from a third-party gateway wrapper returns { \"error\": { \"code\": 4021, \"desc\": \"...\" } }. A 500 returns an HTML developer exception page in staging and an empty body in production. That is four shapes and one non-shape, on one status code family, in one service.", ar: "خذ خدمة ASP.NET Core واقعية نمت سنتين دون دليل أخطاء. فالـ 400 من الـ model binding يرجع ValidationProblemDetails مع قاموس errors. والـ 400 من guard clause في المجال يرجع { \"message\": \"Order already shipped\" }. والـ 400 من غلاف بوابة خارجية يرجع { \"error\": { \"code\": 4021, \"desc\": \"...\" } }. والـ 500 يرجع صفحة exception بصيغة HTML في الـ staging وجسماً فارغاً في الـ production. أربعة أشكال ولا-شكل واحد، على عائلة status code واحدة، في خدمة واحدة." },
-      { t: "p", en: "The observable cost is not the parsing. It is that the mobile client, unable to distinguish these reliably, falls back to one generic \"Something went wrong. Try again.\" for everything — including the 409 that means the coupon expired and the 422 that means the address is missing a postcode. Support tickets that should have been self-service become calls. And the retry logic, having no way to tell a permanent failure from a transient one, either retries everything (amplifying an outage) or retries nothing (turning a 2-second blip into a failed checkout).", ar: "والتكلفة الملحوظة ليست في التحليل. بل في أن عميل الموبايل، إذ يعجز عن التمييز بينها بثقة، يرتد إلى رسالة عامة واحدة «حدث خطأ ما، حاول مجدداً» لكل شيء — بما فيها الـ 409 التي تعني أن القسيمة انتهت، والـ 422 التي تعني أن العنوان ينقصه رمز بريدي. فتتحوّل تذاكر دعم كان يمكن حلّها ذاتياً إلى مكالمات. ومنطق إعادة المحاولة، إذ لا سبيل له لتمييز عطل دائم من عابر، إما يعيد كل شيء (فيضخّم انقطاعاً) أو لا يعيد شيئاً (فيحوّل تعثّراً مدته ثانيتان إلى عملية دفع فاشلة)." },
-      { t: "kv", rows: [
-        { k: { en: "Before: 14 error shapes across 9 endpoints", ar: "قبل: 14 شكل خطأ عبر 9 endpoints" }, v: { en: "Each of 4 client teams writes bespoke parsing; ~60% of failures collapse into one generic toast; error-cause dashboards impossible to build", ar: "كل فريق من 4 فرق عملاء يكتب تحليلاً خاصاً؛ نحو 60% من الأعطال تنهار إلى إشعار عام واحد؛ ويستحيل بناء لوحات لأسباب الأخطاء" } },
-        { k: { en: "After: one problem+json shape with a stable type URI", ar: "بعد: شكل problem+json واحد مع type URI ثابت" }, v: { en: "One parser per client; field-level messages reach the right form input; error rate can be grouped by type in the dashboard with no code change", ar: "محلّل واحد لكل client؛ ورسائل على مستوى الحقل تصل إلى حقل الإدخال الصحيح؛ ويمكن تجميع معدل الأخطاء حسب الـ type في اللوحة دون تغيير كود" } },
-        { k: { en: "Free-text message as the client's only signal", ar: "رسالة نصية حرة كإشارة العميل الوحيدة" }, v: { en: "Clients string-match on message text; a copy edit or a localisation pass silently breaks branching in a shipped mobile app you cannot patch for weeks", ar: "العملاء يطابقون نص الرسالة؛ فتحرير لغوي أو جولة توطين تكسر التفرّع بصمت في تطبيق موبايل منشور لا تستطيع ترقيعه لأسابيع" } },
-        { k: { en: "No correlation id in the body", ar: "لا معرّف ارتباط في الجسم" }, v: { en: "A user screenshot is unmappable to a log line; triage starts with a timestamp-range search instead of a single trace lookup, adding 10–30 minutes per ticket", ar: "لقطة شاشة من مستخدم لا يمكن ربطها بسطر سجل؛ فيبدأ الفرز ببحث في نطاق زمني بدل استعلام تتبّع واحد، مضيفاً 10–30 دقيقة لكل تذكرة" } },
-        { k: { en: "Exception text returned verbatim", ar: "نص الـ exception يُرجَع حرفياً" }, v: { en: "Leaks table names, connection strings and internal hostnames; also couples clients to your stack traces, so a refactor becomes a breaking change", ar: "يسرّب أسماء جداول وسلاسل اتصال وأسماء مضيفين داخلية؛ ويربط العملاء بـ stack traces لديك، فتصبح إعادة الهيكلة تغييراً كاسراً" } }
-      ]}
-    ]},
-
-    { key: "internals", blocks: [
-      { t: "p", en: "Problem Details defines a media type — application/problem+json — and five members, all optional, plus arbitrary extension members. The suffix matters: +json tells any intermediary that the payload is JSON, while problem tells a client that this is the standard error document and not a domain resource that happens to be JSON. A client can therefore branch on Content-Type rather than on status code plus guesswork, which is what makes a single generic error handler possible in an SDK.", ar: "الـ Problem Details يعرّف media type — هو application/problem+json — وخمسة أعضاء كلها اختيارية، بالإضافة إلى أعضاء توسعة حرة. واللاحقة مهمة: فـ +json تخبر أي وسيط أن الحمولة JSON، بينما problem تخبر الـ client أن هذا هو مستند الخطأ القياسي لا مورد مجال صادف أن يكون JSON. فيستطيع الـ client التفرّع على الـ Content-Type بدل الـ status code والتخمين، وهذا ما يجعل معالج أخطاء عاماً واحداً ممكناً داخل SDK." },
-      { t: "kv", rows: [
-        { k: { en: "type (URI reference)", ar: "type (مرجع URI)" }, v: { en: "The stable machine identifier for the problem class. Defaults to \"about:blank\", which means \"the status code is the whole story\". It need not resolve, but making it a real doc page is free documentation.", ar: "المعرّف الآلي الثابت لصنف المشكلة. وقيمته الافتراضية \"about:blank\" أي «الـ status code هو القصة كاملة». ولا يلزم أن يكون قابلاً للفتح، لكن جعله صفحة توثيق حقيقية توثيق مجاني." } },
-        { k: { en: "title (string)", ar: "title (نص)" }, v: { en: "A short, human-readable summary that must NOT change from occurrence to occurrence of the same type. It is a label for the class, not for this instance.", ar: "ملخّص قصير مقروء بشرياً يجب ألا يتغير من حدوث لآخر لنفس الـ type. فهو تسمية للصنف لا لهذه الحالة." } },
-        { k: { en: "status (integer)", ar: "status (عدد صحيح)" }, v: { en: "A copy of the HTTP status code, for the case where the body has been stored, forwarded or logged away from its response. It must match the actual status.", ar: "نسخة من الـ HTTP status code، لحالة أن يكون الجسم قد خُزِّن أو مُرِّر أو سُجِّل بعيداً عن استجابته. ويجب أن يطابق الـ status الفعلي." } },
-        { k: { en: "detail (string)", ar: "detail (نص)" }, v: { en: "Occurrence-specific explanation aimed at a human. This is where the varying part goes — never put a machine-parseable value here without also exposing it as an extension member.", ar: "شرح خاص بهذه الحالة موجّه لإنسان. وهنا يوضع الجزء المتغيّر — ولا تضع فيه قيمة يحتاج الكود لتحليلها دون كشفها أيضاً كعضو توسعة." } },
-        { k: { en: "instance (URI reference)", ar: "instance (مرجع URI)" }, v: { en: "Identifies this specific occurrence. Commonly the request path, or better, a URI that dereferences to the incident/trace, e.g. /errors/traces/{traceId}.", ar: "يعرّف هذه الحالة تحديداً. وغالباً مسار الـ request، أو الأفضل URI يشير إلى الحادثة أو التتبّع، مثل /errors/traces/{traceId}." } },
-        { k: { en: "extension members", ar: "أعضاء التوسعة" }, v: { en: "Any additional top-level fields you define: errors, traceId, retryAfterSeconds, balanceShortfall. This is the mechanism by which a standard shape carries domain-specific, machine-actionable data.", ar: "أي حقول إضافية في المستوى الأعلى تعرّفها أنت: errors و traceId و retryAfterSeconds و balanceShortfall. وهذه هي الآلية التي يحمل بها شكل قياسي بيانات خاصة بالمجال قابلة للتنفيذ آلياً." } }
-      ]},
-      { t: "code", lang: "json", label: { en: "One shape, two very different failures", ar: "شكل واحد، عطلان مختلفان جداً" }, code: "HTTP/1.1 422 Unprocessable Content\nContent-Type: application/problem+json\n\n{\n  \"type\":     \"https://api.example.com/problems/validation-failed\",\n  \"title\":    \"One or more fields are invalid.\",\n  \"status\":   422,\n  \"detail\":   \"The shipping address is missing a postal code.\",\n  \"instance\": \"/errors/traces/0af7651916cd43dd8448eb211c80319c\",\n  \"traceId\":  \"0af7651916cd43dd8448eb211c80319c\",\n  \"errors\": {\n    \"shipping.postalCode\": [\"Required for country GB.\"],\n    \"items[2].quantity\":   [\"Must be between 1 and 99.\"]\n  }\n}\n\nHTTP/1.1 409 Conflict\nContent-Type: application/problem+json\n\n{\n  \"type\":     \"https://api.example.com/problems/order-already-shipped\",\n  \"title\":    \"The order can no longer be modified.\",\n  \"status\":   409,\n  \"detail\":   \"Order ord_8812 shipped at 2026-03-04T09:12:44Z.\",\n  \"instance\": \"/errors/traces/9f2c1b70a4e0416e9b3d5f0c2a71de88\",\n  \"traceId\":  \"9f2c1b70a4e0416e9b3d5f0c2a71de88\",\n  \"orderId\":  \"ord_8812\",\n  \"shippedAt\":\"2026-03-04T09:12:44Z\",\n  \"retryable\": false\n}" },
-      { t: "p", en: "In ASP.NET Core the plumbing is already there and is worth knowing precisely, because most teams reimplement half of it by accident. Applying [ApiController] turns a failed model state into an automatic 400 built by ProblemDetailsFactory — that is where the errors dictionary comes from. Calling AddProblemDetails() registers an IProblemDetailsService, after which UseExceptionHandler and UseStatusCodePages will produce problem+json for unhandled exceptions and for bare status results such as a 404 from routing, which otherwise return an empty body. The customisation seam is ProblemDetailsOptions.CustomizeProblemDetails, which runs for every generated document — the correct single place to stamp traceId, instance and type.", ar: "في ASP.NET Core البنية موجودة أصلاً وتستحق المعرفة بدقة، لأن معظم الفرق تعيد بناء نصفها بالصدفة. فوضع [ApiController] يحوّل فشل الـ model state إلى 400 تلقائي يبنيه الـ ProblemDetailsFactory — ومن هناك يأتي قاموس errors. واستدعاء AddProblemDetails() يسجّل IProblemDetailsService، وبعده ينتج UseExceptionHandler و UseStatusCodePages مستند problem+json للـ exceptions غير المعالَجة وللنتائج ذات الـ status المجرّد مثل 404 من الـ routing، والتي ترجع جسماً فارغاً لولا ذلك. ومَفصل التخصيص هو ProblemDetailsOptions.CustomizeProblemDetails الذي يعمل مع كل مستند يُولَّد — وهو المكان الواحد الصحيح لختم traceId و instance و type." },
-      { t: "p", en: "The mapping layer is the part you must own. A domain exception carries meaning that only your code knows — that a ConcurrencyException is a 409 and retryable after a refetch, while a PaymentDeclinedException is a 402 and is not retryable at all. Doing this with a chain of catch blocks inside controllers scatters the policy; doing it in one IExceptionHandler (or an exception-to-problem mapper resolved from DI) keeps it in a single reviewable table. The important discipline is that the mapper is total: an exception type it does not recognise must become a generic 500 with a traceId and no internal text, never a leaked message.", ar: "أما طبقة الربط فهي الجزء الذي يجب أن تملكه أنت. فـ exception المجال يحمل معنى لا يعرفه إلا كودك — أن ConcurrencyException هو 409 وقابل لإعادة المحاولة بعد إعادة جلب، وأن PaymentDeclinedException هو 402 وغير قابل لإعادة المحاولة إطلاقاً. وفعل ذلك بسلسلة catch داخل الـ controllers يبعثر السياسة؛ وفعله في IExceptionHandler واحد (أو مُربّط exception إلى problem يُحلّ من الـ DI) يبقيها في جدول واحد قابل للمراجعة. والانضباط المهم أن يكون المُربّط شاملاً: فأي نوع exception لا يعرفه يجب أن يصير 500 عامة مع traceId وبلا نص داخلي، لا رسالة مسرّبة." },
-      { t: "code", lang: "csharp", label: { en: "One mapping table, one place that stamps trace context", ar: "جدول ربط واحد، ومكان واحد يختم سياق التتبّع" }, code: "builder.Services.AddProblemDetails(o =>\n{\n    o.CustomizeProblemDetails = ctx =>\n    {\n        var traceId = Activity.Current?.Id ?? ctx.HttpContext.TraceIdentifier;\n        ctx.ProblemDetails.Extensions[\"traceId\"] = traceId;\n        ctx.ProblemDetails.Instance ??= $\"/errors/traces/{traceId}\";\n        ctx.ProblemDetails.Type     ??= \"https://api.example.com/problems/unexpected\";\n    };\n});\n\nbuilder.Services.AddExceptionHandler<DomainExceptionHandler>();\n\npublic sealed class DomainExceptionHandler(IProblemDetailsService problems)\n    : IExceptionHandler\n{\n    // The whole policy, in one reviewable table.\n    private static (int Status, string Type, string Title)? Map(Exception ex) => ex switch\n    {\n        ConcurrencyException  => (409, \"order-already-shipped\",  \"The order can no longer be modified.\"),\n        PaymentDeclinedException => (402, \"payment-declined\",    \"The payment was declined by the issuer.\"),\n        QuotaExceededException => (429, \"quota-exceeded\",        \"Request quota exhausted for this key.\"),\n        NotFoundException     => (404, \"resource-not-found\",     \"The requested resource does not exist.\"),\n        _                     => null   // unknown -> generic 500, nothing leaked\n    };\n\n    public async ValueTask<bool> TryHandleAsync(\n        HttpContext ctx, Exception ex, CancellationToken ct)\n    {\n        var m = Map(ex);\n        ctx.Response.StatusCode = m?.Status ?? StatusCodes.Status500InternalServerError;\n\n        return await problems.TryWriteAsync(new ProblemDetailsContext\n        {\n            HttpContext = ctx,\n            Exception   = ex,\n            ProblemDetails = new ProblemDetails\n            {\n                Status = ctx.Response.StatusCode,\n                Type   = $\"https://api.example.com/problems/{m?.Type ?? \"unexpected\"}\",\n                Title  = m?.Title ?? \"An unexpected error occurred.\",\n                // detail is occurrence-specific and safe only for mapped types\n                Detail = m is null ? null : ex.Message\n            }\n        });\n    }\n}" },
-      { t: "p", en: "One subtlety that decides whether the contract survives: the type URI is the versioned identity of the problem, and everything else is presentation. You may reword title and detail freely, translate them, or shorten them for a mobile surface — clients that branch on type are unaffected. The moment you change or reuse a type URI, you have made a breaking change with no compiler to catch it, which is why type values belong in a registry file reviewed like a schema, not invented inline at the call site.", ar: "ودقيقة واحدة تحسم هل ينجو العقد: الـ type URI هو الهوية المُصدَّرة للمشكلة، وكل ما عداه عرض. فتستطيع إعادة صياغة title و detail بحرية، أو ترجمتهما، أو اختصارهما لسطح موبايل — والعملاء الذين يتفرّعون على الـ type لا يتأثرون. ولحظة أن تغيّر type URI أو تعيد استخدامه تكون قد أحدثت تغييراً كاسراً بلا مترجم يلتقطه، ولهذا تنتمي قيم الـ type إلى ملف سجل يُراجَع كما يُراجَع schema، لا أن تُخترع في موضع الاستدعاء." },
-      { t: "callout", kind: "warn", en: "Content negotiation cuts both ways: if a client sends Accept: application/json and you reply with application/problem+json, a strict client library may reject the response before your error handler ever runs. RFC 9457 allows problem+json to be sent regardless, and every mainstream HTTP client accepts it — but verify it against your actual SDKs before you standardise, especially older Java and Go clients.", ar: "التفاوض على المحتوى سلاح ذو حدّين: فإن أرسل client ترويسة Accept: application/json ورددت بـ application/problem+json، فقد ترفض مكتبة HTTP صارمة الاستجابة قبل أن يعمل معالج الأخطاء لديك أصلاً. والـ RFC 9457 يسمح بإرسال problem+json على أي حال، وكل عملاء HTTP الشائعين يقبلونه — لكن تحقق مقابل الـ SDKs الفعلية لديك قبل التوحيد، خصوصاً عملاء Java و Go الأقدم." }
-    ]},
-
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
-          en: [
-            "One parser per client instead of one per endpoint family — error handling becomes SDK-level, not call-site-level",
-            "Stable type URIs let clients branch on machine identity while you freely reword and translate the prose",
-            "Extension members carry domain data (retryAfterSeconds, field errors, shortfall amounts) without a new shape",
-            "A traceId in every problem turns a user screenshot into a one-query log lookup",
-            "Errors become groupable in dashboards by type, so you can see which failure class is actually growing"
-          ],
-          ar: [
-            "محلّل واحد لكل client بدل واحد لكل عائلة endpoints — فتصبح معالجة الأخطاء على مستوى الـ SDK لا على مستوى موضع الاستدعاء",
-            "الـ type URIs الثابتة تتيح للعملاء التفرّع على هوية آلية بينما تعيد أنت الصياغة والترجمة بحرية",
-            "أعضاء التوسعة تحمل بيانات المجال (retryAfterSeconds، وأخطاء الحقول، ومبالغ العجز) دون شكل جديد",
-            "وجود traceId في كل problem يحوّل لقطة شاشة من مستخدم إلى استعلام سجل واحد",
-            "تصبح الأخطاء قابلة للتجميع في اللوحات حسب الـ type، فترى أي صنف عطل ينمو فعلاً"
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "An error contract is the fixed shape of the response your API sends when a request fails. It exists so the calling program can decide what to do in code — retry, highlight a form field, or stop and show a message — without reading the English sentence inside the body.",
+          ar: "عقد الخطأ هو الشكل الثابت للـ response الذي ترسله الـ API عند فشل الطلب. وجوده يسمح للبرنامج المُتصِل أن يقرر في الكود ماذا يفعل — إعادة المحاولة، أو تمييز حقل في الـ form، أو التوقف وعرض رسالة — دون أن يقرأ الجملة الإنجليزية داخل الـ body."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Error contract", ar: "Error contract" },
+              v: {
+                en: "The agreed set of fields a failure response always contains, no matter what broke.",
+                ar: "مجموعة الحقول المتفق عليها التي يحتويها رد الفشل دائماً، مهما كان سبب العطل."
+              }
+            },
+            {
+              k: { en: "Problem Details (RFC 9457)", ar: "Problem Details (RFC 9457)" },
+              v: {
+                en: "A short published internet standard — an RFC is a numbered spec document — that defines a small JSON error body with the fields type, title, status, detail and instance. RFC 9457 replaced the older RFC 7807; the fields are the same.",
+                ar: "معيار إنترنت منشور قصير — الـ RFC هو مستند مواصفة مرقّم — يعرّف body صغيراً بصيغة JSON للأخطاء، بحقول type و title و status و detail و instance. الـ RFC 9457 حلّ محل الـ RFC 7807 الأقدم، والحقول نفسها."
+              }
+            },
+            {
+              k: { en: "Machine-readable code", ar: "Machine-readable code" },
+              v: {
+                en: "A short fixed string such as insufficient_stock that the client compares in an if statement. It is never translated and never reworded.",
+                ar: "نص قصير ثابت مثل insufficient_stock يقارنه الـ client داخل جملة if. لا يُترجم ولا تُعاد صياغته أبداً."
+              }
+            },
+            {
+              k: { en: "Validation error", ar: "Validation error" },
+              v: {
+                en: "The request was well-formed but a value is wrong — for example quantity is 0. It maps to one or more specific input fields.",
+                ar: "الطلب مبنيّ بشكل صحيح لكن إحدى القيم خاطئة — مثلاً quantity تساوي 0. يرتبط بحقل إدخال محدد أو أكثر."
+              }
+            },
+            {
+              k: { en: "Trace id", ar: "Trace id" },
+              v: {
+                en: "A unique string that identifies one request across every service it touched, so a support ticket maps to exact log lines.",
+                ar: "نص فريد يعرّف طلباً واحداً عبر كل الـ services التي مرّ بها، حتى ترتبط تذكرة الدعم بسطور log محددة."
+              }
+            },
+            {
+              k: { en: "application/problem+json", ar: "application/problem+json" },
+              v: {
+                en: "The Content-Type header value that tells the client this JSON body is an error described by the Problem Details standard.",
+                ar: "قيمة ترويسة Content-Type التي تخبر الـ client أن هذا الـ JSON body خطأ موصوف بمعيار Problem Details."
+              }
+            }
           ]
         },
-        cons: {
-          en: [
-            "A type registry is real governance overhead — someone must review additions and refuse duplicates",
-            "problem+json is verbose next to a two-field error object; on a chatty mobile API it is measurable bytes",
-            "Some older HTTP client libraries and API gateways mishandle the +json suffix or strip the body on 4xx",
-            "Teams over-model: 60 type URIs where 12 would do, each with one caller and no client branching on it",
-            "The detail field tempts developers into pasting exception text, which reintroduces leakage through the standard shape"
-          ],
-          ar: [
-            "سجل الأنواع عبء حوكمة حقيقي — فلا بد لأحد من مراجعة الإضافات ورفض التكرار",
-            "الـ problem+json مُسهب مقارنةً بكائن خطأ من حقلين؛ وعلى API موبايل كثير الأحاديث هو بايتات قابلة للقياس",
-            "بعض مكتبات HTTP الأقدم وبعض الـ API gateways تسيء التعامل مع لاحقة +json أو تحذف الجسم عند 4xx",
-            "الفرق تفرط في النمذجة: 60 type URI حيث تكفي 12، كل منها بمستدعٍ واحد ولا عميل يتفرّع عليه",
-            "حقل detail يغري المطورين بلصق نص الـ exception، فتعود التسريبات عبر الشكل القياسي نفسه"
-          ]
+        {
+          t: "p",
+          en: "Use one running example for the whole lesson: a POST /orders endpoint that takes a sku (the product code), a quantity, and a payment method id. It can fail in four different ways. The sku does not exist. The quantity is 0. The warehouse has 3 units but the customer asked for 10. The card was declined. Those are four very different situations, and the caller must react differently to each one.",
+          ar: "سنستخدم مثالاً واحداً طوال الدرس: endpoint اسمه POST /orders يأخذ sku (كود المنتج) و quantity و معرّف وسيلة الدفع. يمكن أن يفشل بأربع طرق مختلفة. الـ sku غير موجود. الـ quantity تساوي 0. المخزن فيه 3 قطع والعميل طلب 10. البطاقة رُفضت. هذه أربع حالات مختلفة تماماً، وعلى الـ caller أن يتصرف مع كل واحدة بشكل مختلف."
         },
-        limits: {
-          en: [
-            "Problem Details says nothing about which status code to choose — that decision is still yours",
-            "It does not define whether an error is retryable; you must add that as an extension or infer it from status",
-            "It has no localisation mechanism; translating title/detail server-side needs Accept-Language plumbing you build",
-            "It cannot express partial success in a bulk operation — that needs a 207-style per-item result design",
-            "Streaming and long-lived responses can fail after headers are sent, where no problem body can be delivered"
-          ],
-          ar: [
-            "الـ Problem Details لا يقول شيئاً عن أي status code تختار — فذلك القرار يبقى لك",
-            "لا يعرّف هل الخطأ قابل لإعادة المحاولة؛ فعليك إضافة ذلك كتوسعة أو استنتاجه من الـ status",
-            "لا آلية توطين فيه؛ وترجمة title/detail على السيرفر تحتاج بنية Accept-Language تبنيها أنت",
-            "لا يستطيع التعبير عن نجاح جزئي في عملية مجمّعة — فذلك يحتاج تصميم نتيجة لكل عنصر بأسلوب 207",
-            "الاستجابات البثّية وطويلة العمر قد تفشل بعد إرسال الـ headers، حيث لا يمكن تسليم جسم problem أصلاً"
-          ]
+        {
+          t: "p",
+          en: "Think of a pharmacy rejecting a prescription. If the pharmacist hands back a slip with a printed reason box — wrong dosage, drug out of stock, insurance refused — the front desk knows immediately which of the three procedures to run. If instead they hand back a handwritten note, someone has to read it and guess. An error contract is the printed reason box: a small fixed set of codes plus room for a human sentence. The code drives the decision; the sentence only helps a person who is already reading.",
+          ar: "تخيّل صيدلية ترفض وصفة طبية. لو أعاد الصيدلي ورقة فيها خانة سبب مطبوعة — جرعة خاطئة، الدواء غير متوفر، التأمين رفض — يعرف الموظف فوراً أي إجراء من الثلاثة يطبّق. أما لو أعاد ملاحظة مكتوبة بخط اليد، فسيضطر أحدهم لقراءتها والتخمين. عقد الخطأ هو خانة السبب المطبوعة: مجموعة صغيرة ثابتة من الأكواد، مع مساحة لجملة موجهة للإنسان. الكود هو ما يقود القرار، والجملة تساعد فقط الشخص الذي يقرأ."
         },
-        alts: {
-          en: [
-            "A bespoke house error envelope — fine if enforced everywhere, but you rebuild what 9457 already gives you",
-            "Google AIP-193 style errors (code, message, details[]) — richer typed detail payloads, common in gRPC-first shops",
-            "gRPC status codes plus google.rpc.Status details — the natural choice when the transport is not HTTP/JSON",
-            "GraphQL's errors array with extensions.code — required there, since transport status is almost always 200",
-            "Status code only, empty body — defensible for a tiny internal API where the code genuinely says everything"
-          ],
-          ar: [
-            "غلاف أخطاء داخلي مفصّل — مقبول إن فُرض في كل مكان، لكنك تعيد بناء ما يمنحه 9457 أصلاً",
-            "أخطاء بأسلوب Google AIP-193 (code و message و details[]) — حمولات تفصيل مُنمّطة أغنى، شائعة في بيئات gRPC أولاً",
-            "أكواد حالة gRPC مع تفاصيل google.rpc.Status — الخيار الطبيعي حين لا يكون النقل HTTP/JSON",
-            "مصفوفة errors في GraphQL مع extensions.code — إلزامية هناك، إذ يكون status النقل 200 دائماً تقريباً",
-            "status code فقط بجسم فارغ — يمكن الدفاع عنه لـ API داخلي صغير يقول فيه الكود كل شيء فعلاً"
+        {
+          t: "callout",
+          kind: "note",
+          en: "You do not have to use Problem Details. You do have to use one shape everywhere. Problem Details is worth choosing because it is already standard, ASP.NET Core produces it for you, and client libraries already know how to parse it.",
+          ar: "لست مضطراً لاستخدام Problem Details. لكنك مضطر لاستخدام شكل واحد في كل مكان. واختيار Problem Details مفيد لأنه معيار جاهز، ولأن ASP.NET Core ينتجه لك، ولأن مكتبات الـ clients تعرف كيف تقرأه."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "Without a contract, each endpoint invents its own error shape. In one real API the four POST /orders failures came back as four different bodies: a plain string, an object with a message field, an object with an errors array, and an HTML page from the web server when an unhandled exception escaped. The mobile app had to write four parsers for one endpoint.",
+          ar: "بدون عقد، كل endpoint يخترع شكل خطئه الخاص. في API حقيقي رجعت حالات الفشل الأربع في POST /orders بأربعة bodies مختلفة: نص عادي، وكائن فيه حقل message، وكائن فيه مصفوفة errors، وصفحة HTML من الـ web server عندما هرب exception غير مُعالَج. اضطر تطبيق الموبايل لكتابة أربعة parsers لـ endpoint واحد."
+        },
+        {
+          t: "p",
+          en: "So the mobile team did the only thing left: they matched on English text, with code like if (body.message.Contains(\"stock\")). Six weeks later someone improved the wording from 'not enough stock' to 'insufficient inventory'. The server tests still passed, because the server behaviour did not change. The app stopped showing the 'choose a smaller quantity' screen and showed a generic failure instead. Checkout completion on mobile dropped by about 4 percent — meaning roughly 4 out of every 100 customers who reached checkout no longer finished it — and it took nine days to trace the cause.",
+          ar: "فعل فريق الموبايل الشيء الوحيد المتبقّي: طابَقوا على النص الإنجليزي، بكود مثل if (body.message.Contains(\"stock\")). بعد ستة أسابيع حسّن أحدهم الصياغة من 'not enough stock' إلى 'insufficient inventory'. اختبارات الـ server ظلّت ناجحة لأن سلوك الـ server لم يتغيّر. لكن التطبيق توقّف عن عرض شاشة 'اختر كمية أقل' وعرض فشلاً عاماً بدلاً منها. انخفض إتمام الشراء على الموبايل بنحو 4 بالمئة — أي أن حوالي 4 من كل 100 عميل وصلوا لصفحة الدفع لم يعودوا يكملون — واستغرق تتبّع السبب تسعة أيام."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Before: what the client sees", ar: "قبل: ما يراه الـ client" },
+              v: {
+                en: "A status code plus free text. To act on it the client must guess from wording, so any copy edit is a silent breaking change.",
+                ar: "status code ونص حر. ليتصرف الـ client عليه عليه أن يخمّن من الصياغة، فيصبح أي تعديل لغوي كسراً صامتاً للتوافق."
+              }
+            },
+            {
+              k: { en: "After: what the client sees", ar: "بعد: ما يراه الـ client" },
+              v: {
+                en: "A status code, a stable code string, an optional per-field list, and a trace id. Wording can change freely because nothing branches on it.",
+                ar: "status code، ونص code ثابت، وقائمة اختيارية لكل حقل، و trace id. يمكن تغيير الصياغة بحرية لأن لا شيء يتفرّع بناءً عليها."
+              }
+            },
+            {
+              k: { en: "Support cost", ar: "تكلفة الدعم" },
+              v: {
+                en: "Before, a ticket said 'it failed' and someone searched logs by timestamp. After, the user reads a trace id off the screen and one log query finds the exact request.",
+                ar: "قبلاً كانت التذكرة تقول 'فشل' فيبحث أحدهم في الـ logs بالوقت. بعدها يقرأ المستخدم trace id من الشاشة، فيجد استعلام logs واحد الطلب المحدد."
+              }
+            }
           ]
         }
-      }
-    ]},
-
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "Returning 200 OK with { \"success\": false }", ar: "إرجاع 200 OK مع { \"success\": false }" },
-        body: { en: "A team wraps every response in an envelope and always answers 200 so \"the client only has one path\". The consequences are entirely infrastructural: the CDN happily caches the failure and serves it to the next 4,000 users, the API gateway's retry policy never fires because nothing looks like a failure, the 5xx rate on the dashboard reads 0.00% during a full outage, and the load balancer keeps routing to a node whose health check is technically passing. The error was made invisible to every layer that was supposed to react to it.", ar: "فريق يغلّف كل استجابة بغلاف ويردّ دائماً بـ 200 كي «يكون للعميل مسار واحد». والعواقب بنيوية بالكامل: فالـ CDN يخزّن العطل بسرور ويقدّمه لأربعة آلاف مستخدم تالين، وسياسة إعادة المحاولة في الـ gateway لا تعمل أبداً لأن لا شيء يبدو عطلاً، ومعدل الـ 5xx على اللوحة يقرأ 0.00% أثناء انقطاع كامل، وموازن الأحمال يواصل التوجيه إلى node يجتاز فحص الصحة تقنياً. جُعل الخطأ غير مرئي لكل طبقة كان يُفترض أن تتفاعل معه." },
-        fix: "// let the status code carry the signal every intermediary already understands\nreturn TypedResults.Problem(\n    statusCode: StatusCodes.Status409Conflict,\n    type:  \"https://api.example.com/problems/order-already-shipped\",\n    title: \"The order can no longer be modified.\");" },
-      { t: "mistake",
-        title: { en: "Serialising the exception into the response", ar: "تسلسل الـ exception داخل الاستجابة" },
-        body: { en: "A catch-all handler returns new { error = ex.ToString() }. In production a transient database failure now ships the connection string fragment, the schema and table names, the full stack trace with internal namespaces, and the deployed assembly version to any caller — free reconnaissance for anyone probing the API. It is also a coupling accident: a client team, having nothing else stable to key on, starts matching on the substring \"FOREIGN KEY constraint\", and your next refactor breaks them.", ar: "معالج شامل يرجع new { error = ex.ToString() }. وفي الـ production يصبح عطل قاعدة بيانات عابر شاحناً لجزء من سلسلة الاتصال وأسماء الـ schema والجداول والـ stack trace كاملاً بمساحات الأسماء الداخلية ونسخة التجميعة المنشورة إلى أي مستدعٍ — استطلاع مجاني لكل من يسبر الـ API. وهو أيضاً ترابط بالصدفة: فريق عميل، إذ لا يجد شيئاً ثابتاً آخر يعتمد عليه، يبدأ بمطابقة النص \"FOREIGN KEY constraint\"، فتكسره إعادة الهيكلة التالية." },
-        fix: "// log the detail, return the identity\n_logger.LogError(ex, \"Unhandled failure on {Path}\", ctx.Request.Path);\nreturn TypedResults.Problem(\n    statusCode: 500,\n    title: \"An unexpected error occurred.\",\n    extensions: new Dictionary<string, object?> { [\"traceId\"] = Activity.Current?.Id });" },
-      { t: "mistake",
-        title: { en: "Prose as the only machine signal", ar: "النثر كإشارة آلية وحيدة" },
-        body: { en: "The error body is { \"message\": \"Coupon SUMMER24 has expired\" } and nothing else. The web client, needing to show a \"choose another coupon\" button only for that case, writes message.includes(\"expired\"). Six months later a copywriter changes it to \"is no longer valid\" in a PR that touches no client code and passes every test — and the button silently disappears from production. Anything a client must branch on has to exist as a stable field, not as a sentence.", ar: "جسم الخطأ هو { \"message\": \"Coupon SUMMER24 has expired\" } ولا شيء غيره. فالعميل الويب، إذ يحتاج عرض زر «اختر قسيمة أخرى» في تلك الحالة فقط، يكتب message.includes(\"expired\"). وبعد ستة أشهر يغيّرها كاتب المحتوى إلى \"is no longer valid\" في PR لا يمسّ كود أي عميل ويجتاز كل الاختبارات — فيختفي الزر بصمت من الـ production. فأي شيء يجب أن يتفرّع عليه الـ client لا بد أن يوجد كحقل ثابت لا كجملة." },
-        fix: "{\n  \"type\": \"https://api.example.com/problems/coupon-expired\",\n  \"title\": \"The coupon is no longer valid.\",\n  \"couponCode\": \"SUMMER24\",\n  \"expiredAt\": \"2026-06-30T23:59:59Z\"\n}" },
-      { t: "mistake",
-        title: { en: "A different shape per layer of the stack", ar: "شكل مختلف لكل طبقة في المكدّس" },
-        body: { en: "Model binding produces ValidationProblemDetails with errors keyed by property path, FluentValidation middleware produces a flat array of strings, the domain layer throws exceptions rendered as { message }, and a reverse-proxy timeout returns the proxy's own HTML page. A client must implement four parsers plus an HTML sniff, and the fourth case is only ever hit in production under load — so it is the one that was never written and produces an unhandled JSON parse exception in the mobile app.", ar: "الـ model binding ينتج ValidationProblemDetails بأخطاء مفهرسة بمسار الخاصية، وطبقة FluentValidation تنتج مصفوفة نصوص مسطّحة، وطبقة المجال ترمي exceptions تُعرض كـ { message }، ومهلة الـ reverse proxy ترجع صفحة HTML خاصة بالـ proxy. فيضطر الـ client لتنفيذ أربعة محلّلات إضافةً إلى استشعار HTML، والحالة الرابعة لا تُصادَف إلا في الـ production تحت الضغط — فتكون هي التي لم تُكتب أبداً وتنتج exception تحليل JSON غير معالَج في تطبيق الموبايل." },
-        fix: "// normalise at the edge, including proxy and status-code-only responses\napp.UseExceptionHandler();\napp.UseStatusCodePages();   // 404/405 from routing become problem+json too" },
-      { t: "mistake",
-        title: { en: "Reusing one error type for unrelated causes", ar: "إعادة استخدام type واحد لأسباب غير مترابطة" },
-        body: { en: "A single type of .../problems/invalid-request is returned for a malformed JSON body, an expired token, a missing feature flag and a downstream quota rejection. Because the identity is the same, the client cannot distinguish \"fix your payload\" (never retry) from \"quota exhausted\" (retry after a delay), so it retries all four — and the quota case turns into a retry storm that keeps the quota exhausted. Error identity must be as granular as the smallest distinct client reaction, and no more.", ar: "type واحد هو .../problems/invalid-request يُرجَع لجسم JSON مشوّه، ولـ token منتهٍ، ولميزة غير مفعّلة، ولرفض حصة من خدمة أسفل. ولأن الهوية واحدة، لا يستطيع الـ client تمييز «صحّح حمولتك» (لا تُعِد أبداً) من «نفدت الحصة» (أعِد بعد تأخير)، فيعيد المحاولة في الأربع — فتتحول حالة الحصة إلى عاصفة إعادة محاولة تُبقي الحصة نافدة. وهوية الخطأ يجب أن تكون بدقة أصغر ردّ فعل متمايز لدى العميل، ولا أكثر." },
-        fix: "// one type per distinct client reaction\n.../problems/malformed-body      -> 400, never retry\n.../problems/token-expired       -> 401, refresh then retry once\n.../problems/quota-exceeded      -> 429, honour Retry-After" },
-      { t: "mistake",
-        title: { en: "No trace identity in the error the user can see", ar: "لا هوية تتبّع في الخطأ الذي يراه المستخدم" },
-        body: { en: "The 500 body is a bare \"An error occurred\". A customer reports it three hours later with a screenshot and an approximate time. Triage now means scanning a window of logs across every instance for a plausible candidate, which on a service doing 800 req/s is tens of thousands of entries — routinely 20–40 minutes per ticket, often ending in \"could not reproduce\". Emitting the W3C trace id in the body and showing it in the UI turns that into one indexed lookup.", ar: "جسم الـ 500 هو \"An error occurred\" مجرداً. فيبلّغ عميل عنه بعد ثلاث ساعات بلقطة شاشة ووقت تقريبي. ويصير الفرز مسحاً لنافذة سجلات عبر كل نسخة بحثاً عن مرشّح محتمل، وهو على خدمة تخدم 800 request/ثانية عشرات آلاف السجلات — أي 20–40 دقيقة لكل تذكرة عادةً، وينتهي كثيراً بـ «تعذّر إعادة الإنتاج». وإصدار معرّف تتبّع W3C في الجسم وعرضه في الواجهة يحوّل ذلك إلى استعلام مفهرس واحد." },
-        fix: "ctx.ProblemDetails.Extensions[\"traceId\"] = Activity.Current?.TraceId.ToString();\n// and render it in the UI: \"Reference: 0af76519…\"" }
-    ]},
-
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "What is RFC 9457 / Problem Details and what are its members?", ar: "ما هو الـ RFC 9457 / Problem Details وما أعضاؤه؟" },
-        a: { en: "It is the IETF standard error document for HTTP APIs, served as application/problem+json. It defines five optional members — type (a URI identifying the problem class), title (a short, stable human summary of that class), status (a copy of the HTTP status), detail (an explanation specific to this occurrence) and instance (a URI identifying this occurrence) — plus any extension members you add at the top level, such as errors or traceId. RFC 9457 obsoletes RFC 7807; the member names are unchanged.", ar: "هو مستند الخطأ القياسي من الـ IETF لـ APIs الـ HTTP، ويُقدَّم بـ application/problem+json. ويعرّف خمسة أعضاء اختيارية — type (وهو URI يعرّف صنف المشكلة)، و title (ملخّص بشري قصير وثابت لذلك الصنف)، و status (نسخة من الـ HTTP status)، و detail (شرح خاص بهذه الحالة)، و instance (وهو URI يعرّف هذه الحالة) — إضافةً إلى أي أعضاء توسعة تضيفها في المستوى الأعلى مثل errors أو traceId. والـ RFC 9457 يلغي الـ RFC 7807؛ وأسماء الأعضاء لم تتغير." } },
-      { t: "qa", level: "mid",
-        q: { en: "What is wrong with returning 200 OK and { \"success\": false }?", ar: "ما الخطأ في إرجاع 200 OK مع { \"success\": false }؟" },
-        a: { en: "It hides the failure from every layer that is not your client code. A CDN or shared cache will store and replay the failure; a gateway retry or circuit-breaker policy keyed on status will never trigger; your own 5xx-rate SLO reads healthy during an outage; and load-balancer health signalling is misled. HTTP status is the one field every intermediary on the path understands without knowing your domain — spending it on \"the transport worked\" throws away the only universal signal you have.", ar: "لأنه يخفي العطل عن كل طبقة ليست كودك أنت. فالـ CDN أو أي cache مشترك سيخزّن العطل ويعيد تقديمه؛ وسياسة إعادة المحاولة أو الـ circuit breaker في الـ gateway المبنية على الـ status لن تعمل أبداً؛ ومؤشر الـ SLO لمعدل 5xx لديك يقرأ صحياً أثناء انقطاع؛ وإشارات صحة موازن الأحمال تُضلَّل. والـ HTTP status هو الحقل الوحيد الذي يفهمه كل وسيط على المسار دون معرفة بمجالك — وإنفاقه على «النقل نجح» يهدر الإشارة العالمية الوحيدة التي تملكها." } },
-      { t: "qa", level: "mid",
-        q: { en: "How should a client decide whether to retry, from the error body?", ar: "كيف يقرّر الـ client إعادة المحاولة من جسم الخطأ؟" },
-        a: { en: "Primarily from the status class plus the method's idempotency: 4xx other than 408/425/429 is a client mistake and must not be retried; 429 and 503 are retryable and should honour Retry-After; 5xx is retryable only if the operation is idempotent or carries an idempotency key, because a 500 may mean the write half-succeeded. Where that is not enough — a 409 that is retryable after a refetch versus one that is permanent — I would put an explicit extension member such as \"retryable\": false rather than have every client encode my status-code folklore.", ar: "أساساً من صنف الـ status مع idempotency الـ method: فالـ 4xx عدا 408 و425 و429 خطأ من العميل ولا يجوز إعادة المحاولة عليه؛ والـ 429 و503 قابلان لإعادة المحاولة ويجب احترام Retry-After؛ والـ 5xx قابل لإعادة المحاولة فقط إن كانت العملية idempotent أو تحمل مفتاح idempotency، لأن 500 قد تعني أن الكتابة نجحت نصفياً. وحيث لا يكفي ذلك — 409 قابلة لإعادة المحاولة بعد إعادة جلب مقابل أخرى دائمة — سأضع عضو توسعة صريحاً مثل \"retryable\": false بدل أن يرمّز كل عميل فولكلور أكواد الحالة لديّ." } },
-      { t: "qa", level: "mid",
-        q: { en: "What is the difference between title and detail, and why does it matter?", ar: "ما الفرق بين title و detail، ولماذا يهم؟" },
-        a: { en: "title describes the class of problem and must be the same for every occurrence of a given type — it is effectively a label. detail describes this occurrence and is expected to vary: \"Order ord_8812 shipped at 09:12Z\". The reason it matters is that clients and dashboards group by type, display title as a heading, and show detail as context. If you put varying data in title, your error dashboard explodes into thousands of unique labels and grouping becomes useless — the same cardinality problem you get from putting an id into a metric label.", ar: "الـ title يصف صنف المشكلة ويجب أن يكون واحداً لكل حدوث لـ type معيّن — فهو تسمية عملياً. والـ detail يصف هذه الحالة ويُتوقع أن يتغير: «الطلب ord_8812 شُحن في 09:12Z». وسبب الأهمية أن العملاء واللوحات تجمّع حسب الـ type، وتعرض الـ title كعنوان، والـ detail كسياق. فإن وضعت بيانات متغيرة في الـ title انفجرت لوحة أخطائك إلى آلاف التسميات الفريدة وصار التجميع بلا فائدة — وهي نفس مشكلة الـ cardinality التي تنتج عن وضع معرّف في تسمية مقياس." } },
-      { t: "qa", level: "senior",
-        q: { en: "How do you return field-level validation errors without inventing a second shape?", ar: "كيف ترجع أخطاء تحقّق على مستوى الحقل دون اختراع شكل ثانٍ؟" },
-        a: { en: "As an extension member on the same problem document — conventionally an errors object keyed by the JSON pointer or property path of the offending field, with an array of messages per key, which is exactly what ASP.NET Core's ValidationProblemDetails already emits. Keeping it inside the standard envelope means a client's generic handler still parses the document, reads type and traceId, and only the validation-specific branch looks at errors. Two things I insist on: the keys must match the request body's path exactly, including array indices, or the UI cannot attach the message to an input; and the messages must be safe to display, since they will end up on screen.", ar: "كعضو توسعة على نفس مستند الـ problem — وعرفاً كائن errors مفهرس بمؤشر JSON أو بمسار خاصية الحقل المخالف، مع مصفوفة رسائل لكل مفتاح، وهو بالضبط ما يصدره ValidationProblemDetails في ASP.NET Core أصلاً. وإبقاؤه داخل الغلاف القياسي يعني أن المعالج العام لدى العميل ما زال يحلّل المستند ويقرأ type و traceId، ولا ينظر إلى errors إلا الفرع الخاص بالتحقق. وأمران أُصرّ عليهما: أن تطابق المفاتيح مسار جسم الـ request تماماً بما فيه فهارس المصفوفات وإلا عجزت الواجهة عن إلحاق الرسالة بحقل الإدخال؛ وأن تكون الرسائل آمنة للعرض لأنها ستنتهي على الشاشة." } },
-      { t: "qa", level: "senior",
-        q: { en: "A partner integration keeps breaking whenever you change error wording. What went wrong and how do you fix it without breaking them again?", ar: "تكامل شريك ينكسر كلما غيّرت صياغة الأخطاء. ما الخطأ وكيف تصلحه دون كسره مجدداً؟" },
-        a: { en: "The contract leaked: they are branching on prose because you never gave them a stable machine identifier, so every copy edit is effectively an API change. The fix has to be additive and staged. First, add type URIs and a machine code to every error while keeping the existing message text byte-identical — nothing breaks, and both signals are now present. Second, instrument which field partners actually read: log the presence of a client header or SDK version, and reach out to the top integrators directly. Third, publish the type registry as versioned documentation and announce a date after which message text is explicitly non-contractual. Only after adoption is measurable do you start rewording. The general principle is that you cannot remove a de facto contract by declaring it was never a contract; you have to give people the replacement first and let them migrate.", ar: "العقد تسرّب: فهم يتفرّعون على النثر لأنك لم تمنحهم قط معرّفاً آلياً ثابتاً، فصار كل تحرير لغوي تغييراً في الـ API فعلياً. والإصلاح لا بد أن يكون إضافياً ومرحلياً. أولاً أضف type URIs وكوداً آلياً لكل خطأ مع إبقاء نص الرسالة القائم مطابقاً بايتاً ببايت — فلا ينكسر شيء وتصير الإشارتان موجودتين. ثانياً راقب أي حقل يقرأه الشركاء فعلاً: سجّل وجود ترويسة عميل أو نسخة SDK، وتواصل مع كبار المتكاملين مباشرةً. ثالثاً انشر سجل الأنواع كتوثيق مُصدَّر وأعلن تاريخاً يصبح بعده نص الرسائل غير تعاقدي صراحةً. ولا تبدأ إعادة الصياغة إلا بعد أن يصير التبنّي قابلاً للقياس. والمبدأ العام أنك لا تستطيع إزالة عقد قائم بحكم الأمر الواقع بإعلان أنه لم يكن عقداً قط؛ بل عليك أن تمنح الناس البديل أولاً وتدعهم يهاجرون." } },
-      { t: "qa", level: "staff",
-        q: { en: "You own API standards across 20 services with 20 error styles. How do you converge them without a two-year migration project?", ar: "أنت مسؤول عن معايير الـ APIs عبر 20 خدمة بعشرين أسلوب أخطاء. كيف توحّدها دون مشروع هجرة يستغرق سنتين؟" },
-        a: { en: "I would not run it as a migration project, because those stall the moment the first quarter's priorities change. I would make the standard cheaper than the status quo and let it spread. Concretely: ship a shared NuGet package that wires the exception handler, the problem factory, the trace stamping and the status-code-pages normalisation in one AddApiErrors() call, so adopting is a one-line diff rather than a refactor. Add a contract test to the shared test package that asserts every non-2xx response is problem+json with a type and a traceId, and make it opt-in-then-default over two releases. Put the type registry in one repository with an owner and a review checklist, so adding a type is a five-minute PR rather than a design debate. Then measure, not mandate: a dashboard showing, per service, the percentage of error responses that are conformant — teams move when their number is visible next to their peers'. Finally, enforce at the boundary that matters most: the gateway rejects a new public route in the API catalogue unless its OpenAPI document declares problem+json for error responses. The old services converge as they touch code, and nobody has to schedule a migration.", ar: "لن أديره كمشروع هجرة، لأن تلك تتوقف لحظة تغيّر أولويات الربع الأول. بل سأجعل المعيار أرخص من الوضع القائم وأدعه ينتشر. وعملياً: أشحن حزمة NuGet مشتركة تربط معالج الـ exceptions ومصنع الـ problem وختم التتبّع وتوحيد صفحات أكواد الحالة في استدعاء واحد AddApiErrors()، فيصير التبنّي فرقاً بسطر واحد لا إعادة هيكلة. وأضيف اختبار عقد في حزمة الاختبارات المشتركة يؤكد أن كل استجابة غير 2xx هي problem+json بـ type و traceId، وأجعله اختيارياً ثم افتراضياً عبر إصدارين. وأضع سجل الأنواع في مستودع واحد بمالك وقائمة مراجعة، فتصير إضافة type مجرد PR في خمس دقائق لا نقاش تصميم. ثم أقيس ولا أفرض: لوحة تعرض لكل خدمة نسبة استجابات الأخطاء المطابقة — فالفرق تتحرك حين يكون رقمها مرئياً بجوار أقرانها. وأخيراً أفرض عند الحدّ الأهم: الـ gateway يرفض مساراً عاماً جديداً في كتالوج الـ APIs ما لم يعلن مستند OpenAPI الخاص به problem+json لاستجابات الأخطاء. فتتقارب الخدمات القديمة كلما لامست الكود، ولا يحتاج أحد لجدولة هجرة." } }
-    ]},
-
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Catch-all handler leaking internals and swallowing status", ar: "معالج شامل يسرّب الداخل ويبتلع الـ status" },
-        bad: "[HttpPost(\"orders\")]\npublic async Task<IActionResult> Create(CreateOrderDto dto)\n{\n    try\n    {\n        var id = await _orders.CreateAsync(dto);\n        return Ok(new { success = true, data = id });\n    }\n    catch (Exception ex)\n    {\n        _logger.LogError(ex.Message);                     // message only: no stack, no scope\n        return Ok(new { success = false, error = ex.ToString() });   // 200 + full internals\n    }\n}",
-        good: "[HttpPost(\"orders\")]\npublic async Task<IActionResult> Create(CreateOrderDto dto, CancellationToken ct)\n{\n    // No try/catch here at all: the pipeline's IExceptionHandler owns the mapping.\n    var id = await _orders.CreateAsync(dto, ct);\n    return CreatedAtAction(nameof(GetById), new { id }, new OrderRef(id));\n}\n\n// Program.cs\nbuilder.Services.AddProblemDetails();\nbuilder.Services.AddExceptionHandler<DomainExceptionHandler>();\napp.UseExceptionHandler();\napp.UseStatusCodePages();",
-        why: { en: "Three separate defects compound here. Returning 200 for a failure makes the error invisible to caches, gateway retry policies and the 5xx SLO, so an outage shows as a healthy service. ex.ToString() ships the stack trace, internal namespaces and often schema or connection details to any caller, which is both an information disclosure and an accidental contract clients will start matching on. And LogError(ex.Message) discards the exception object, so the one place the stack trace should have survived — the log — does not have it either. Deleting the try/catch and letting a single pipeline handler own the exception-to-problem mapping fixes all three, and removes the same block from every other action.", ar: "ثلاثة عيوب منفصلة تتراكم هنا. فإرجاع 200 لعطل يجعل الخطأ غير مرئي للـ caches ولسياسات إعادة المحاولة في الـ gateway ولمؤشر الـ SLO للـ 5xx، فيظهر الانقطاع كخدمة سليمة. و ex.ToString() يشحن الـ stack trace ومساحات الأسماء الداخلية وغالباً تفاصيل الـ schema أو الاتصال إلى أي مستدعٍ، وهو كشف معلومات وعقد بالصدفة سيبدأ العملاء بالمطابقة عليه. و LogError(ex.Message) يهمل كائن الـ exception، فالمكان الوحيد الذي كان يجب أن ينجو فيه الـ stack trace — السجل — لا يحويه أيضاً. وحذف الـ try/catch وترك معالج واحد في الـ pipeline يملك ربط الـ exception بالـ problem يصلح الثلاثة، ويزيل نفس الكتلة من كل action آخر." }
-      },
-      { t: "review", severity: "medium",
-        title: { en: "Hand-rolled validation shape that the UI cannot bind", ar: "شكل تحقّق يدوي لا تستطيع الواجهة ربطه" },
-        bad: "var errors = new List<string>();\nif (string.IsNullOrWhiteSpace(dto.Shipping?.PostalCode))\n    errors.Add(\"Postal code is required\");\nfor (var i = 0; i < dto.Items.Count; i++)\n    if (dto.Items[i].Quantity < 1)\n        errors.Add($\"Item {i + 1} quantity is invalid\");\n\nif (errors.Count > 0)\n    return BadRequest(new { errors });   // flat strings, no field paths, plain application/json",
-        good: "var ms = new ModelStateDictionary();\nif (string.IsNullOrWhiteSpace(dto.Shipping?.PostalCode))\n    ms.AddModelError(\"shipping.postalCode\", \"Required for country GB.\");\nfor (var i = 0; i < dto.Items.Count; i++)\n    if (dto.Items[i].Quantity is < 1 or > 99)\n        ms.AddModelError($\"items[{i}].quantity\", \"Must be between 1 and 99.\");\n\nif (!ms.IsValid)\n    return ValidationProblem(ms,               // -> 400 application/problem+json\n        type: \"https://api.example.com/problems/validation-failed\",\n        title: \"One or more fields are invalid.\");",
-        why: { en: "The flat string list is unusable by a form: the client cannot tell which input to highlight, so it dumps all messages into a banner at the top and the user has to hunt for the offending field — measurably worse completion rates on long forms. It also ships as plain application/json with an ad-hoc key, so the client's generic problem-details handler does not recognise it and needs a special case. Using ValidationProblem keeps the same envelope as every other error, produces field-path keys the UI can bind directly to inputs, and costs one line less than the hand-rolled version.", ar: "قائمة النصوص المسطّحة غير صالحة لنموذج إدخال: فلا يستطيع الـ client معرفة أي حقل يُبرز، فيسكب كل الرسائل في شريط أعلى الصفحة ويضطر المستخدم للبحث عن الحقل المخالف — وهو انخفاض قابل للقياس في معدلات إتمام النماذج الطويلة. كما يُشحن كـ application/json عادي بمفتاح ارتجالي، فلا يتعرّف عليه معالج الـ problem details العام لدى العميل ويحتاج حالة خاصة. واستخدام ValidationProblem يبقي نفس الغلاف كباقي الأخطاء، وينتج مفاتيح بمسارات حقول تستطيع الواجهة ربطها بالمدخلات مباشرةً، ويكلّف سطراً أقل من النسخة اليدوية." }
-      }
-    ]},
-
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a system design discussion the error contract is where the reliability story either holds together or falls apart. Retry policies, circuit breakers, timeout budgets and idempotency keys all assume the caller can tell a transient failure from a permanent one; if your errors do not carry that distinction, every one of those mechanisms degrades to a guess. This is why the error shape is usually settled at the same time as the retry policy, not afterwards — they are two halves of one decision.", ar: "في نقاش تصميم الأنظمة يكون عقد الأخطاء هو المكان الذي تتماسك فيه قصة الموثوقية أو تنهار. فسياسات إعادة المحاولة والـ circuit breakers وميزانيات المهل ومفاتيح الـ idempotency كلها تفترض أن المستدعي يستطيع تمييز عطل عابر من دائم؛ فإن لم تحمل أخطاؤك ذلك التمييز تدهورت كل تلك الآليات إلى تخمين. ولهذا يُحسم شكل الخطأ عادةً في نفس وقت سياسة إعادة المحاولة لا بعدها — فهما نصفا قرار واحد." },
-      { t: "p", en: "The second structural question is where errors are normalised. Normalising inside each service means every team implements the same handler and one of them will get it wrong; normalising only at the gateway means the gateway must understand every service's exception vocabulary, which it cannot. The pattern that holds is normalise in a shared library at the service edge, and have the gateway enforce rather than translate: it verifies the content type and the presence of a type and trace id, and converts its own failures — timeouts, 502s, auth rejections — into the same shape so a client sees one contract whether the failure came from your code or from the infrastructure in front of it.", ar: "والسؤال البنيوي الثاني هو أين تُوحَّد الأخطاء. فتوحيدها داخل كل خدمة يعني أن كل فريق ينفّذ نفس المعالج وسيخطئ أحدهم؛ وتوحيدها عند الـ gateway وحده يعني أن على الـ gateway فهم مفردات exceptions كل خدمة، وهو ما لا يستطيعه. والنمط الذي يصمد هو التوحيد في مكتبة مشتركة عند حافة الخدمة، مع جعل الـ gateway يفرض لا يترجم: فيتحقق من الـ content type ومن وجود type ومعرّف تتبّع، ويحوّل أعطاله هو — المهل و502 ورفض المصادقة — إلى نفس الشكل، فيرى الـ client عقداً واحداً سواء جاء العطل من كودك أو من البنية التحتية أمامه." },
-      { t: "ul",
-        en: [
-          "Decide the retryable/non-retryable signal at design time — status class alone is not enough for 409, 422 or a partially-applied write",
-          "Give every problem a trace id that also appears in logs, metrics exemplars and the user-facing UI, so support triage is one lookup",
-          "Own the type registry as a versioned artifact; adding a type is cheap, changing or reusing one is a breaking change",
-          "Normalise infrastructure failures (gateway timeouts, 502s, rate limits) into the same shape, or clients get an unparseable body exactly when load is highest",
-          "For bulk endpoints, design per-item results up front — a single status code cannot express 97 successes and 3 failures"
-        ],
-        ar: [
-          "احسم إشارة القابلية لإعادة المحاولة وقت التصميم — فصنف الـ status وحده لا يكفي لـ 409 أو 422 أو كتابة طُبِّقت جزئياً",
-          "امنح كل problem معرّف تتبّع يظهر أيضاً في السجلات وعيّنات المقاييس وواجهة المستخدم، فيصير فرز الدعم استعلاماً واحداً",
-          "امتلك سجل الأنواع كأثر مُصدَّر؛ فإضافة type رخيصة، وتغييره أو إعادة استخدامه تغيير كاسر",
-          "وحّد أعطال البنية التحتية (مهل الـ gateway و502 وحدود المعدل) إلى نفس الشكل، وإلا حصل العملاء على جسم غير قابل للتحليل تحديداً حين يكون الحمل أعلى ما يكون",
-          "لـ endpoints العمليات المجمّعة صمّم نتائج لكل عنصر من البداية — فـ status code واحد لا يعبّر عن 97 نجاحاً و3 إخفاقات"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "A useful review question: \"show me the code in the client that reads this error.\" If no client reads a field, it is documentation, not contract — and if a client reads a field you did not intend as contract (a message string, an exception name), you have a breaking change waiting for your next copy edit.", ar: "سؤال مراجعة مفيد: «أرني الكود في العميل الذي يقرأ هذا الخطأ». فإن لم يقرأ أي عميل حقلاً فهو توثيق لا عقد — وإن قرأ عميل حقلاً لم تقصده عقداً (نص رسالة أو اسم exception) فلديك تغيير كاسر ينتظر تحريرك اللغوي التالي." }
-    ]},
-
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "A problem+json body runs 200–600 bytes versus ~60 for a bare message. Irrelevant at a 0.5% error rate; at 20% during an incident on a 5k req/s service it is roughly 500 KB/s of extra egress — worth trimming detail, never worth dropping type or traceId", ar: "جسم problem+json يتراوح بين 200 و600 بايت مقابل نحو 60 لرسالة مجردة. لا يُذكر عند معدل خطأ 0.5%؛ لكن عند 20% أثناء حادثة على خدمة بـ 5 آلاف request/ثانية يعني نحو 500 كيلوبايت/ثانية خروجاً إضافياً — يستحق اختصار detail، ولا يستحق أبداً حذف type أو traceId" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Throwing and unwinding an exception costs tens of microseconds versus nanoseconds for a returned result; a validation path that throws per invalid field on a 50-field DTO burns real CPU under load. Validate to a result, throw only for genuinely exceptional flow", ar: "رمي exception وفكّ المكدّس يكلّف عشرات الميكروثواني مقابل نانوثوانٍ لنتيجة مُرجَعة؛ ومسار تحقّق يرمي لكل حقل خاطئ في DTO بخمسين حقلاً يحرق معالجاً حقيقياً تحت الحمل. تحقّق إلى نتيجة، ولا ترمِ إلا لتدفق استثنائي فعلاً" } },
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "Errors that carry no retryable signal push clients to blind retry, multiplying p99 by the retry count on exactly the requests that were already slow; an honest 429 with Retry-After ends the call in one round trip", ar: "الأخطاء التي لا تحمل إشارة قابلية إعادة المحاولة تدفع العملاء لإعادة عمياء، فتضرب الـ p99 في عدد المحاولات على نفس الـ requests التي كانت بطيئة أصلاً؛ بينما 429 صادقة مع Retry-After تنهي الاستدعاء في رحلة واحدة" } },
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "Failures returned as 200 defeat gateway circuit breakers, so a degraded dependency keeps receiving full traffic instead of being shed — the classic path from a slow dependency to a full cascading outage", ar: "الأعطال المُرجَعة كـ 200 تُبطل circuit breakers الـ gateway، فتستمر تبعية متدهورة في استقبال الحمل كاملاً بدل تخفيفه — وهو المسار الكلاسيكي من تبعية بطيئة إلى انقطاع متتالٍ كامل" } },
-        { k: { en: "Database", ar: "قاعدة البيانات" }, v: { en: "Enriching an error with lookup data (\"order ord_8812 shipped at …\") adds a query on the failure path, which is the path that is hottest during an incident — build detail from data already in memory, never from a fresh round trip", ar: "إثراء الخطأ ببيانات مجلوبة («الطلب ord_8812 شُحن في …») يضيف استعلاماً على مسار العطل، وهو المسار الأكثر ازدحاماً أثناء حادثة — ابنِ الـ detail من بيانات موجودة في الذاكرة أصلاً لا من رحلة جديدة" } },
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Stack trace capture and string formatting allocate per throw; an endpoint throwing on 30% of calls at 2k req/s produces a steady Gen0 pressure that shows up as GC noise attributed to the wrong code", ar: "التقاط الـ stack trace وتنسيق النصوص يخصّصان ذاكرة عند كل رمي؛ و endpoint يرمي في 30% من الاستدعاءات عند ألفي request/ثانية ينتج ضغط Gen0 مستمراً يظهر كضجيج GC يُنسب إلى الكود الخطأ" } }
-      ]}
-    ]},
-
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Inventory the real surface: curl every endpoint with a malformed body, a bad token, a missing resource and an oversized payload, and diff the Content-Type and top-level keys of each response",
-          "grep the codebase for 'catch (Exception' and 'ex.ToString()' / 'ex.Message' inside return statements — that is where leakage and 200-on-failure live",
-          "Add a middleware in test/staging that asserts every non-2xx response has Content-Type application/problem+json and a non-empty type, and fail the integration suite on violations",
-          "Check what the reverse proxy or gateway returns on timeout and on 502 — it is usually its own HTML page, and it is usually the case no client parses",
-          "Search logs for the top error types by count and confirm each maps to exactly one type URI; two different causes sharing a type is the bug that makes retry logic wrong",
-          "Verify the traceId in a problem body actually resolves in your tracing backend — a stamped-but-unsampled trace id is worse than none, because triage trusts it"
-        ],
-        ar: [
-          "احصِ السطح الحقيقي: أرسل curl لكل endpoint بجسم مشوّه وبـ token خاطئ وبمورد غير موجود وبحمولة ضخمة، وقارن الـ Content-Type ومفاتيح المستوى الأعلى لكل استجابة",
-          "ابحث في الكود عن 'catch (Exception' و'ex.ToString()' و'ex.Message' داخل جمل return — فهناك يعيش التسريب و200-عند-الفشل",
-          "أضف middleware في الاختبار/الـ staging يؤكد أن كل استجابة غير 2xx لها Content-Type بقيمة application/problem+json و type غير فارغ، وأفشل حزمة التكامل عند المخالفة",
-          "افحص ما يرجعه الـ reverse proxy أو الـ gateway عند المهلة وعند 502 — فهو عادةً صفحته HTML الخاصة، وهو عادةً الحالة التي لا يحلّلها أي عميل",
-          "ابحث في السجلات عن أكثر أنواع الأخطاء تكراراً وتأكد أن كل واحد يقابل type URI واحداً بالضبط؛ فسببان مختلفان يتشاركان type هو العلة التي تجعل منطق إعادة المحاولة خاطئاً",
-          "تحقق أن الـ traceId في جسم الـ problem يُحلّ فعلاً في نظام التتبّع لديك — فمعرّف مختوم لكن غير مُعايَن أسوأ من لا شيء، لأن الفرز يثق به"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "The fastest audit is one contract test asserting problem+json on every non-2xx, run against the whole route table. It takes an afternoon to write, finds every layer you forgot — routing 404s, 405s, proxy timeouts, the health endpoint — and then keeps them fixed, which no style guide does.", ar: "أسرع تدقيق هو اختبار عقد واحد يؤكد problem+json على كل استجابة غير 2xx، يُشغَّل على جدول المسارات كاملاً. يستغرق كتابته بعد ظهيرة واحدة، ويكشف كل طبقة نسيتها — 404 الـ routing و405 ومهل الـ proxy و endpoint الصحة — ثم يبقيها مصلَحة، وهو ما لا يفعله أي دليل أسلوب." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "The maturity of an error contract tracks almost perfectly with how many parties consume the API and how little control you have over them. Internal services with two callers survive on status codes and goodwill; the moment there is a public integrator, a mobile app you cannot patch on demand, or a compliance requirement to explain a decline, the error body stops being a nicety and becomes the part of the product people actually write code against.", ar: "نضج عقد الأخطاء يتناسب تناسباً شبه تام مع عدد الأطراف المستهلكة للـ API ومع ضآلة سيطرتك عليها. فالخدمات الداخلية بمستدعيين اثنين تعيش على أكواد الحالة وحسن النية؛ ولحظة وجود متكامل عام، أو تطبيق موبايل لا تستطيع ترقيعه عند الطلب، أو متطلب امتثال لتفسير رفض، يتوقف جسم الخطأ عن كونه ترفاً ويصير جزء المنتج الذي يكتب الناس كوداً مقابله فعلاً." },
-      { t: "ul",
-        en: [
-          "Payment platforms: a decline must distinguish 'retry with a different card', 'retry later', and 'never retry, contact the issuer' — a single generic failure code here costs real revenue on every retry loop",
-          "Public developer platforms: stable error identities are as much a versioned contract as the resource schema, and are the thing partner SDKs are generated from",
-          "Mobile-backed products: the client cannot be patched for days or weeks, so any error the app must react to has to be expressible with fields the shipped version already understands",
-          "Regulated and healthcare integrations: errors must be auditable and traceable to a specific request without carrying personal data in the body — trace ids in, details out"
-        ],
-        ar: [
-          "منصات الدفع: يجب أن يميّز الرفض بين «أعد بطاقة مختلفة» و«أعد لاحقاً» و«لا تعد أبداً، اتصل بالمصدر» — وكود عطل عام واحد هنا يكلّف إيراداً حقيقياً في كل حلقة إعادة محاولة",
-          "منصات المطوّرين العامة: هويات الأخطاء الثابتة عقد مُصدَّر تماماً كـ schema المورد، وهي ما تُولَّد منه SDKs الشركاء",
-          "المنتجات المدعومة بموبايل: لا يمكن ترقيع العميل لأيام أو أسابيع، فأي خطأ يجب أن يتفاعل معه التطبيق لا بد أن يكون قابلاً للتعبير بحقول تفهمها النسخة المنشورة أصلاً",
-          "التكاملات المنظَّمة والصحية: يجب أن تكون الأخطاء قابلة للتدقيق والتتبّع إلى request بعينه دون حمل بيانات شخصية في الجسم — معرّفات التتبّع تدخل والتفاصيل تخرج"
-        ]
-      }
-    ]},
-
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Take one service you work on and curl five failure cases: malformed JSON, missing auth, unknown route, a domain conflict, and an unhandled exception. Write down the Content-Type and top-level keys of each. Count how many distinct shapes you found — most teams find three or four.", ar: "خذ خدمة تعمل عليها وأرسل curl لخمس حالات عطل: JSON مشوّه، ومصادقة مفقودة، ومسار غير معروف، وتعارض في المجال، وexception غير معالَج. دوّن الـ Content-Type ومفاتيح المستوى الأعلى لكل منها. واحسب كم شكلاً مميزاً وجدت — معظم الفرق تجد ثلاثة أو أربعة." },
-      { t: "ex", diff: "medium", en: "Replace every try/catch in your controllers with a single IExceptionHandler holding one mapping table, wire AddProblemDetails with CustomizeProblemDetails to stamp traceId and instance, and add UseStatusCodePages. Prove with an integration test that a routing 404 and an unhandled exception now produce the same envelope.", ar: "استبدل كل try/catch في الـ controllers لديك بـ IExceptionHandler واحد يحمل جدول ربط واحداً، واربط AddProblemDetails مع CustomizeProblemDetails لختم traceId و instance، وأضف UseStatusCodePages. وأثبت باختبار تكامل أن 404 من الـ routing وexception غير معالَج ينتجان الآن نفس الغلاف." },
-      { t: "ex", diff: "hard", en: "Write a contract test that walks the entire route table and asserts every non-2xx response is application/problem+json with a non-empty type and a resolvable traceId, including gateway timeouts and 502s. Run it against staging, fix what it finds, then wire it into CI as a blocking check.", ar: "اكتب اختبار عقد يمشي على جدول المسارات كاملاً ويؤكد أن كل استجابة غير 2xx هي application/problem+json بـ type غير فارغ و traceId قابل للحل، بما في ذلك مهل الـ gateway و502. شغّله على الـ staging، وأصلح ما يجده، ثم اربطه في الـ CI كفحص مانع." },
-      { t: "ex", diff: "senior", en: "Publish a type registry for your API: every problem type with its URI, status, whether it is retryable, which extension members it carries, and the client reaction it is meant to trigger. Then delete every type that no client branches on, and merge any two that trigger the same reaction. Report how many you started with and how many survived.", ar: "انشر سجل أنواع لـ API لديك: كل نوع مشكلة مع URI الخاص به والـ status وهل هو قابل لإعادة المحاولة وأي أعضاء توسعة يحملها وأي ردّ فعل لدى العميل يُفترض أن يطلقه. ثم احذف كل نوع لا يتفرّع عليه أي عميل، وادمج أي نوعين يطلقان نفس ردّ الفعل. وأبلغ بكم بدأت وكم نجا." }
-    ]},
-
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "RFC 9457 — Problem Details for HTTP APIs", ar: "RFC 9457 — Problem Details لـ APIs الـ HTTP" }, url: "https://www.rfc-editor.org/rfc/rfc9457.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 7807 — the obsoleted original", ar: "RFC 7807 — الأصل المُلغى" }, url: "https://www.rfc-editor.org/rfc/rfc7807.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 9110 — HTTP Semantics (status codes)", ar: "RFC 9110 — دلالات الـ HTTP (أكواد الحالة)" }, url: "https://www.rfc-editor.org/rfc/rfc9110.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "Handle errors in ASP.NET Core", ar: "معالجة الأخطاء في ASP.NET Core" }, url: "https://learn.microsoft.com/aspnet/core/fundamentals/error-handling", meta: { en: "Docs", ar: "توثيق" } },
-      { t: "ref", label: { en: "ProblemDetails class reference", ar: "مرجع صنف ProblemDetails" }, url: "https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.mvc.problemdetails", meta: { en: "API", ar: "مرجع API" } },
-      { t: "ref", label: { en: "Google AIP-193 — Errors", ar: "Google AIP-193 — الأخطاء" }, url: "https://google.aip.dev/193", meta: { en: "Guideline", ar: "دليل" } }
-    ]}
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "In ASP.NET Core the error body is produced by one small object called ProblemDetails, and by a factory that fills it in. Nothing magical happens: something decides a request failed, builds a ProblemDetails, sets the status code, and writes JSON with the content type application/problem+json. Your job is to make sure every failure path goes through that one place.",
+          ar: "في ASP.NET Core يُنتَج body الخطأ من كائن صغير اسمه ProblemDetails، ومن factory تملؤه. لا شيء سحري: جهة ما تقرر أن الطلب فشل، فتبني ProblemDetails، وتضبط الـ status code، وتكتب JSON بنوع محتوى application/problem+json. مهمتك أن تجعل كل مسارات الفشل تمرّ عبر هذا المكان الواحد."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "ProblemDetails", ar: "ProblemDetails" },
+              v: {
+                en: "The built-in class holding type, title, status, detail, instance, plus an Extensions dictionary for your own fields.",
+                ar: "الكلاس المدمج الذي يحمل type و title و status و detail و instance، بالإضافة إلى قاموس Extensions لحقولك الخاصة."
+              }
+            },
+            {
+              k: { en: "ValidationProblemDetails", ar: "ValidationProblemDetails" },
+              v: {
+                en: "A subclass that adds errors: a dictionary from field name to the list of messages about that field.",
+                ar: "كلاس مشتق يضيف errors: قاموس من اسم الحقل إلى قائمة الرسائل الخاصة بذلك الحقل."
+              }
+            },
+            {
+              k: { en: "[ApiController]", ar: "[ApiController]" },
+              v: {
+                en: "An attribute on a controller. One thing it does: if model binding or data annotations fail, it returns 400 with ValidationProblemDetails automatically, before your method runs.",
+                ar: "attribute يوضع على الـ controller. من مهامه: إذا فشل model binding أو data annotations، يعيد 400 مع ValidationProblemDetails تلقائياً قبل تنفيذ دالتك."
+              }
+            },
+            {
+              k: { en: "IExceptionHandler", ar: "IExceptionHandler" },
+              v: {
+                en: "An interface you implement to turn an unhandled exception into a response. Registered handlers run in order until one says it handled the exception.",
+                ar: "واجهة تنفّذها لتحويل exception غير مُعالَج إلى response. تعمل الـ handlers المسجّلة بالترتيب حتى يقول أحدها إنه عالج الـ exception."
+              }
+            },
+            {
+              k: { en: "AddProblemDetails()", ar: "AddProblemDetails()" },
+              v: {
+                en: "One registration line that makes the framework write a Problem Details body for any bare status-code result, including 404 and 500.",
+                ar: "سطر تسجيل واحد يجعل الـ framework يكتب body بصيغة Problem Details لأي نتيجة status code مجرّدة، بما فيها 404 و 500."
+              }
+            }
+          ]
+        },
+        {
+          t: "p",
+          en: "Trace one POST /orders request with quantity 0, step by step. The request arrives and the JSON body is bound to your CreateOrderRequest object. The [Required] and [Range(1, 100)] attributes on quantity fail. Because the controller has [ApiController], the pipeline stops there: it builds a ValidationProblemDetails whose errors dictionary contains the key quantity mapped to one message, sets status 400, and writes it. Your action method is never entered. Now trace the third failure — stock is 3, the customer asked for 10. No attribute can catch that, because it depends on database state, so your own code detects it and returns a ProblemDetails you built, with status 409 and an extension field code set to insufficient_stock.",
+          ar: "لنتتبّع طلب POST /orders مع quantity تساوي 0 خطوة بخطوة. يصل الطلب ويُربَط الـ JSON body بكائن CreateOrderRequest. تفشل الـ attributes التالية على quantity: ‏[Required] و [Range(1, 100)]. ولأن الـ controller يحمل [ApiController]، تتوقف الـ pipeline هناك: تبني ValidationProblemDetails يحتوي قاموس errors فيه المفتاح quantity مقابل رسالة واحدة، وتضبط الحالة 400، وتكتبه. دالتك لا تُنفَّذ أصلاً. الآن تتبّع الفشل الثالث — المخزون 3 والعميل طلب 10. لا يستطيع أي attribute التقاط ذلك لأنه يعتمد على حالة قاعدة البيانات، فيكتشفه كودك ويعيد ProblemDetails بنيته أنت، بحالة 409 وحقل إضافي اسمه code قيمته insufficient_stock."
+        },
+        {
+          t: "p",
+          en: "The fourth failure is the interesting one. The payment provider call throws a PaymentDeclinedException from deep inside a service class. Nobody catches it there, so it travels up the call stack until the exception handler middleware catches it. That handler is the single place that turns exceptions into responses: it looks at the exception type, picks a status code and a code string, hides the stack trace, and adds the trace id. Think of it as the returns desk at a shop — every unhappy customer, whatever went wrong upstairs, ends up at one counter that issues one standard slip.",
+          ar: "الفشل الرابع هو الأكثر إفادة. استدعاء مزوّد الدفع يرمي PaymentDeclinedException من عمق كلاس service. لا أحد يلتقطه هناك، فيصعد عبر الـ call stack حتى يلتقطه exception handler middleware. ذلك الـ handler هو المكان الوحيد الذي يحوّل الـ exceptions إلى responses: ينظر إلى نوع الـ exception، ويختار status code ونص code، ويخفي الـ stack trace، ويضيف الـ trace id. اعتبره مكتب المرتجعات في متجر — كل عميل غير راضٍ، مهما كان ما حدث في الأعلى، ينتهي عند شبّاك واحد يصدر ورقة واحدة موحّدة."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "One place that turns any exception into one shape", ar: "مكان واحد يحوّل أي exception إلى شكل واحد" },
+          code: "// Program.cs\nbuilder.Services.AddProblemDetails();          // bare 404/500 also get a JSON body\nbuilder.Services.AddExceptionHandler<AppExceptionHandler>();\n\nvar app = builder.Build();\napp.UseExceptionHandler();                       // must come before endpoints\n\n// AppExceptionHandler.cs\npublic sealed class AppExceptionHandler(IProblemDetailsService svc) : IExceptionHandler\n{\n    public async ValueTask<bool> TryHandleAsync(\n        HttpContext ctx, Exception ex, CancellationToken ct)\n    {\n        var (status, code) = ex switch\n        {\n            InsufficientStockException => (StatusCodes.Status409Conflict, \"insufficient_stock\"),\n            PaymentDeclinedException   => (StatusCodes.Status402PaymentRequired, \"payment_declined\"),\n            OrderNotFoundException     => (StatusCodes.Status404NotFound, \"order_not_found\"),\n            _                          => (StatusCodes.Status500InternalServerError, \"internal_error\")\n        };\n\n        ctx.Response.StatusCode = status;\n\n        var problem = new ProblemDetails\n        {\n            Type   = $\"https://api.shop.com/errors/{code}\",\n            Title  = \"Order could not be created\",\n            Status = status,\n            // safe for a 4xx we authored; never ex.ToString() on a 500\n            Detail = status < 500 ? ex.Message : \"An unexpected error occurred.\"\n        };\n        problem.Extensions[\"code\"]    = code;\n        problem.Extensions[\"traceId\"] = Activity.Current?.Id ?? ctx.TraceIdentifier;\n\n        return await svc.TryWriteAsync(new()\n        {\n            HttpContext = ctx, ProblemDetails = problem, Exception = ex\n        });\n    }\n}"
+        },
+        {
+          t: "code",
+          lang: "json",
+          label: { en: "What the client actually receives (409)", ar: "ما يستلمه الـ client فعلياً (409)" },
+          code: "HTTP/1.1 409 Conflict\nContent-Type: application/problem+json\n\n{\n  \"type\": \"https://api.shop.com/errors/insufficient_stock\",\n  \"title\": \"Order could not be created\",\n  \"status\": 409,\n  \"detail\": \"Only 3 units of SKU-4417 are available.\",\n  \"instance\": \"/orders\",\n  \"code\": \"insufficient_stock\",\n  \"traceId\": \"00-8f3c1a9e2b7d4c51-9a1f2e3d4c5b6a70-01\",\n  \"available\": 3\n}"
+        },
+        {
+          t: "p",
+          en: "Two fields do the work. code is what the client branches on, and available: 3 is what lets the app offer 'buy 3 instead' without a second round trip. type is a URL used only as a unique identifier for this error kind; it is good practice to make it a page a developer can actually open, but the client never fetches it.",
+          ar: "حقلان يقومان بالعمل. الحقل code هو ما يتفرّع عليه الـ client، والحقل available: 3 هو ما يتيح للتطبيق أن يعرض 'اشترِ 3 بدلاً منها' دون طلب إضافي. أما type فهو URL يُستخدم فقط كمعرّف فريد لنوع الخطأ؛ من الجيد أن يكون صفحة يستطيع المطوّر فتحها، لكن الـ client لا يطلبها أبداً."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "One parser on the client instead of one per endpoint.",
+              "Copy and translations can change without breaking any caller.",
+              "A trace id in every failure turns vague tickets into one log query.",
+              "The framework already produces the shape, so there is little code to write."
+            ],
+            ar: [
+              "parser واحد على الـ client بدل واحد لكل endpoint.",
+              "يمكن تغيير النصوص والترجمات دون كسر أي caller.",
+              "وجود trace id في كل فشل يحوّل التذاكر الغامضة إلى استعلام logs واحد.",
+              "الـ framework ينتج الشكل أصلاً، فالكود المطلوب قليل."
+            ]
+          },
+          cons: {
+            en: [
+              "The list of code values becomes public API: renaming one breaks clients.",
+              "Extra fields such as available must be documented or nobody uses them.",
+              "Teams argue about status codes instead of shipping.",
+              "A shared handler can hide a real bug by making every failure look tidy."
+            ],
+            ar: [
+              "تصبح قائمة قيم code جزءاً من الـ API العامة: إعادة تسمية واحدة تكسر الـ clients.",
+              "الحقول الإضافية مثل available يجب توثيقها وإلا لن يستخدمها أحد.",
+              "الفرق تتجادل حول الـ status codes بدل أن تُطلق.",
+              "الـ handler المشترك قد يخفي bug حقيقياً لأنه يجعل كل فشل يبدو مرتباً."
+            ]
+          },
+          limits: {
+            en: [
+              "It does not tell you which status code is right — that is a separate decision.",
+              "It does not help if callers ignore code and keep reading detail.",
+              "Streaming and file responses may fail after headers are sent, where no body can be replaced.",
+              "Third-party services you call will not use your shape; you must translate theirs."
+            ],
+            ar: [
+              "لا يخبرك أي status code هو الصحيح — ذلك قرار منفصل.",
+              "لا يفيد إذا تجاهل الـ callers حقل code وظلّوا يقرؤون detail.",
+              "الـ streaming وردود الملفات قد تفشل بعد إرسال الترويسات، حيث لا يمكن استبدال الـ body.",
+              "الخدمات الخارجية التي تستدعيها لن تستخدم شكلك، فعليك ترجمة شكلها."
+            ]
+          },
+          alts: {
+            en: [
+              "Your own house format, documented once and used everywhere — acceptable if truly consistent.",
+              "GraphQL, which returns 200 with an errors array by design.",
+              "gRPC status codes plus rich error details messages.",
+              "JSON:API error objects, if you already follow that specification."
+            ],
+            ar: [
+              "صيغة داخلية خاصة بك، موثّقة مرة وتُستخدم في كل مكان — مقبولة إن كانت متسقة فعلاً.",
+              "GraphQL الذي يعيد 200 مع مصفوفة errors بحكم تصميمه.",
+              "أكواد حالة gRPC مع رسائل error details الغنية.",
+              "كائنات الأخطاء في JSON:API إن كنت تتبع تلك المواصفة أصلاً."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Returning 200 with success: false", ar: "إعادة 200 مع success: false" },
+          body: {
+            en: "An orders API always answered 200 and put the outcome in the body. Everything looked fine until the load balancer was configured to alert on 5xx rates: real failures never showed up, because there were none. A month later a bug made every order fail; the dashboard stayed green for six hours. The status code is the one part of the response that infrastructure — proxies, monitors, retry libraries — actually reads. Do not hide the outcome from it.",
+            ar: "كانت API الطلبات تعيد 200 دائماً وتضع النتيجة في الـ body. بدا كل شيء سليماً حتى ضُبط الـ load balancer لينبّه على نسب 5xx: لم تظهر أي حالات فشل حقيقية لأنه لم يكن هناك أي منها. بعد شهر تسبّب bug في فشل كل الطلبات، وبقيت لوحة المراقبة خضراء ست ساعات. الـ status code هو الجزء الوحيد من الـ response الذي تقرؤه البنية التحتية فعلاً — الـ proxies والمراقبة ومكتبات إعادة المحاولة. لا تُخفِ النتيجة عنها."
+          },
+          fix: "// bad\nreturn Ok(new { success = false, message = \"Out of stock\" });\n\n// good\nreturn Problem(statusCode: 409, detail: \"Only 3 units available.\",\n               extensions: new Dictionary<string, object?> { [\"code\"] = \"insufficient_stock\" });"
+        },
+        {
+          t: "mistake",
+          title: { en: "Putting the exception into detail", ar: "وضع الـ exception داخل detail" },
+          body: {
+            en: "A handler wrote Detail = ex.ToString() so support could see what happened. That string contains the full stack trace, which lists internal class names, file paths and sometimes connection strings from an inner exception. A security review found the database server name in a 500 body served to the public internet. Return the generic sentence to the caller and log the full exception on the server, joined to the response by the trace id.",
+            ar: "كتب أحد الـ handlers ‏Detail = ex.ToString() ليرى الدعم ما حدث. ذلك النص يحتوي الـ stack trace كاملاً، وفيه أسماء كلاسات داخلية ومسارات ملفات وأحياناً connection strings من inner exception. اكتشفت مراجعة أمنية اسم خادم قاعدة البيانات داخل body لـ 500 يُقدَّم للإنترنت العام. أعِد الجملة العامة للـ caller وسجّل الـ exception الكامل على الـ server، مربوطاً بالـ response عبر الـ trace id."
+          },
+          fix: "logger.LogError(ex, \"Order create failed. traceId={TraceId}\", traceId);\nproblem.Detail = \"An unexpected error occurred.\";\nproblem.Extensions[\"traceId\"] = traceId;"
+        },
+        {
+          t: "mistake",
+          title: { en: "A human sentence with no stable code", ar: "جملة للإنسان بلا code ثابت" },
+          body: {
+            en: "This is the failure from the start of the lesson. The body had only detail, so the client wrote if (detail.Contains(\"stock\")). Reworded copy silently broke the app while every server test still passed. Any value a caller branches on must be a fixed identifier you promise not to change. Anything a human reads must be free to change at any time. Never let one field be both.",
+            ar: "هذا هو الفشل الذي بدأ به الدرس. احتوى الـ body على detail فقط، فكتب الـ client ‏if (detail.Contains(\"stock\")). أدّى تعديل الصياغة إلى كسر التطبيق بصمت بينما ظلّت كل اختبارات الـ server ناجحة. أي قيمة يتفرّع عليها الـ caller يجب أن تكون معرّفاً ثابتاً تتعهّد بعدم تغييره. وأي شيء يقرؤه الإنسان يجب أن يكون حراً في التغيير متى شئت. لا تجعل حقلاً واحداً يقوم بالدورين."
+          }
+        },
+        {
+          t: "mistake",
+          title: { en: "Flattening validation errors into one string", ar: "دمج أخطاء التحقق في نص واحد" },
+          body: {
+            en: "A team joined all validation messages together: 'quantity must be at least 1; email is invalid'. The web form could not highlight the two bad inputs, so it showed one red banner at the top and the user had to hunt. Keep validation errors as a map from field name to messages, exactly as ValidationProblemDetails does, so the UI can attach each message to its own input.",
+            ar: "دمج فريق كل رسائل التحقق معاً: 'quantity must be at least 1; email is invalid'. لم يستطع الـ form تمييز الحقلين الخاطئين، فعرض شريطاً أحمر واحداً في الأعلى واضطر المستخدم للبحث. احتفظ بأخطاء التحقق كخريطة من اسم الحقل إلى الرسائل، تماماً كما يفعل ValidationProblemDetails، حتى تستطيع الواجهة ربط كل رسالة بحقلها."
+          },
+          fix: "{\n  \"status\": 400,\n  \"errors\": {\n    \"quantity\": [\"Must be at least 1.\"],\n    \"email\": [\"Not a valid email address.\"]\n  }\n}"
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: {
+            en: "What is Problem Details and why would you use it?",
+            ar: "ما هو Problem Details ولماذا تستخدمه؟"
+          },
+          a: {
+            en: "It is a small standard JSON shape for API errors, defined in RFC 9457 — an RFC is just a published spec. The body has type, title, status, detail and instance, and you can add your own fields. I use it because it gives every endpoint the same error shape, ASP.NET Core builds it for me, and the client only needs one parser instead of one per endpoint.",
+            ar: "هو شكل JSON قياسي صغير لأخطاء الـ API، معرّف في RFC 9457 — والـ RFC مجرد مواصفة منشورة. يحتوي الـ body على type و title و status و detail و instance، ويمكنك إضافة حقولك. أستخدمه لأنه يعطي كل endpoint نفس شكل الخطأ، ولأن ASP.NET Core يبنيه لي، ولأن الـ client يحتاج parser واحداً بدل واحد لكل endpoint."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: {
+            en: "Your error body already has a message. Why add a code field too?",
+            ar: "الـ body لديك فيه message أصلاً. لماذا تضيف حقل code أيضاً؟"
+          },
+          a: {
+            en: "Because they have different owners and different rules. The message is for a person and changes whenever someone improves the copy or adds a translation. The code is for a program and must never change. If the client branches on the message, then editing text is a breaking change that no test catches — I have seen a copy edit cut mobile checkout by about four percent. Splitting the two fields lets the wording move freely.",
+            ar: "لأن لهما مالكَين مختلفين وقواعد مختلفة. الـ message موجّه لشخص ويتغيّر كلما حسّن أحدهم الصياغة أو أضاف ترجمة. أما الـ code فموجّه لبرنامج ويجب ألّا يتغيّر أبداً. إذا تفرّع الـ client على الـ message، يصبح تعديل النص كسراً للتوافق لا يلتقطه أي اختبار — رأيت تعديلاً لغوياً يخفض إتمام الشراء على الموبايل بنحو أربعة بالمئة. فصل الحقلين يجعل الصياغة حرة في التغيير."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: {
+            en: "What do you put in the body of a 500, and what do you leave out?",
+            ar: "ماذا تضع في body لـ 500، وماذا تستبعد؟"
+          },
+          a: {
+            en: "In: status 500, a generic title and detail such as 'An unexpected error occurred', and a trace id. Out: the exception message, the stack trace, class or file names, and SQL. The reason is that a 500 means we do not know what happened, so anything specific we print is internal information the caller cannot act on anyway. The trace id is the bridge — the user reads it to support and one log search finds the full exception on our side.",
+            ar: "أضع: الحالة 500، وعنواناً ووصفاً عامّين مثل 'حدث خطأ غير متوقع'، و trace id. وأستبعد: رسالة الـ exception، والـ stack trace، وأسماء الكلاسات أو الملفات، والـ SQL. السبب أن 500 تعني أننا لا نعرف ما حدث، فأي تفصيل نطبعه هو معلومة داخلية لا يستطيع الـ caller التصرف بناءً عليها. الـ trace id هو الجسر — يقرؤه المستخدم للدعم فيجد بحث logs واحد الـ exception الكامل عندنا."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: {
+            en: "How do you evolve an error contract without breaking existing clients?",
+            ar: "كيف تطوّر عقد الأخطاء دون كسر الـ clients الحاليين؟"
+          },
+          a: {
+            en: "I treat the set of code values like a public enum. Adding a new code is safe only if clients were written with a default branch, so I state that rule in the docs on day one. Adding a new extension field is always safe, because unknown JSON fields are ignored. Renaming or removing a code is breaking, so I keep the old code and add the new one alongside for a deprecation window, watch how many responses still carry the old one, and remove it when that number reaches zero.",
+            ar: "أتعامل مع مجموعة قيم code كأنها enum عامة. إضافة code جديد آمنة فقط إذا كُتب الـ clients بفرع افتراضي، لذا أذكر هذه القاعدة في التوثيق من اليوم الأول. إضافة حقل extension جديد آمنة دائماً لأن حقول JSON غير المعروفة تُتجاهَل. أما إعادة التسمية أو الحذف فكسر، لذلك أُبقي الـ code القديم وأضيف الجديد بجانبه خلال فترة إهمال، وأراقب كم response ما زال يحمل القديم، وأحذفه عندما يصل ذلك العدد إلى صفر."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: {
+            en: "A downstream payment provider returns its own error format. What reaches your caller?",
+            ar: "مزوّد دفع خارجي يعيد صيغة أخطاء خاصة به. ماذا يصل إلى الـ caller لديك؟"
+          },
+          a: {
+            en: "Never their body. I translate at the boundary: the adapter that calls the provider maps their codes onto mine, so card_declined_51 becomes payment_declined and anything unrecognised becomes a generic upstream failure. Two reasons. Their codes are not my contract and can change without notice. And their body may contain data I am not allowed to pass on. I do keep their raw response in the log line with my trace id, so support can still see it.",
+            ar: "لا يصل body الخاص بهم أبداً. أترجم عند الحدّ: الـ adapter الذي يستدعي المزوّد يحوّل أكوادهم إلى أكوادي، فيصبح card_declined_51 هو payment_declined، وأي شيء غير معروف يصبح فشلاً عاماً من الأعلى. لسببين: أكوادهم ليست عقدي وقد تتغيّر دون إشعار، و body الخاص بهم قد يحتوي بيانات لا يحق لي تمريرها. لكنني أحتفظ بردّهم الخام في سطر الـ log مع الـ trace id الخاص بي ليراه الدعم."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: {
+            en: "Eight teams, eight error shapes. How do you fix that across the organisation?",
+            ar: "ثمانية فرق وثمانية أشكال أخطاء. كيف تحل ذلك على مستوى المؤسسة؟"
+          },
+          a: {
+            en: "Not by sending a document. I ship a small shared package that contains the exception handler, the ProblemDetails builder and the trace id wiring, so following the standard is one line of setup and less work than not following it. Then I add a contract test in the shared pipeline that calls each service's known failure paths and asserts the shape, so drift is caught at build time. Then I publish the code registry as a real page teams add to by pull request. Finally I pick the two highest-traffic services and migrate them myself, because the rest copy whatever the busiest service does.",
+            ar: "ليس بإرسال مستند. أُطلق package مشتركاً صغيراً يحوي exception handler وباني ProblemDetails وربط الـ trace id، فيصبح اتباع المعيار سطر إعداد واحداً وجهداً أقل من عدم اتباعه. ثم أضيف contract test في الـ pipeline المشترك يستدعي مسارات الفشل المعروفة لكل service ويتحقق من الشكل، فيُلتقط الانحراف وقت البناء. ثم أنشر سجلّ أكواد الأخطاء كصفحة حقيقية تضيف إليها الفرق عبر pull request. وأخيراً أختار أكثر خدمتين حركةً وأنقلهما بنفسي، لأن البقية تقلّد ما تفعله الخدمة الأكثر استخداماً."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "Catch-all that swallows the failure and the status", ar: "catch شامل يبتلع الفشل والحالة" },
+          bad: "try\n{\n    return Ok(await _orders.CreateAsync(req, ct));\n}\ncatch (Exception ex)\n{\n    _logger.LogError(ex.Message);\n    return Ok(new { success = false, error = ex.Message });\n}",
+          good: "// no try/catch here at all — one handler owns this\n// Program.cs: AddProblemDetails(); AddExceptionHandler<AppExceptionHandler>(); UseExceptionHandler();\nreturn Ok(await _orders.CreateAsync(req, ct));",
+          why: {
+            en: "Three problems in six lines. The response is 200, so monitoring and retry libraries treat a failure as a success. ex.Message may carry internal details straight to the caller. And LogError(ex.Message) drops the exception object, so the stack trace never reaches the logs — the one place it belongs. Deleting the block and letting the shared handler run fixes all three.",
+            ar: "ثلاث مشاكل في ستة أسطر. الرد 200، فتعامل أدوات المراقبة ومكتبات إعادة المحاولة الفشلَ على أنه نجاح. و ex.Message قد يحمل تفاصيل داخلية مباشرة إلى الـ caller. و LogError(ex.Message) يُسقط كائن الـ exception، فلا يصل الـ stack trace إلى الـ logs — وهو المكان الوحيد الذي ينتمي إليه. حذف الكتلة وترك الـ handler المشترك يعمل يصلح الثلاثة."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "A hand-rolled error object per endpoint", ar: "كائن خطأ يدوي لكل endpoint" },
+          bad: "if (stock < req.Quantity)\n    return BadRequest(new { error = \"not enough stock\", have = stock });",
+          good: "if (stock < req.Quantity)\n    return Problem(\n        statusCode: StatusCodes.Status409Conflict,\n        title: \"Order could not be created\",\n        detail: $\"Only {stock} units of {req.Sku} are available.\",\n        extensions: new Dictionary<string, object?>\n        {\n            [\"code\"] = \"insufficient_stock\",\n            [\"available\"] = stock\n        });",
+          why: {
+            en: "The bad version invents a fourth error shape — field named error, no code, no trace id — and uses 400, which says the request was malformed. It was not: it was valid and lost a race against other buyers, which is what 409 Conflict means. Problem() emits the same shape as every other failure in the service, and available lets the app offer a smaller quantity without another call.",
+            ar: "النسخة السيئة تخترع شكل خطأ رابعاً — حقل اسمه error، بلا code وبلا trace id — وتستخدم 400 التي تعني أن الطلب مُشوَّه. وهو لم يكن كذلك: كان صحيحاً لكنه خسر سباقاً أمام مشترين آخرين، وهذا بالضبط معنى 409 Conflict. الدالة Problem() تُخرج نفس شكل بقية حالات الفشل في الخدمة، والحقل available يتيح للتطبيق اقتراح كمية أقل دون استدعاء آخر."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a system with several services behind one gateway, the error contract is the only thing a caller sees of your internal structure. The order service calls inventory, pricing and payments. Each of those can fail. If each failure leaks upward in its own format, the mobile app effectively depends on your service topology, and splitting a service becomes a client-visible change.",
+          ar: "في نظام فيه عدة services خلف gateway واحد، عقد الأخطاء هو الشيء الوحيد الذي يراه الـ caller من بنيتك الداخلية. خدمة الطلبات تستدعي المخزون والتسعير والمدفوعات، وكل واحدة قد تفشل. إذا تسرّب كل فشل إلى الأعلى بصيغته الخاصة، يصبح تطبيق الموبايل معتمداً فعلياً على توزيع خدماتك، ويتحوّل تقسيم خدمة إلى تغيير يراه الـ client."
+        },
+        {
+          t: "ul",
+          en: [
+            "Translate at every boundary: the adapter that calls another service maps its errors onto your codes before returning.",
+            "Put the trace id into the response and into every log line, so one identifier links the failure the user saw to the service that caused it.",
+            "Keep a single registry of code values, owned like a database schema — additions by pull request, removals only after a deprecation window.",
+            "Decide the gateway's behaviour for a timeout to a backend service once: usually 504 with an upstream_timeout code, never a 200 or a bare 500.",
+            "For a public API, publish the code list and the extension fields as documentation; partners cannot handle errors they cannot look up."
+          ],
+          ar: [
+            "ترجم عند كل حدّ: الـ adapter الذي يستدعي خدمة أخرى يحوّل أخطاءها إلى أكوادك قبل الإرجاع.",
+            "ضع الـ trace id في الـ response وفي كل سطر log، فيربط معرّف واحد بين الفشل الذي رآه المستخدم والخدمة التي سبّبته.",
+            "احتفظ بسجل واحد لقيم code، مملوك كما يُملك schema قاعدة بيانات — الإضافة عبر pull request والحذف بعد فترة إهمال فقط.",
+            "قرّر مرة واحدة سلوك الـ gateway عند انتهاء مهلة خدمة خلفية: عادةً 504 مع code اسمه upstream_timeout، لا 200 ولا 500 مجرّدة.",
+            "في API عامة، انشر قائمة الأكواد والحقول الإضافية كتوثيق؛ الشركاء لا يستطيعون معالجة أخطاء لا يجدون شرحها."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "Write the error contract into the OpenAPI description of every endpoint, not just the success response. OpenAPI is the machine-readable description of your API; client code generators read it, so documented errors turn into typed client code for free.",
+          ar: "اكتب عقد الأخطاء داخل وصف OpenAPI لكل endpoint، لا في رد النجاح فقط. الـ OpenAPI هو الوصف القابل للقراءة آلياً لـ API لديك، ومولّدات كود الـ clients تقرؤه، فتتحوّل الأخطاء الموثّقة إلى كود client مكتوب الأنواع بلا جهد."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "CPU", ar: "CPU" },
+              v: {
+                en: "Building and serialising a ProblemDetails costs a few microseconds — nothing. Throwing the exception that caused it costs far more, so on a hot validation path prefer returning a result over throwing.",
+                ar: "بناء ProblemDetails وتحويله إلى JSON يكلّف بضعة microseconds — لا شيء. أما رمي الـ exception الذي سبّبه فيكلّف أكثر بكثير، لذا في مسار تحقق كثيف التنفيذ فضّل إعادة نتيجة على الرمي."
+              }
+            },
+            {
+              k: { en: "Network", ar: "Network" },
+              v: {
+                en: "Error bodies are small, but a validation body listing 200 rows of a bulk import can reach hundreds of kilobytes. Cap the number of reported field errors, for example the first 50.",
+                ar: "أجسام الأخطاء صغيرة، لكن body تحقق يسرد 200 صف من استيراد جماعي قد يصل إلى مئات الكيلوبايت. حُدّ عدد أخطاء الحقول المُبلَّغ عنها، مثلاً أول 50."
+              }
+            },
+            {
+              k: { en: "Latency", ar: "Latency" },
+              v: {
+                en: "A clear code lets the client stop immediately instead of retrying. Returning 500 for something the client can never fix turns one failed call into three, tripling the time the user waits.",
+                ar: "الـ code الواضح يجعل الـ client يتوقف فوراً بدل إعادة المحاولة. إعادة 500 لشيء لا يستطيع الـ client إصلاحه أبداً تحوّل استدعاءً فاشلاً واحداً إلى ثلاثة، فتتضاعف مدة انتظار المستخدم ثلاث مرات."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "Scalability" },
+              v: {
+                en: "Codes that say 'do not retry' — such as payment_declined — protect a struggling service. Ambiguous 500s invite every client to retry at once, which is how a small outage becomes a large one.",
+                ar: "الأكواد التي تقول 'لا تُعِد المحاولة' — مثل payment_declined — تحمي خدمة مُجهدة. أما أكواد 500 الغامضة فتدعو كل الـ clients لإعادة المحاولة في وقت واحد، وهكذا يتحوّل عطل صغير إلى عطل كبير."
+              }
+            },
+            {
+              k: { en: "Memory", ar: "Memory" },
+              v: {
+                en: "Nothing meaningful for the response itself. Watch instead for handlers that keep the full exception object in a cache or an in-memory list to 'report later'; those hold whole object graphs alive.",
+                ar: "لا شيء يُذكر بخصوص الـ response نفسه. راقب بدلاً من ذلك الـ handlers التي تحتفظ بكائن الـ exception الكامل في cache أو قائمة بالذاكرة كي 'تبلّغ لاحقاً'؛ فهي تُبقي رسوم كائنات كاملة حيّة."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "curl -i https://api/orders -d '{...}' — the -i flag prints headers; check the status line and that Content-Type is application/problem+json, not text/html.",
+            "Search your logs for the traceId from the response body; you should land on exactly one request and its full exception, with no guessing by timestamp.",
+            "A metric counting responses grouped by the code field — a sudden spike in one code names the broken dependency before anyone opens a dashboard.",
+            "In the browser network tab, open the failing call and read the response body; an HTML error page there means the exception escaped your handler entirely.",
+            "A test that calls each known failure path and asserts status, code and the presence of traceId — run it in CI so a new endpoint cannot invent its own shape."
+          ],
+          ar: [
+            "curl -i https://api/orders -d '{...}' — الخيار -i يطبع الترويسات؛ تحقّق من سطر الحالة وأن Content-Type هو application/problem+json لا text/html.",
+            "ابحث في الـ logs عن الـ traceId الموجود في body الرد؛ يجب أن تصل إلى طلب واحد بالضبط مع exception كامل، دون تخمين بالوقت.",
+            "مقياس يعدّ الردود مجمّعة حسب حقل code — ارتفاع مفاجئ في code واحد يسمّي التبعية المعطلة قبل أن يفتح أحد لوحة مراقبة.",
+            "في تبويب الشبكة بالمتصفح، افتح الاستدعاء الفاشل واقرأ body الرد؛ ظهور صفحة HTML هناك يعني أن الـ exception هرب من الـ handler تماماً.",
+            "اختبار يستدعي كل مسار فشل معروف ويتحقق من status و code ووجود traceId — شغّله في الـ CI حتى لا يخترع endpoint جديد شكله الخاص."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "If a 500 appears as an HTML page rather than JSON, the exception happened outside your handler. The two usual causes are middleware registered before UseExceptionHandler, and a failure that occurs after the response headers were already sent — at that point the status is fixed and no body can replace it.",
+          ar: "إذا ظهر الخطأ 500 كصفحة HTML بدل JSON، فالـ exception حدث خارج الـ handler لديك. السببان المعتادان: middleware مسجّل قبل UseExceptionHandler، وفشل يقع بعد إرسال ترويسات الرد — عندها تكون الحالة قد ثُبّتت ولا يمكن استبدال الـ body."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "The value of an error contract scales with the number of things that must react to a failure automatically. A single web app with one screen can survive on free text. As soon as retries, queues, partner integrations or money are involved, a failure has to be classified in code, and that is exactly what a stable code field gives you.",
+          ar: "قيمة عقد الأخطاء تكبر بعدد الأشياء التي يجب أن تستجيب للفشل تلقائياً. تطبيق ويب واحد بشاشة واحدة قد يعيش على نص حر. لكن بمجرد دخول إعادة المحاولة والطوابير وتكاملات الشركاء والمال، يصبح لزاماً تصنيف الفشل في الكود، وهذا بالضبط ما يمنحه حقل code الثابت."
+        },
+        {
+          t: "ul",
+          en: [
+            "Payment platforms: a declined card must never be retried, while a gateway timeout must be — and only a code can tell the two apart, since both look like 'the payment did not go through'.",
+            "E-commerce checkout: an out-of-stock conflict drives a specific screen offering the available quantity, so the extension field carrying that number is part of the feature, not decoration.",
+            "Partner and public APIs: integrators write their handling once against your documented code list; every undocumented shape becomes a support ticket you pay for.",
+            "Background job and queue workers: the consumer decides between retry, dead-letter and drop purely from the classification, because no human is watching at the moment of failure."
+          ],
+          ar: [
+            "منصات الدفع: البطاقة المرفوضة يجب ألّا يُعاد المحاولة عليها، بينما انتهاء مهلة الـ gateway يجب إعادة المحاولة عليه — ولا يفرّق بينهما إلا الـ code، لأن الاثنين يبدوان كـ 'الدفعة لم تنجح'.",
+            "الشراء الإلكتروني: تعارض نفاد المخزون يقود شاشة محددة تعرض الكمية المتاحة، فالحقل الإضافي الذي يحمل ذلك الرقم جزء من الميزة لا زينة.",
+            "APIs الشركاء والعامة: يكتب المتكاملون معالجتهم مرة واحدة اعتماداً على قائمة أكوادك الموثّقة؛ وكل شكل غير موثّق يتحول إلى تذكرة دعم تدفع ثمنها.",
+            "عمّال المهام الخلفية والطوابير: يقرر المستهلك بين إعادة المحاولة والـ dead-letter والإسقاط من التصنيف وحده، لأن لا أحد يراقب لحظة الفشل."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Add AddProblemDetails() to a minimal ASP.NET Core API and request a route that does not exist. Prove you got it right when the 404 comes back with Content-Type application/problem+json and a JSON body, instead of an empty response.",
+          ar: "أضف AddProblemDetails() إلى ASP.NET Core API بسيط ثم اطلب مساراً غير موجود. يثبت نجاحك أن الرد 404 يعود بـ Content-Type يساوي application/problem+json ومع body بصيغة JSON، بدل رد فارغ."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Implement POST /orders with all four failures from this lesson: unknown sku, quantity 0, stock lower than requested, payment declined. Prove you got it right when all four responses share the same field names, each carries a different code, and the status codes are 404, 400, 409 and 402.",
+          ar: "نفّذ POST /orders بحالات الفشل الأربع في هذا الدرس: sku غير معروف، و quantity تساوي 0، ومخزون أقل من المطلوب، ودفع مرفوض. يثبت نجاحك أن الردود الأربعة تتشارك أسماء الحقول نفسها، وأن لكل واحد code مختلفاً، وأن الحالات هي 404 و 400 و 409 و 402."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Write an IExceptionHandler that maps exception types to status and code, hides details for 5xx, and adds a traceId. Prove you got it right when a deliberately thrown NullReferenceException returns a 500 whose body contains no type or method name, while the server log contains the full stack trace under the same traceId.",
+          ar: "اكتب IExceptionHandler يحوّل أنواع الـ exceptions إلى status و code، ويخفي التفاصيل في أخطاء 5xx، ويضيف traceId. يثبت نجاحك أن NullReferenceException مرميّاً عمداً يعيد 500 لا يحتوي body الخاص به أي اسم نوع أو دالة، بينما يحتوي log الخادم الـ stack trace كاملاً تحت نفس الـ traceId."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Write an integration test that walks every endpoint's documented failure paths and asserts the shape: correct status, a code from the allowed list, a present traceId, and no stack trace text. Then add a new endpoint that returns a hand-rolled error object. Prove you got it right when the test fails on that endpoint without anyone editing the test.",
+          ar: "اكتب integration test يمرّ على مسارات الفشل الموثّقة لكل endpoint ويتحقق من الشكل: الحالة الصحيحة، و code من القائمة المسموحة، ووجود traceId، وخلوّ النص من stack trace. ثم أضف endpoint جديداً يعيد كائن خطأ يدوياً. يثبت نجاحك أن الاختبار يفشل عند ذلك الـ endpoint دون أن يعدّل أحد الاختبار."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "RFC 9457 — Problem Details for HTTP APIs", ar: "RFC 9457 — Problem Details for HTTP APIs" },
+          url: "https://www.rfc-editor.org/rfc/rfc9457.html",
+          meta: { en: "Specification", ar: "مواصفة" }
+        },
+        {
+          t: "ref",
+          label: { en: "Handle errors in ASP.NET Core web APIs", ar: "معالجة الأخطاء في ASP.NET Core web APIs" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/web-api/handle-errors",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Handle errors in ASP.NET Core (middleware and IExceptionHandler)", ar: "معالجة الأخطاء في ASP.NET Core (الـ middleware و IExceptionHandler)" },
+          url: "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Zalando RESTful API Guidelines — error handling", ar: "إرشادات Zalando لـ RESTful API — معالجة الأخطاء" },
+          url: "https://opensource.zalando.com/restful-api-guidelines/",
+          meta: { en: "Guidelines", ar: "إرشادات" }
+        }
+      ]
+    }
   ],
-
   quiz: [
     {
-      q: { en: "Which media type identifies an RFC 9457 error document?", ar: "أي media type يعرّف مستند خطأ وفق RFC 9457؟" },
+      q: {
+        en: "Why should a client branch on a code field instead of the human message?",
+        ar: "لماذا يتفرّع الـ client على حقل code بدل الرسالة الموجهة للإنسان؟"
+      },
       options: [
-        { en: "application/json", ar: "application/json" },
-        { en: "application/problem+json", ar: "application/problem+json" },
-        { en: "application/error+json", ar: "application/error+json" },
-        { en: "text/problem", ar: "text/problem" }
+        { en: "The message field is optional in RFC 9457", ar: "حقل الرسالة اختياري في RFC 9457" },
+        { en: "Wording changes for copy edits and translations, silently breaking the client", ar: "الصياغة تتغيّر بتعديلات النصوص والترجمات، فتكسر الـ client بصمت" },
+        { en: "String comparison is too slow at high traffic", ar: "مقارنة النصوص بطيئة جداً عند الحركة العالية" },
+        { en: "The message is not sent over HTTPS", ar: "الرسالة لا تُرسَل عبر HTTPS" }
       ],
       correct: 1,
-      why: { en: "application/problem+json. The +json suffix tells any intermediary the payload is JSON, while the problem part tells a client this is the standard error document rather than a domain resource. That distinction is what lets a client SDK branch on Content-Type and run one generic error handler instead of guessing from the status code.", ar: "هو application/problem+json. فلاحقة +json تخبر أي وسيط أن الحمولة JSON، بينما جزء problem يخبر الـ client أن هذا مستند الخطأ القياسي لا مورد مجال. وهذا التمييز هو ما يتيح لـ SDK العميل التفرّع على الـ Content-Type وتشغيل معالج أخطاء عام واحد بدل التخمين من الـ status code." }
+      why: {
+        en: "The message exists for people and must be free to change. The code is a promise to programs. If one field does both jobs, a copy edit becomes a breaking change that no server test catches.",
+        ar: "الرسالة موجودة للبشر ويجب أن تكون حرة في التغيير. أما الـ code فهو وعد للبرامج. وإذا قام حقل واحد بالدورين، يصبح تعديل لغوي كسراً للتوافق لا يلتقطه أي اختبار على الـ server."
+      }
     },
     {
-      q: { en: "A team returns 200 OK with { \"success\": false } for all failures. What is the most serious practical consequence?", ar: "فريق يرجع 200 OK مع { \"success\": false } لكل الأعطال. ما أخطر نتيجة عملية؟" },
+      q: {
+        en: "What belongs in the body of a 500 response?",
+        ar: "ما الذي ينتمي إلى body لرد 500؟"
+      },
       options: [
-        { en: "The JSON payload is slightly larger", ar: "حمولة الـ JSON أكبر قليلاً" },
-        { en: "Caches, gateway retry policies, circuit breakers and 5xx SLOs all treat the failure as a success", ar: "الـ caches وسياسات إعادة المحاولة والـ circuit breakers ومؤشرات الـ 5xx تعامل العطل كنجاح" },
-        { en: "Clients must use POST instead of GET", ar: "على العملاء استخدام POST بدل GET" },
-        { en: "The response can no longer be compressed", ar: "لم يعد ممكناً ضغط الاستجابة" }
-      ],
-      correct: 1,
-      why: { en: "HTTP status is the only failure signal every intermediary understands without knowing your domain. Spending 200 on \"the transport worked\" makes a shared cache store and replay the error, prevents retry and circuit-breaker policies from firing, and leaves your 5xx dashboard reading healthy during a full outage — the failure becomes invisible to exactly the machinery built to react to it.", ar: "الـ HTTP status هو إشارة العطل الوحيدة التي يفهمها كل وسيط دون معرفة بمجالك. وإنفاق 200 على «النقل نجح» يجعل cache مشتركاً يخزّن الخطأ ويعيد تقديمه، ويمنع سياسات إعادة المحاولة والـ circuit breaker من العمل، ويترك لوحة الـ 5xx لديك تقرأ سليمةً أثناء انقطاع كامل — فيصير العطل غير مرئي تحديداً للآلية المبنية للتفاعل معه." }
-    },
-    {
-      q: { en: "Which Problem Details member must stay identical across every occurrence of the same problem type?", ar: "أي عضو في الـ Problem Details يجب أن يبقى مطابقاً عبر كل حدوث لنفس نوع المشكلة؟" },
-      options: [
-        { en: "detail", ar: "detail" },
-        { en: "instance", ar: "instance" },
-        { en: "title", ar: "title" },
-        { en: "status", ar: "status" }
+        { en: "The exception message and stack trace, so support can debug", ar: "رسالة الـ exception والـ stack trace ليتمكن الدعم من التشخيص" },
+        { en: "Nothing at all; a 500 should have an empty body", ar: "لا شيء إطلاقاً؛ يجب أن يكون body الـ 500 فارغاً" },
+        { en: "A generic message plus a trace id that maps to the full server log", ar: "رسالة عامة مع trace id يقود إلى سطر الـ log الكامل على الخادم" },
+        { en: "The SQL statement that failed, so the caller can fix its input", ar: "جملة الـ SQL التي فشلت ليصلح الـ caller مدخلاته" }
       ],
       correct: 2,
-      why: { en: "title labels the class of problem and must not vary between occurrences; detail is the occurrence-specific explanation and is expected to vary, and instance identifies the specific occurrence. Putting variable data in title explodes the cardinality of any dashboard grouping errors by type, the same way an id inside a metric label does.", ar: "الـ title تسمية لصنف المشكلة ويجب ألا يتغير بين الحدوثات؛ والـ detail هو الشرح الخاص بالحالة ويُتوقع أن يتغير، والـ instance يعرّف الحالة تحديداً. ووضع بيانات متغيرة في الـ title يفجّر الـ cardinality في أي لوحة تجمّع الأخطاء حسب الـ type، تماماً كما يفعل معرّف داخل تسمية مقياس." }
+      why: {
+        en: "A 500 means the server does not know what went wrong, so specifics only leak internal information the caller cannot act on. The trace id links the user's failure to the full exception stored safely in the logs.",
+        ar: "الحالة 500 تعني أن الخادم لا يعرف ما الخطأ، فأي تفاصيل تسرّب معلومات داخلية لا يستطيع الـ caller التصرف بناءً عليها. والـ trace id يربط فشل المستخدم بالـ exception الكامل المحفوظ بأمان في الـ logs."
+      }
     },
     {
-      q: { en: "An API returns the same type URI .../problems/invalid-request for a malformed body, an expired token and an exhausted quota. What breaks?", ar: "API يرجع نفس الـ type URI أي .../problems/invalid-request لجسم مشوّه ولـ token منتهٍ ولحصة نفدت. ما الذي ينكسر؟" },
+      q: {
+        en: "The warehouse has 3 units and the customer ordered 10. Which status best fits?",
+        ar: "المخزن فيه 3 قطع والعميل طلب 10. أي status هو الأنسب؟"
+      },
       options: [
-        { en: "Nothing — the status code still distinguishes them", ar: "لا شيء — فالـ status code ما زال يميّزها" },
-        { en: "Only the documentation becomes harder to write", ar: "التوثيق فقط يصير أصعب كتابة" },
-        { en: "Clients cannot distinguish never-retry from retry-after, so they retry all three and amplify the quota failure", ar: "العملاء لا يميّزون «لا تعد أبداً» من «أعد لاحقاً»، فيعيدون الثلاثة ويضخّمون عطل الحصة" },
-        { en: "The response can no longer be serialised as problem+json", ar: "لم يعد ممكناً تسلسل الاستجابة كـ problem+json" }
-      ],
-      correct: 2,
-      why: { en: "Error identity must be at least as granular as the smallest distinct client reaction. Collapsing a permanent client mistake and a transient quota rejection into one type forces the client to treat them identically; if it retries, the quota case becomes a retry storm that keeps the quota exhausted. The status codes here also differ (400 vs 401 vs 429), which is a signal the types should have differed too.", ar: "هوية الخطأ يجب أن تكون بدقة أصغر ردّ فعل متمايز لدى العميل على الأقل. ودمج خطأ عميل دائم مع رفض حصة عابر في type واحد يجبر العميل على معاملتهما بالمثل؛ فإن أعاد المحاولة تحوّلت حالة الحصة إلى عاصفة إعادة محاولة تُبقي الحصة نافدة. كما أن أكواد الحالة هنا مختلفة أصلاً (400 مقابل 401 مقابل 429)، وهي إشارة إلى أن الأنواع كان يجب أن تختلف أيضاً." }
-    },
-    {
-      q: { en: "In ASP.NET Core, what is the single correct place to stamp traceId and instance onto every generated problem document?", ar: "في ASP.NET Core، ما المكان الواحد الصحيح لختم traceId و instance على كل مستند problem يُولَّد؟" },
-      options: [
-        { en: "A try/catch in every controller action", ar: "try/catch في كل action داخل الـ controller" },
-        { en: "ProblemDetailsOptions.CustomizeProblemDetails, configured via AddProblemDetails", ar: "ProblemDetailsOptions.CustomizeProblemDetails المضبوط عبر AddProblemDetails" },
-        { en: "A response header set by the reverse proxy", ar: "ترويسة استجابة يضبطها الـ reverse proxy" },
-        { en: "The client SDK, after it parses the body", ar: "الـ SDK لدى العميل بعد تحليله للجسم" }
+        { en: "400 Bad Request", ar: "400 Bad Request" },
+        { en: "409 Conflict", ar: "409 Conflict" },
+        { en: "500 Internal Server Error", ar: "500 Internal Server Error" },
+        { en: "200 OK with success: false", ar: "200 OK مع success: false" }
       ],
       correct: 1,
-      why: { en: "CustomizeProblemDetails runs for every problem document the framework produces — automatic model-state 400s, unhandled exceptions via UseExceptionHandler, and bare status results via UseStatusCodePages — so it is the one hook that guarantees no path is missed. Per-action try/catch blocks miss routing 404s and 405s entirely, and a proxy header does not reach code that only reads the body.", ar: "الـ CustomizeProblemDetails يعمل مع كل مستند problem ينتجه الـ framework — 400 التلقائية من الـ model state، والـ exceptions غير المعالَجة عبر UseExceptionHandler، والنتائج ذات الـ status المجرّد عبر UseStatusCodePages — فهو الخطّاف الوحيد الذي يضمن ألا يُفوَّت أي مسار. أما كتل try/catch لكل action فتفوّت 404 و405 من الـ routing كلياً، وترويسة الـ proxy لا تصل إلى كود لا يقرأ إلا الجسم." }
+      why: {
+        en: "The request itself was valid, so 400 is wrong. Nothing broke on the server, so 500 is wrong. The request clashed with the current state of the system — which is exactly what 409 Conflict describes — and the same request could succeed later once stock is restocked.",
+        ar: "الطلب نفسه كان صحيحاً، فـ 400 خاطئة. ولم يتعطل شيء على الخادم، فـ 500 خاطئة. الطلب تعارض مع الحالة الحالية للنظام — وهذا بالضبط ما تصفه 409 Conflict — ونفس الطلب قد ينجح لاحقاً بعد إعادة تعبئة المخزون."
+      }
+    },
+    {
+      q: {
+        en: "Which change to an existing error contract is safe for clients that already ignore unknown fields?",
+        ar: "أي تغيير على عقد أخطاء قائم يُعد آمناً لـ clients تتجاهل الحقول غير المعروفة؟"
+      },
+      options: [
+        { en: "Renaming code values to be more descriptive", ar: "إعادة تسمية قيم code لتكون أوضح" },
+        { en: "Adding a new extension field such as available", ar: "إضافة حقل extension جديد مثل available" },
+        { en: "Changing a 409 to a 400 for the same failure", ar: "تغيير 409 إلى 400 لنفس حالة الفشل" },
+        { en: "Removing the traceId field to shrink the body", ar: "حذف حقل traceId لتصغير الـ body" }
+      ],
+      correct: 1,
+      why: {
+        en: "Adding a field is additive: parsers that ignore unknown JSON keys keep working, and clients adopt it when ready. Renaming a code, changing a status, or removing a field all change something an existing client may depend on.",
+        ar: "إضافة حقل عملية إضافية بحتة: الـ parsers التي تتجاهل مفاتيح JSON غير المعروفة تستمر في العمل، ويتبنّاه الـ clients عند الجاهزية. أما إعادة تسمية code أو تغيير status أو حذف حقل فكلها تغيّر شيئاً قد يعتمد عليه client قائم."
+      }
+    },
+    {
+      q: {
+        en: "A 500 comes back as an HTML page instead of JSON. What is the most likely cause?",
+        ar: "يعود الخطأ 500 كصفحة HTML بدل JSON. ما السبب الأرجح؟"
+      },
+      options: [
+        { en: "AddProblemDetails() was called twice", ar: "استُدعيت AddProblemDetails() مرتين" },
+        { en: "The client did not send an Accept header", ar: "لم يرسل الـ client ترويسة Accept" },
+        { en: "The exception happened outside the exception handler, for example in earlier middleware or after headers were sent", ar: "حدث الـ exception خارج exception handler، مثلاً في middleware أسبق أو بعد إرسال الترويسات" },
+        { en: "ProblemDetails cannot serialise exceptions", ar: "لا يستطيع ProblemDetails تحويل الـ exceptions إلى JSON" }
+      ],
+      correct: 2,
+      why: {
+        en: "Your handler can only shape failures that reach it. Middleware registered before UseExceptionHandler runs outside its protection, and once response headers have been sent the status is fixed and no body can be substituted — so the host writes its default page.",
+        ar: "الـ handler لديك يستطيع تشكيل حالات الفشل التي تصل إليه فقط. الـ middleware المسجّل قبل UseExceptionHandler يعمل خارج حمايته، وبمجرد إرسال ترويسات الرد تُثبَّت الحالة ولا يمكن استبدال الـ body — فيكتب المضيف صفحته الافتراضية."
+      }
     }
   ]
 };

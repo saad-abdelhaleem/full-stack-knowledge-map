@@ -4,328 +4,682 @@ const restConstraintsLesson = {
   moduleId: "foundations",
   title: { en: "The six constraints", ar: "القيود الستة" },
   summary: {
-    en: "What Fielding actually constrained, what each constraint buys you, and the specific thing that breaks the moment you violate one.",
-    ar: "ما الذي قيّده Fielding فعلاً، وما الذي يشتريه لك كل قيد، وما الذي ينكسر تحديداً لحظة أن تخالف واحداً منها."
+    en: "The six rules that make an HTTP API cacheable, scalable and safe to change — and what actually breaks when you drop each one.",
+    ar: "القواعد الست التي تجعل الـ HTTP API قابلاً للـ caching وللتوسّع وللتغيير بأمان — وما الذي ينكسر فعلياً عند إسقاط كل واحدة منها."
   },
   mins: 13,
   sections: [
-    { key: "why", blocks: [
-      { t: "p", en: "REST is not a set of URL naming rules and it is not a synonym for JSON over HTTP. It is an architectural style described in Roy Fielding's 2000 dissertation, defined by a set of constraints deliberately imposed on a distributed system. The word constraint is the important one: each of the six removes a freedom from the designer, and in exchange grants a property to the system — visibility, scalability, independent evolvability, or fault tolerance.", ar: "الـ REST ليس مجموعة قواعد لتسمية الـ URLs وليس مرادفاً لإرسال JSON فوق HTTP. إنه نمط معماري وصفه Roy Fielding في أطروحته عام 2000، ويُعرَّف بمجموعة قيود مفروضة عمداً على نظام موزّع. وكلمة «قيد» هي المهمة هنا: فكل واحد من الستة يسلب المصمّم حرية ما، ويمنح النظام في المقابل خاصية — الوضوح أو قابلية التوسّع أو التطوّر المستقل أو تحمّل الأعطال." },
-      { t: "p", en: "The reason this matters practically is that the constraints are why the web scaled to billions of clients without a coordinating authority. Caches, proxies, load balancers and CDNs are all generic infrastructure that works on any application it has never seen before, and that only works because every participant obeys the same small set of rules. When your API violates one, you do not get a compile error — you quietly lose the infrastructure that depended on the rule.", ar: "وسبب أهمية هذا عملياً أن هذه القيود هي ما مكّن الويب من التوسّع إلى مليارات العملاء دون سلطة منسّقة. فالـ caches والـ proxies وموازنات الأحمال والـ CDNs كلها بنية تحتية عامة تعمل مع أي تطبيق لم ترَه من قبل، ولا ينجح ذلك إلا لأن كل مشارك يطيع نفس المجموعة الصغيرة من القواعد. وحين يخالف API لديك واحداً منها فلن تحصل على خطأ ترجمة — بل تفقد بهدوء البنية التحتية التي كانت تعتمد على تلك القاعدة." },
-      { t: "p", en: "The other reason to know them precisely is that \"is this RESTful?\" is a useless question in a design review, while \"which constraint does this violate and what do we lose?\" is a productive one. Violating a constraint is sometimes the right call — GraphQL gives up uniform interface and cacheability on purpose, and gets query flexibility in return. What is not defensible is violating one without knowing you did.", ar: "والسبب الآخر لمعرفتها بدقة أن سؤال «هل هذا RESTful؟» عديم الفائدة في مراجعة تصميم، بينما سؤال «أي قيد يخالفه هذا وماذا نخسر؟» سؤال منتج. فمخالفة قيد قد تكون القرار الصحيح أحياناً — فالـ GraphQL يتنازل عن الواجهة الموحدة وقابلية الـ caching عن قصد ويحصل على مرونة الاستعلام في المقابل. وما لا يمكن الدفاع عنه هو مخالفة قيد دون أن تدري أنك خالفته." },
-      { t: "callout", kind: "note", en: "Five constraints are required; code-on-demand is explicitly optional. A system that satisfies all five plus HATEOAS is what Fielding called REST — and by that standard almost nothing in the industry called a REST API actually is one.", ar: "خمسة قيود إلزامية، والـ code-on-demand اختياري صراحةً. والنظام الذي يحقق الخمسة مع HATEOAS هو ما سماه Fielding بالـ REST — وبهذا المعيار فإن معظم ما تسميه الصناعة REST API ليس كذلك فعلاً." }
-    ]},
-
-    { key: "problem", blocks: [
-      { t: "p", en: "Before the constraints were articulated, distributed object systems — CORBA, DCOM, early SOAP — tried to make a remote call look like a local one. Each service exposed its own bespoke interface, so no intermediary could do anything useful with a message it had not been compiled against. A proxy could not cache a response because it had no idea whether the operation was a read. A load balancer could not move a session because state lived in the server. Scaling meant scaling the specific server that held your data.", ar: "قبل صياغة هذه القيود، حاولت أنظمة الكائنات الموزّعة — CORBA و DCOM و SOAP المبكر — أن تجعل الاستدعاء البعيد يبدو كالمحلي. فكانت كل خدمة تعرض واجهة خاصة بها، ولم يستطع أي وسيط فعل شيء مفيد برسالة لم يُترجَم مقابلها. لم يستطع الـ proxy تخزين استجابة لأنه لا يعرف هل العملية قراءة. ولم يستطع موازن الأحمال نقل جلسة لأن الحالة تعيش في السيرفر. وكان التوسّع يعني توسيع السيرفر المحدد الذي يحمل بياناتك." },
-      { t: "p", en: "The constraints invert that. A generic cache can serve a GET it has never seen before because the method's semantics are universal. A load balancer can send request N+1 to a different node because no per-client state lives on any node. A CDN can sit between client and origin without either knowing, because a layered system forbids a component from seeing beyond its immediate neighbour. Every one of those capabilities exists only because a freedom was given up.", ar: "والقيود تعكس ذلك. فالـ cache العام يستطيع خدمة GET لم يره من قبل لأن دلالات الـ method عالمية. وموازن الأحمال يستطيع إرسال الـ request رقم N+1 إلى node مختلف لأن لا حالة خاصة بالعميل تعيش على أي node. والـ CDN يستطيع الجلوس بين الـ client والـ origin دون أن يعرف أحدهما، لأن النظام الطبقي يمنع مكوّناً من الرؤية أبعد من جاره المباشر. وكل واحدة من تلك القدرات موجودة فقط لأن حرية ما قد سُلِّمت." },
-      { t: "kv", rows: [
-        { k: { en: "Stateless violated (sticky sessions)", ar: "مخالفة الـ statelessness (جلسات لاصقة)" }, v: { en: "A node restart logs out every user pinned to it; autoscaling down drops live sessions; deploys become disruptive rather than routine", ar: "إعادة تشغيل node تُخرج كل مستخدم مثبّت عليه؛ والتقليص التلقائي يُسقط جلسات حية؛ ويصبح النشر معطّلاً بدل أن يكون روتينياً" } },
-        { k: { en: "Cacheable violated (mutating GET)", ar: "مخالفة الـ cacheability (GET يغيّر الحالة)" }, v: { en: "You must set no-store on the whole path prefix, losing the 90%+ offload a CDN would have given you", ar: "تضطر لضبط no-store على بادئة المسار كلها، فتخسر تخفيفاً يفوق 90% كان الـ CDN سيمنحك إياه" } },
-        { k: { en: "Uniform interface violated (POST /api?action=getUser)", ar: "مخالفة الواجهة الموحدة (POST /api?action=getUser)" }, v: { en: "No intermediary can cache, retry or route intelligently; every client needs bespoke knowledge of your verb vocabulary", ar: "لا يستطيع أي وسيط الـ caching أو إعادة المحاولة أو التوجيه الذكي؛ ويحتاج كل client معرفة خاصة بمفردات أفعالك" } },
-        { k: { en: "Layered system violated (client depends on origin IP)", ar: "مخالفة النظام الطبقي (client يعتمد على IP الـ origin)" }, v: { en: "You cannot insert a CDN, a gateway or a canary layer without a coordinated client change", ar: "لا تستطيع إدخال CDN أو gateway أو طبقة canary دون تغيير منسّق لدى العملاء" } },
-        { k: { en: "Client-server violated (shared database between UI and service)", ar: "مخالفة الفصل بين الـ client والسيرفر (قاعدة بيانات مشتركة بين الواجهة والخدمة)" }, v: { en: "The two can no longer be deployed or evolved independently; a schema change breaks both at once", ar: "لم يعد بالإمكان نشرهما أو تطويرهما بشكل مستقل؛ وتغيير الـ schema يكسر الاثنين معاً" } }
-      ]}
-    ]},
-
-    { key: "internals", blocks: [
-      { t: "p", en: "The six constraints are layered: each is added to the previous ones, and the derived properties accumulate. It is worth reading them as a sequence of design decisions rather than a checklist.", ar: "القيود الستة متراكبة: كل واحد يُضاف إلى ما قبله، وتتراكم الخصائص المشتقة. ويستحق الأمر قراءتها كسلسلة قرارات تصميم لا كقائمة تحقق." },
-      { t: "kv", rows: [
-        { k: { en: "1. Client–server", ar: "1. الفصل بين الـ client والسيرفر" }, v: { en: "Separate user-interface concerns from data storage. Buys independent evolution and deployment of the two sides.", ar: "افصل اهتمامات واجهة المستخدم عن تخزين البيانات. يشتري تطوّراً ونشراً مستقلين للطرفين." } },
-        { k: { en: "2. Stateless", ar: "2. انعدام الحالة" }, v: { en: "Every request carries everything needed to understand it; no session context stored on the server between requests. Buys scalability, reliability and visibility.", ar: "كل request يحمل كل ما يلزم لفهمه؛ ولا سياق جلسة يُخزَّن على السيرفر بين الـ requests. يشتري قابلية التوسّع والموثوقية والوضوح." } },
-        { k: { en: "3. Cacheable", ar: "3. قابلية الـ caching" }, v: { en: "Responses must declare themselves cacheable or not. Buys reduced latency and origin load — at the cost of possible staleness.", ar: "يجب أن تعلن الاستجابات كونها قابلة للتخزين أم لا. يشتري زمن استجابة أقل وحملاً أخف على الـ origin — بثمن قِدَم محتمل." } },
-        { k: { en: "4. Uniform interface", ar: "4. الواجهة الموحدة" }, v: { en: "The central constraint, with four sub-constraints. Buys generic intermediaries and decoupled clients; costs efficiency versus a bespoke protocol.", ar: "القيد المركزي، وله أربعة قيود فرعية. يشتري وسطاء عامّين وعملاء غير مترابطين؛ ويكلّف كفاءة مقارنةً ببروتوكول مفصّل." } },
-        { k: { en: "5. Layered system", ar: "5. النظام الطبقي" }, v: { en: "A component can only see its immediate layer. Buys the freedom to insert gateways, caches and load balancers invisibly; costs added latency per hop.", ar: "المكوّن لا يرى إلا طبقته المباشرة. يشتري حرية إدخال gateways وcaches وموازنات بشكل غير مرئي؛ ويكلّف زمناً إضافياً لكل قفزة." } },
-        { k: { en: "6. Code-on-demand (optional)", ar: "6. الكود عند الطلب (اختياري)" }, v: { en: "The server may ship executable code (JavaScript) to extend the client. Buys client flexibility; reduces visibility — the only optional constraint.", ar: "يجوز للسيرفر إرسال كود قابل للتنفيذ (JavaScript) لتوسيع الـ client. يشتري مرونة للعميل؛ ويقلّل الوضوح — وهو القيد الاختياري الوحيد." } }
-      ]},
-      { t: "p", en: "The uniform interface is where most of the substance lives, and it has four sub-constraints that people rarely name individually. Identification of resources: every thing worth talking about has a URI, and the URI names the resource, not the representation. Manipulation through representations: the client holds a representation (JSON, XML, HTML) with enough metadata to modify or delete the resource — you send a document that describes desired state, not a procedure call. Self-descriptive messages: each message carries everything an intermediary needs — method, media type, cache directives — so nothing needs out-of-band knowledge. And hypermedia as the engine of application state (HATEOAS): the client discovers what it can do next from links in the response rather than from a hardcoded URL template.", ar: "الواجهة الموحدة هي موطن معظم الجوهر، ولها أربعة قيود فرعية نادراً ما يسمّيها الناس فرادى. تعريف الموارد: كل شيء يستحق الحديث عنه له URI، والـ URI يسمّي المورد لا التمثيل. والتعديل عبر التمثيلات: يحمل الـ client تمثيلاً (JSON أو XML أو HTML) بما يكفي من الـ metadata لتعديل المورد أو حذفه — فأنت ترسل مستنداً يصف الحالة المرغوبة لا استدعاء إجراء. والرسائل ذاتية الوصف: كل رسالة تحمل كل ما يحتاجه الوسيط — الـ method والـ media type وتوجيهات الـ caching — فلا يحتاج شيء معرفة خارج القناة. وأخيراً الـ hypermedia كمحرّك لحالة التطبيق (HATEOAS): يكتشف الـ client ما يستطيع فعله تالياً من روابط في الاستجابة لا من قالب URL مكتوب في الكود." },
-      { t: "code", lang: "json", label: { en: "The same resource, with and without hypermedia", ar: "نفس المورد، مع الـ hypermedia وبدونه" }, code: "// Typical: the client hardcodes which transitions are legal\n{\n  \"id\": \"ord_8812\",\n  \"status\": \"pending_payment\",\n  \"total\": 249.90\n}\n\n// Hypermedia: the server tells the client what is currently possible\n{\n  \"id\": \"ord_8812\",\n  \"status\": \"pending_payment\",\n  \"total\": 249.90,\n  \"_links\": {\n    \"self\":   { \"href\": \"/orders/ord_8812\" },\n    \"pay\":    { \"href\": \"/orders/ord_8812/payment\", \"method\": \"POST\" },\n    \"cancel\": { \"href\": \"/orders/ord_8812\",         \"method\": \"DELETE\" }\n  }\n}\n// Once paid, the server simply stops emitting \"cancel\" — the client\n// does not need a new release to learn that cancellation is no longer legal." },
-      { t: "p", en: "Richardson's maturity model is the usual way teams locate themselves: level 0 is a single endpoint tunnelling everything over POST; level 1 introduces resources but still one verb; level 2 uses HTTP methods and status codes correctly — where the overwhelming majority of production APIs sit; level 3 adds hypermedia controls. Fielding himself has been explicit that only level 3 is REST, and equally explicit that this is not a moral judgement — it is a statement about which properties you actually get.", ar: "نموذج نضج Richardson هو الطريقة المعتادة لتحديد موقع الفريق: المستوى صفر هو endpoint واحد يمرّر كل شيء عبر POST؛ والمستوى الأول يُدخل الموارد لكن بفعل واحد؛ والمستوى الثاني يستخدم الـ HTTP methods والـ status codes بشكل صحيح — وهنا تقع الغالبية الساحقة من APIs الـ production؛ والمستوى الثالث يضيف ضوابط الـ hypermedia. وقد صرّح Fielding نفسه بأن المستوى الثالث وحده هو REST، وصرّح بالمثل أن هذا ليس حكماً أخلاقياً — بل تقرير لأي خصائص تحصل عليها فعلاً." },
-      { t: "p", en: "Statelessness is the constraint most often misunderstood, because \"stateless\" does not mean the application has no state. The server holds resource state — orders, users, balances — and that is the whole point of having a server. What it must not hold is application state: where a particular client is in a multi-step interaction. That belongs in the request, or in a resource with a URI the client can address. A shopping cart on the server is fine when it is /carts/{id}, a resource anyone can fetch; it violates the constraint when it is an in-memory dictionary keyed by a session id that only node 3 has.", ar: "انعدام الحالة هو القيد الأكثر سوء فهم، لأن كلمة stateless لا تعني أن التطبيق بلا حالة. فالسيرفر يحمل حالة الموارد — الطلبات والمستخدمين والأرصدة — وهذا هو الغرض من وجود سيرفر أصلاً. أما ما يجب ألا يحمله فهو حالة التطبيق: أين وصل client معيّن في تفاعل متعدد الخطوات. تلك تنتمي إلى الـ request، أو إلى مورد له URI يستطيع الـ client مخاطبته. فسلة تسوّق على السيرفر مقبولة حين تكون /carts/{id} أي مورداً يستطيع أي أحد جلبه؛ وتخالف القيد حين تكون قاموساً في الذاكرة مفتاحه معرّف جلسة لا يملكه إلا الـ node رقم 3." },
-      { t: "callout", kind: "tip", en: "A quick test for the layered-system constraint: could you put a CDN, a gateway or a second identical instance in front of this service tomorrow without telling any client? If not, something is leaking through the layers — usually an absolute URL, an IP address, or in-memory state.", ar: "اختبار سريع لقيد النظام الطبقي: هل تستطيع وضع CDN أو gateway أو نسخة ثانية مطابقة أمام هذه الخدمة غداً دون إخبار أي client؟ إن لم تستطع، فشيء ما يتسرّب عبر الطبقات — وغالباً URL مطلق أو عنوان IP أو حالة في الذاكرة." }
-    ]},
-
-    { key: "tradeoffs", blocks: [
-      { t: "tradeoff",
-        pros: {
-          en: [
-            "Generic infrastructure — caches, proxies, gateways — works without knowing your domain",
-            "Horizontal scaling is trivial when no request depends on which node served the last one",
-            "Client and server evolve on independent release schedules",
-            "Self-descriptive messages make traffic debuggable and observable by tools you did not write",
-            "Layering lets you insert CDNs, canaries and gateways without a client change"
-          ],
-          ar: [
-            "البنية التحتية العامة — caches وproxies وgateways — تعمل دون معرفة بمجالك",
-            "التوسّع الأفقي بسيط حين لا يعتمد أي request على أي node خدم السابق",
-            "الـ client والسيرفر يتطوّران بجداول إصدار مستقلة",
-            "الرسائل ذاتية الوصف تجعل الحركة قابلة للتشخيص والرصد بأدوات لم تكتبها أنت",
-            "الطبقية تتيح إدخال CDNs وcanaries وgateways دون تغيير لدى العملاء"
+    {
+      key: "why",
+      blocks: [
+        {
+          t: "p",
+          en: "REST is a list of six design rules for building an API on top of HTTP. Follow them and you get three concrete things almost for free: responses that caches can store, servers you can add or remove at will, and clients that keep working when you change the code behind the API.",
+          ar: "الـ REST هو قائمة من ست قواعد تصميم لبناء API فوق الـ HTTP. لو التزمت بها تحصل على ثلاثة أشياء ملموسة تقريباً بالمجان: responses يستطيع الـ cache تخزينها، وservers تضيفها أو تحذفها وقتما شئت، وclients تستمر في العمل عندما تغيّر الكود خلف الـ API."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "REST", ar: "REST" },
+              v: {
+                en: "Representational State Transfer. A set of six design rules described by Roy Fielding in his year-2000 PhD thesis, written to explain why the web scaled.",
+                ar: "Representational State Transfer. مجموعة من ست قواعد تصميم وصفها Roy Fielding في رسالة الدكتوراه سنة 2000، كتبها ليشرح سبب قدرة الويب على التوسّع."
+              }
+            },
+            {
+              k: { en: "Constraint", ar: "Constraint" },
+              v: {
+                en: "A rule you accept on purpose. You give up some freedom, and in exchange the system gains a property you want, like cacheability.",
+                ar: "قاعدة تقبلها عن قصد. تتنازل عن بعض الحرية، وفي المقابل يكتسب النظام خاصية تريدها، مثل القابلية للـ caching."
+              }
+            },
+            {
+              k: { en: "Resource", ar: "Resource" },
+              v: {
+                en: "A thing your API talks about, named by a URL. Order 1042 is a resource; its URL is /orders/1042.",
+                ar: "شيء يتحدث عنه الـ API، له اسم على شكل URL. الطلب رقم 1042 هو resource، وعنوانه /orders/1042."
+              }
+            },
+            {
+              k: { en: "Representation", ar: "Representation" },
+              v: {
+                en: "One rendering of that resource, sent over the wire — usually a JSON document. The order lives in a database row; the JSON you return is a representation of it.",
+                ar: "شكل واحد من أشكال ذلك الـ resource يُرسل عبر الشبكة — عادة مستند JSON. الطلب موجود في صف داخل الـ database، والـ JSON الذي ترجعه هو representation له."
+              }
+            },
+            {
+              k: { en: "Uniform interface", ar: "Uniform interface" },
+              v: {
+                en: "Every resource is reached the same way: a URL, one of a small fixed set of methods (GET, POST, PUT, DELETE...), and standard headers.",
+                ar: "كل resource يُوصل إليه بنفس الطريقة: URL، وواحدة من مجموعة صغيرة ثابتة من الـ methods (GET, POST, PUT, DELETE...)، وheaders قياسية."
+              }
+            },
+            {
+              k: { en: "Intermediary", ar: "Intermediary" },
+              v: {
+                en: "Any box sitting between client and server that forwards the request: a CDN, a reverse proxy, an API gateway, a load balancer.",
+                ar: "أي صندوق يقف بين الـ client والـ server ويمرّر الطلب: CDN أو reverse proxy أو API gateway أو load balancer."
+              }
+            }
           ]
         },
-        cons: {
-          en: [
-            "Statelessness means re-sending context on every request — auth tokens, filters, pagination cursors",
-            "Resource-shaped endpoints cause over-fetching and under-fetching for rich UI screens",
-            "Chatty clients: one screen may need four round trips where one RPC call would do",
-            "HATEOAS costs payload size and client complexity that most teams never recoup",
-            "Not every operation maps cleanly to a resource — 'send reminder', 'recalculate', 'approve'"
-          ],
-          ar: [
-            "انعدام الحالة يعني إعادة إرسال السياق في كل request — رموز المصادقة والفلاتر ومؤشرات التقسيم",
-            "الـ endpoints المصمّمة كموارد تسبّب جلباً زائداً أو ناقصاً لشاشات واجهة غنية",
-            "عملاء كثيرو الأحاديث: شاشة واحدة قد تحتاج أربع رحلات حيث يكفي استدعاء RPC واحد",
-            "الـ HATEOAS يكلّف حجم payload وتعقيد عميل لا تستردّه معظم الفرق أبداً",
-            "ليست كل عملية تنعكس بنظافة إلى مورد — «أرسل تذكيراً»، «أعد الحساب»، «اعتمد»"
+        {
+          t: "p",
+          en: "The rules exist because of a problem the early web had. Different teams wrote browsers, proxies and servers, none of them talking to each other, and the whole thing still had to work. That only worked because everyone agreed on one message format and one small vocabulary of verbs. Fielding wrote the six constraints down after the fact, as a description of what the web was already doing right.",
+          ar: "هذه القواعد وُجدت بسبب مشكلة واجهت الويب في بدايته. فرق مختلفة كتبت browsers وproxies وservers، ولا أحد منهم يتحدث مع الآخر، ومع ذلك كان لا بد أن يعمل كل شيء معاً. نجح ذلك فقط لأن الجميع اتفقوا على شكل رسالة واحد وقائمة صغيرة من الأفعال. كتب Fielding القيود الست لاحقاً كوصف لما كان الويب يفعله بالفعل بشكل صحيح."
+        },
+        {
+          t: "p",
+          en: "Think of the postal system. You can mail a package to any address in the world without knowing anything about the building at the other end. That works because the envelope is standard: an address on the front, a stamp in the corner, a marking that says fragile or not. Sorting offices along the way read only the envelope and route the package without opening it. In REST the URL is the address, the HTTP method is the marking, and the headers are the stamps — and every proxy along the route can act on the request without knowing anything about your business logic.",
+          ar: "تخيّل نظام البريد. تستطيع إرسال طرد إلى أي عنوان في العالم دون أن تعرف شيئاً عن المبنى في الطرف الآخر. ينجح هذا لأن الظرف موحّد: عنوان في المقدمة، وطابع في الزاوية، وعلامة تقول قابل للكسر أو لا. مكاتب الفرز على الطريق تقرأ الظرف فقط وتوجّه الطرد دون فتحه. في الـ REST الـ URL هو العنوان، والـ HTTP method هو العلامة، والـ headers هي الطوابع — وكل proxy على الطريق يستطيع التصرف بناءً عليها دون أن يعرف شيئاً عن منطق العمل عندك."
+        },
+        {
+          t: "callout",
+          kind: "note",
+          en: "Five of the six constraints are required. The sixth, code-on-demand, is explicitly optional in Fielding's own text. An API that skips it is still REST.",
+          ar: "خمسة من القيود الست إلزامية. السادس، code-on-demand، اختياري صراحةً في نص Fielding نفسه. الـ API الذي يتجاهله يبقى REST."
+        }
+      ]
+    },
+    {
+      key: "problem",
+      blocks: [
+        {
+          t: "p",
+          en: "Here is the running example for this whole lesson: an order API. The first version was written RPC-style, meaning each operation got its own URL with a verb in it, like a remote function call. Reading an order was POST /api/getOrderById with a body of { \"id\": 1042 }. It worked and the tests passed.",
+          ar: "هذا هو المثال الذي سنستخدمه في الدرس كله: API للطلبات. النسخة الأولى كُتبت بأسلوب RPC، أي أن كل عملية أخذت URL خاصاً بها يحتوي على فعل، تماماً كاستدعاء دالة عن بُعد. قراءة طلب كانت POST /api/getOrderById مع body فيه { \"id\": 1042 }. عمل الأمر ونجحت الاختبارات."
+        },
+        {
+          t: "p",
+          en: "Then traffic grew. The order page was opened about 4,000 times a minute, and every single one of those hits reached the application servers and ran a database query — because a POST is never cached by anything, and the CDN in front could not tell one POST body from another. The team rewrote reads as GET /orders/1042 with an ETag header, which is a short string that identifies the exact version of a response.",
+          ar: "ثم زاد الـ traffic. صفحة الطلب كانت تُفتح نحو 4000 مرة في الدقيقة، وكل واحدة منها كانت تصل إلى الـ application servers وتشغّل query على الـ database — لأن الـ POST لا يخزّنه أي cache أبداً، والـ CDN في المقدمة لا يستطيع التفريق بين body وآخر. أعاد الفريق كتابة عمليات القراءة على شكل GET /orders/1042 مع header اسمه ETag، وهو نص قصير يحدّد النسخة الدقيقة من الـ response."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Requests reaching the app servers", ar: "الطلبات التي تصل إلى الـ app servers" },
+              v: {
+                en: "4,000/min before, 880/min after — the CDN answered the rest from its own copy, so those never touched your code at all.",
+                ar: "4000 في الدقيقة قبلاً، 880 بعدها — الـ CDN أجاب على الباقي من نسخته الخاصة، فتلك الطلبات لم تلمس الكود عندك إطلاقاً."
+              }
+            },
+            {
+              k: { en: "Database queries per minute", ar: "عدد الـ queries في الدقيقة" },
+              v: {
+                en: "4,000 down to 880. Same data, same freshness rules — the difference is purely that a GET can be cached and a POST cannot.",
+                ar: "من 4000 إلى 880. نفس البيانات ونفس قواعد التحديث — الفرق فقط أن الـ GET يمكن تخزينه في الـ cache والـ POST لا."
+              }
+            },
+            {
+              k: { en: "p95 latency", ar: "p95 للـ latency" },
+              v: {
+                en: "310 ms to 40 ms. p95 means the slowest 5 requests out of every 100; the fast majority barely changed, the slow tail collapsed.",
+                ar: "من 310 ms إلى 40 ms. الـ p95 يعني أبطأ 5 طلبات من كل 100؛ الأغلبية السريعة لم تتغير كثيراً، لكن الذيل البطيء انهار."
+              }
+            },
+            {
+              k: { en: "Code changed", ar: "الكود الذي تغيّر" },
+              v: {
+                en: "One controller method and two lines of header code. No new infrastructure was bought — the CDN was already there, it just had nothing it was allowed to cache.",
+                ar: "method واحدة في الـ controller وسطران لضبط الـ headers. لم يُشترَ أي infrastructure جديد — الـ CDN كان موجوداً أصلاً، لكن لم يكن لديه ما يُسمح له بتخزينه."
+              }
+            }
           ]
         },
-        limits: {
-          en: [
-            "The constraints say nothing about pagination, filtering, partial updates or bulk operations",
-            "Only GET and HEAD get real caching benefit; write-heavy systems gain little",
-            "Statelessness does not remove state — it relocates it to a token, a database or a cache",
-            "Real-time and streaming interactions fall outside the request/response model entirely",
-            "HATEOAS only pays off when clients are written to follow links, which almost none are"
-          ],
-          ar: [
-            "القيود لا تقول شيئاً عن التقسيم إلى صفحات ولا الفلترة ولا التحديث الجزئي ولا العمليات المجمّعة",
-            "الـ GET و HEAD وحدهما ينالان فائدة caching حقيقية؛ والأنظمة كثيفة الكتابة تكسب القليل",
-            "انعدام الحالة لا يزيل الحالة — بل ينقلها إلى token أو قاعدة بيانات أو cache",
-            "التفاعلات اللحظية والبثّية تقع خارج نموذج الـ request/response كلياً",
-            "الـ HATEOAS لا يُثمر إلا حين يُكتب العملاء ليتبعوا الروابط، وهو ما لا يفعله أحد تقريباً"
+        {
+          t: "p",
+          en: "That is the whole argument for the constraints. Nobody wrote faster code. They stopped hiding the meaning of the request from the machines that could have helped.",
+          ar: "هذه هي كل الحجة لصالح القيود. لم يكتب أحد كوداً أسرع. كل ما حدث أنهم توقفوا عن إخفاء معنى الطلب عن الأجهزة التي كان بإمكانها المساعدة."
+        }
+      ]
+    },
+    {
+      key: "internals",
+      blocks: [
+        {
+          t: "p",
+          en: "Let us trace one real request — GET /orders/1042 — from a browser to your ASP.NET Core app, and name each constraint at the exact moment it does something. The path has four hops: browser, CDN, load balancer, one of three app servers.",
+          ar: "لنتتبّع طلباً حقيقياً واحداً — GET /orders/1042 — من الـ browser إلى تطبيق ASP.NET Core، ونسمّي كل constraint في اللحظة التي يفعل فيها شيئاً. المسار فيه أربع محطات: browser، ثم CDN، ثم load balancer، ثم واحد من ثلاثة app servers."
+        },
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "1. Client–server", ar: "1. Client–server" },
+              v: {
+                en: "The browser owns the screen and the user; the server owns the data. Neither knows the other's internals. You can rewrite the UI in a different framework without touching the API.",
+                ar: "الـ browser يملك الشاشة والمستخدم؛ والـ server يملك البيانات. لا أحد منهما يعرف داخل الآخر. تستطيع إعادة كتابة الواجهة بإطار مختلف دون لمس الـ API."
+              }
+            },
+            {
+              k: { en: "2. Stateless", ar: "2. Stateless" },
+              v: {
+                en: "The request carries everything needed to answer it — the URL, an Authorization header, an Accept header. The server keeps no memory of this client between requests.",
+                ar: "الطلب يحمل كل ما يلزم للإجابة عليه — الـ URL وheader الـ Authorization وheader الـ Accept. الـ server لا يحتفظ بأي ذاكرة عن هذا الـ client بين طلب وآخر."
+              }
+            },
+            {
+              k: { en: "3. Cacheable", ar: "3. Cacheable" },
+              v: {
+                en: "The response says out loud whether it can be stored and for how long, using the Cache-Control header. Storing a response is only legal because the response gave permission.",
+                ar: "الـ response يعلن بوضوح إن كان يمكن تخزينه وإلى متى، عبر header اسمه Cache-Control. تخزين الـ response مسموح فقط لأن الـ response نفسه أعطى الإذن."
+              }
+            },
+            {
+              k: { en: "4. Uniform interface", ar: "4. Uniform interface" },
+              v: {
+                en: "GET means read and change nothing. Every box on the path knows that without reading your code, which is why any of them may retry or cache it.",
+                ar: "الـ GET يعني اقرأ ولا تغيّر شيئاً. كل صندوق على المسار يعرف ذلك دون قراءة الكود عندك، ولهذا يجوز لأي منهم إعادة المحاولة أو التخزين."
+              }
+            },
+            {
+              k: { en: "5. Layered system", ar: "5. Layered system" },
+              v: {
+                en: "The browser talks to the CDN believing it is the server. Your app talks to the load balancer believing it is the client. Layers can be inserted or removed silently.",
+                ar: "الـ browser يتحدث إلى الـ CDN وهو يظنه الـ server. وتطبيقك يتحدث إلى الـ load balancer وهو يظنه الـ client. يمكن إدخال طبقات أو إزالتها بصمت."
+              }
+            },
+            {
+              k: { en: "6. Code-on-demand (optional)", ar: "6. Code-on-demand (اختياري)" },
+              v: {
+                en: "The server may send runnable code the client executes — in practice, the JavaScript a browser downloads. APIs almost never use this, and that is fine.",
+                ar: "يجوز للـ server أن يرسل كوداً قابلاً للتنفيذ يشغّله الـ client — عملياً، الـ JavaScript الذي ينزّله الـ browser. الـ APIs لا تستخدم هذا تقريباً أبداً، وهذا مقبول."
+              }
+            }
           ]
         },
-        alts: {
+        {
+          t: "p",
+          en: "Step by step. The browser sends the request. The CDN receives it, sees the method is GET and the URL is /orders/1042, and looks in its store for a saved copy of exactly that URL. There is one, saved 20 seconds ago, and its stored Cache-Control said max-age=60, meaning it stays usable for 60 seconds. So the CDN answers immediately. Your servers never learn the request happened.",
+          ar: "خطوة بخطوة. الـ browser يرسل الطلب. الـ CDN يستقبله، ويرى أن الـ method هي GET وأن الـ URL هو /orders/1042، فيبحث في مخزنه عن نسخة محفوظة لهذا الـ URL بالضبط. توجد نسخة محفوظة قبل 20 ثانية، وكان الـ Cache-Control المخزّن معها يقول max-age=60، أي أنها صالحة للاستخدام 60 ثانية. فيجيب الـ CDN فوراً. وservers لديك لا تعلم أصلاً أن الطلب حدث."
+        },
+        {
+          t: "p",
+          en: "Sixty-one seconds later the copy is stale, so the CDN forwards the request to the load balancer. The load balancer picks app server number 2 — it may pick a different one every time, and it is allowed to, precisely because the server holds no per-client memory. That is the stateless constraint paying off: adding a fourth server needs no coordination, and killing one mid-deploy costs nothing but the requests in flight.",
+          ar: "بعد 61 ثانية تصبح النسخة قديمة، فيمرّر الـ CDN الطلب إلى الـ load balancer. يختار الـ load balancer الـ app server رقم 2 — وقد يختار غيره في كل مرة، ويجوز له ذلك تحديداً لأن الـ server لا يحتفظ بأي ذاكرة خاصة بالـ client. هذه هي فائدة قيد الـ stateless: إضافة server رابع لا تحتاج أي تنسيق، وإسقاط واحد أثناء الـ deploy لا يكلّف سوى الطلبات الجارية."
+        },
+        {
+          t: "code",
+          lang: "csharp",
+          label: { en: "One resource, uniform interface, explicit cache rules", ar: "resource واحد، وuniform interface، وقواعد cache صريحة" },
+          code: "[ApiController]\n[Route(\"orders\")]\npublic sealed class OrdersController : ControllerBase\n{\n    private readonly IOrderQueries _queries;\n    public OrdersController(IOrderQueries queries) => _queries = queries;\n\n    // The URL names the resource. The method says what we do to it.\n    [HttpGet(\"{id:long}\")]\n    public async Task<IActionResult> Get(long id, CancellationToken ct)\n    {\n        var order = await _queries.FindAsync(id, ct);\n        if (order is null) return NotFound();\n\n        // ETag = a short string identifying this exact version of the body.\n        var etag = $\"\\\"{order.RowVersion}\\\"\";\n\n        // If the client already has this version, send 304 with no body at all.\n        if (Request.Headers.IfNoneMatch == etag)\n            return StatusCode(StatusCodes.Status304NotModified);\n\n        Response.Headers.ETag = etag;\n        // Any cache may store this for 60 seconds; it is per-user, so \"private\".\n        Response.Headers.CacheControl = \"private, max-age=60\";\n        return Ok(order);\n    }\n}"
+        },
+        {
+          t: "p",
+          en: "Two mechanisms in that code are worth naming. An ETag is a version label for the body; the client sends it back in an If-None-Match header, and if it still matches, the server replies 304 Not Modified with an empty body, which saves the bandwidth but not the database read. Cache-Control is the permission slip: private means only the end user's own browser may store it, public would let the shared CDN store it too, and no-store forbids everyone.",
+          ar: "هناك آليتان في هذا الكود تستحقان التسمية. الـ ETag هو ملصق نسخة للـ body؛ يرسله الـ client مرة أخرى في header اسمه If-None-Match، وإن كان ما يزال مطابقاً يرد الـ server بـ 304 Not Modified مع body فارغ، وهذا يوفّر الـ bandwidth لكنه لا يوفّر قراءة الـ database. أما الـ Cache-Control فهو تصريح الإذن: private تعني أن browser المستخدم وحده يخزّنها، وpublic تسمح للـ CDN المشترك بتخزينها أيضاً، وno-store تمنع الجميع."
+        },
+        {
+          t: "p",
+          en: "Now the analogy for the layered part. It is a hotel switchboard. You dial reception and ask for room 402; you never learn whether reception put you through directly, routed you to a second building, or took a message. You only ever spoke to one number. Each layer here works the same way: it may answer, forward, or transform, and the caller cannot tell which — which is exactly what makes it safe to add a rate limiter or a cache tomorrow without telling any client.",
+          ar: "والآن التشبيه الخاص بالطبقات. تخيّل سنترال فندق. تتصل بالاستقبال وتطلب الغرفة 402؛ لن تعرف أبداً هل وصلك الاستقبال مباشرة، أم حوّلك إلى مبنى ثانٍ، أم سجّل رسالة. أنت تحدثت مع رقم واحد فقط. كل طبقة هنا تعمل بنفس المنطق: قد تجيب أو تمرّر أو تعدّل، ولا يستطيع المتصل التمييز — وهذا بالضبط ما يجعل إضافة rate limiter أو cache غداً آمنة دون إخبار أي client."
+        }
+      ]
+    },
+    {
+      key: "tradeoffs",
+      blocks: [
+        {
+          t: "tradeoff",
+          pros: {
+            en: [
+              "Caches, proxies and CDNs can help you without knowing your code.",
+              "Any server can answer any request, so scaling out is just adding machines.",
+              "Clients written years apart still work against the same URLs and methods.",
+              "Failures are easier to reason about: a GET can always be retried."
+            ],
+            ar: [
+              "الـ caches والـ proxies والـ CDNs تستطيع مساعدتك دون معرفة الكود عندك.",
+              "أي server يستطيع الإجابة على أي طلب، فالتوسّع الأفقي مجرد إضافة أجهزة.",
+              "clients كُتبت بفارق سنوات تظل تعمل مع نفس الـ URLs والـ methods.",
+              "الأعطال أسهل في التحليل: الـ GET يمكن دائماً إعادة محاولته."
+            ]
+          },
+          cons: {
+            en: [
+              "Every request must resend its context, so requests are bigger.",
+              "Some operations do not map cleanly to a noun and a verb.",
+              "Fetching one screen may take several round trips instead of one call.",
+              "Cache correctness becomes your problem: wrong headers serve stale data."
+            ],
+            ar: [
+              "كل طلب يجب أن يعيد إرسال سياقه، فتصبح الطلبات أكبر حجماً.",
+              "بعض العمليات لا تُترجم بسهولة إلى اسم وفعل.",
+              "جلب شاشة واحدة قد يحتاج عدة رحلات بدل استدعاء واحد.",
+              "صحة الـ cache تصبح مسؤوليتك: headers خاطئة تقدّم بيانات قديمة."
+            ]
+          },
+          limits: {
+            en: [
+              "REST says nothing about how your database or domain model is built.",
+              "It does not give you push: the server cannot start a message.",
+              "It does not define your error body format; that is a separate decision.",
+              "It says nothing about who is allowed to do what."
+            ],
+            ar: [
+              "الـ REST لا يقول شيئاً عن كيفية بناء الـ database أو الـ domain model.",
+              "لا يعطيك push: الـ server لا يستطيع بدء رسالة.",
+              "لا يحدّد شكل body الأخطاء؛ هذا قرار منفصل.",
+              "لا يقول شيئاً عمّن يُسمح له بفعل ماذا."
+            ]
+          },
+          alts: {
+            en: [
+              "gRPC — binary and fast between your own services, but not cacheable by HTTP proxies.",
+              "GraphQL — one flexible query for the whole screen, at the cost of URL-level caching.",
+              "Message queues — for work that should happen later, not answered now.",
+              "WebSockets or SSE — when the server needs to push updates to the client."
+            ],
+            ar: [
+              "gRPC — ثنائي وسريع بين خدماتك الداخلية، لكن لا تستطيع الـ HTTP proxies تخزينه.",
+              "GraphQL — query مرن واحد للشاشة كلها، مقابل خسارة الـ caching على مستوى الـ URL.",
+              "Message queues — للعمل الذي يجب أن يحدث لاحقاً لا أن يُجاب عليه الآن.",
+              "WebSockets أو SSE — عندما يحتاج الـ server إلى دفع تحديثات إلى الـ client."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      key: "mistakes",
+      blocks: [
+        {
+          t: "mistake",
+          title: { en: "Verbs in the URL, everything over POST", ar: "أفعال داخل الـ URL، وكل شيء عبر POST" },
+          body: {
+            en: "A team shipped POST /api/orders/getById, POST /api/orders/getList and POST /api/orders/cancel. Reads and writes now look identical to every machine on the path, so nothing can be cached and no proxy can safely retry anything. Their CDN bill stayed the same while traffic tripled, because the CDN was forwarding 100% of requests. The fix is one noun and the right method: GET /orders/1042 to read, POST /orders/1042/cancellation to cancel.",
+            ar: "أطلق فريق endpoints بالشكل POST /api/orders/getById وPOST /api/orders/getList وPOST /api/orders/cancel. أصبحت القراءات والكتابات متطابقة تماماً بنظر كل جهاز على المسار، فلا شيء يمكن تخزينه ولا يستطيع أي proxy إعادة محاولة أي شيء بأمان. بقيت فاتورة الـ CDN كما هي بينما تضاعف الـ traffic ثلاث مرات، لأن الـ CDN كان يمرّر 100% من الطلبات. الحل اسم واحد مع الـ method الصحيحة: GET /orders/1042 للقراءة، وPOST /orders/1042/cancellation للإلغاء."
+          },
+          fix: "// before\nPOST /api/orders/getById   { \"id\": 1042 }\n// after\nGET  /orders/1042"
+        },
+        {
+          t: "mistake",
+          title: { en: "Keeping the cart in server memory", ar: "الاحتفاظ بالسلة في ذاكرة الـ server" },
+          body: {
+            en: "A checkout API stored the shopping cart in a static dictionary in process memory, keyed by user id. It worked on one machine. On three machines behind a load balancer, roughly two out of three requests landed on a server that had never seen that cart, so items vanished. The team patched it with sticky sessions — pinning each user to one server — and then every deploy dropped every in-progress cart. Move the cart into Redis or into the request itself.",
+            ar: "خزّن API للدفع سلة التسوق في dictionary ثابت داخل ذاكرة العملية، مفتاحه هو user id. عمل الأمر على جهاز واحد. وعلى ثلاثة أجهزة خلف load balancer، كان نحو طلبين من كل ثلاثة يصلان إلى server لم يرَ تلك السلة أبداً، فتختفي العناصر. رقّع الفريق المشكلة بـ sticky sessions — تثبيت كل مستخدم على server واحد — وعندها صار كل deploy يسقط كل سلة قيد الاستخدام. انقل السلة إلى Redis أو إلى الطلب نفسه."
+          }
+        },
+        {
+          t: "mistake",
+          title: { en: "Errors returned as 200 OK", ar: "إرجاع الأخطاء بحالة 200 OK" },
+          body: {
+            en: "An endpoint returned HTTP 200 with a body of { \"success\": false, \"error\": \"NOT_FOUND\" }. Every intermediary read the 200 and cached a not-found answer for the full max-age. Users kept seeing an order that did not exist even after it was created, until the cache expired. The status line is part of the uniform interface — machines act on it. Return 404 and no cache will store it as a success.",
+            ar: "أرجع endpoint حالة HTTP 200 مع body فيه { \"success\": false, \"error\": \"NOT_FOUND\" }. كل intermediary قرأ الـ 200 وخزّن إجابة \"غير موجود\" طوال مدة الـ max-age. استمر المستخدمون في رؤية طلب غير موجود حتى بعد إنشائه، إلى أن انتهت صلاحية الـ cache. سطر الحالة جزء من الـ uniform interface — الأجهزة تتصرف بناءً عليه. أرجع 404 ولن يخزّنه أي cache على أنه نجاح."
+          },
+          fix: "// before\nreturn Ok(new { success = false, error = \"NOT_FOUND\" });\n// after\nreturn NotFound();"
+        },
+        {
+          t: "mistake",
+          title: { en: "GET that changes data", ar: "GET يغيّر البيانات" },
+          body: {
+            en: "Someone wrote GET /orders/1042/markAsPaid because it was easy to call from a browser address bar. A link checker crawled the admin panel and marked 300 orders as paid overnight. GET promises to change nothing, and the whole path — browsers, prefetchers, crawlers, retrying proxies — takes that promise literally. Anything that changes state must be POST, PUT, PATCH or DELETE.",
+            ar: "كتب أحدهم GET /orders/1042/markAsPaid لأنه كان سهل الاستدعاء من شريط عنوان الـ browser. زحف link checker على لوحة الإدارة فوضع 300 طلب كمدفوعة في ليلة واحدة. الـ GET يَعِد بألا يغيّر شيئاً، والمسار كله — browsers وprefetchers وcrawlers وproxies تعيد المحاولة — يأخذ هذا الوعد حرفياً. أي شيء يغيّر الحالة يجب أن يكون POST أو PUT أو PATCH أو DELETE."
+          }
+        }
+      ]
+    },
+    {
+      key: "interview",
+      blocks: [
+        {
+          t: "qa",
+          level: "junior",
+          q: { en: "Name the six REST constraints.", ar: "اذكر قيود الـ REST الستة." },
+          a: {
+            en: "Client–server, stateless, cacheable, uniform interface, layered system, and code-on-demand — and that last one is optional. The short version of why they matter: the first two let you add servers freely, the next two let machines in the middle help you, and the fifth lets you insert those machines without anyone noticing.",
+            ar: "Client–server، وstateless، وcacheable، وuniform interface، وlayered system، وcode-on-demand — والأخير اختياري. والسبب المختصر لأهميتها: القيدان الأولان يتيحان إضافة servers بحرية، والتاليان يتيحان للأجهزة في المنتصف مساعدتك، والخامس يتيح إدخال تلك الأجهزة دون أن يلاحظ أحد."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Is an API with a login session cookie still stateless?", ar: "هل يبقى الـ API الذي يستخدم session cookie للدخول stateless؟" },
+          a: {
+            en: "It depends on what the cookie holds. If the cookie carries a signed token that fully describes the user, then yes — the request is self-contained and any server can handle it. If the cookie is just an id pointing at data held in one server's memory, then no, because only that one server can answer. Moving that data to a shared store like Redis makes it stateless again from the server's point of view.",
+            ar: "يعتمد على ما يحمله الـ cookie. لو كان يحمل token موقّعاً يصف المستخدم بالكامل، فنعم — الطلب مكتفٍ بذاته وأي server يستطيع معالجته. أما لو كان الـ cookie مجرد id يشير إلى بيانات موجودة في ذاكرة server واحد، فلا، لأن ذلك الـ server وحده يستطيع الإجابة. نقل تلك البيانات إلى مخزن مشترك مثل Redis يعيد النظام إلى الـ stateless من وجهة نظر الـ server."
+          }
+        },
+        {
+          t: "qa",
+          level: "mid",
+          q: { en: "Why does the uniform interface constraint matter in practice?", ar: "لماذا يهمّ قيد الـ uniform interface عملياً؟" },
+          a: {
+            en: "Because it lets things you did not write make correct decisions about your traffic. A CDN caches your GETs, a proxy retries an idempotent request after a network blip, a gateway rate-limits writes but not reads — all without one line of your business logic. The moment you tunnel everything through POST, every one of those boxes goes blind and you have to build those features yourself.",
+            ar: "لأنه يتيح لأشياء لم تكتبها أن تتخذ قرارات صحيحة بشأن الـ traffic عندك. الـ CDN يخزّن الـ GETs، والـ proxy يعيد محاولة طلب idempotent بعد انقطاع شبكة، والـ gateway يحدّ من معدّل الكتابات دون القراءات — كل ذلك دون سطر واحد من منطق العمل عندك. وفي اللحظة التي تمرّر فيها كل شيء عبر POST، تعمى كل تلك الصناديق وتضطر لبناء هذه الميزات بنفسك."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "When would you deliberately not build a REST API?", ar: "متى تقرر عن قصد ألا تبني REST API؟" },
+          a: {
+            en: "For chatty internal service-to-service calls I would reach for gRPC: it is binary, it is faster, and there is no CDN in that path anyway so I lose nothing by giving up HTTP caching. For a mobile screen that needs seven related objects at once, GraphQL saves round trips. And for work that should happen later rather than being answered now — sending an invoice email — a message queue is the right shape. REST earns its keep at the public edge, where you do not control the clients.",
+            ar: "للاستدعاءات الداخلية الكثيرة بين الخدمات أختار gRPC: ثنائي وأسرع، ولا يوجد CDN في ذلك المسار أصلاً فلا أخسر شيئاً بالتخلي عن HTTP caching. ولشاشة موبايل تحتاج سبعة كائنات مترابطة دفعة واحدة، يوفّر GraphQL رحلات ذهاب وإياب. وللعمل الذي يجب أن يحدث لاحقاً بدل الإجابة عليه الآن — إرسال بريد فاتورة — فالـ message queue هو الشكل الصحيح. الـ REST يثبت جدواه عند الحافة العامة، حيث لا تتحكم في الـ clients."
+          }
+        },
+        {
+          t: "qa",
+          level: "senior",
+          q: { en: "How do you model an action that is not a noun, like 'cancel this order'?", ar: "كيف تنمذج عملية ليست اسماً، مثل «ألغِ هذا الطلب»؟" },
+          a: {
+            en: "I turn the action into a thing that has its own life. A cancellation is a real object in the business — it has a time, a reason, a person who did it. So I POST /orders/1042/cancellations. That gives me a URL I can also GET later to see what happened, and it keeps the write on a method that is not cached and not retried blindly. The alternative, PATCH /orders/1042 with a status field, is acceptable but says less about intent and is harder to audit.",
+            ar: "أحوّل العملية إلى شيء له وجود مستقل. الإلغاء كائن حقيقي في العمل — له وقت وسبب وشخص قام به. لذلك أستخدم POST /orders/1042/cancellations. هذا يعطيني URL أستطيع لاحقاً عمل GET عليه لأرى ما حدث، ويبقي الكتابة على method لا تُخزَّن في cache ولا يُعاد تنفيذها عمياً. البديل، PATCH /orders/1042 مع حقل status، مقبول لكنه يقول أقل عن النية وأصعب في التدقيق."
+          }
+        },
+        {
+          t: "qa",
+          level: "staff",
+          q: { en: "Your org has 40 services and no two agree on URL or error shape. How do you fix that?", ar: "لدى مؤسستك 40 خدمة ولا تتفق اثنتان على شكل الـ URL أو شكل الخطأ. كيف تعالج ذلك؟" },
+          a: {
+            en: "Not with a style document nobody reads. I would write the rules down once — resource naming, status code meanings, the error body shape, pagination — and then make them the default in a shared project template, so a new service is compliant on the day it is created. Next, a check in CI that validates each service's OpenAPI file against those rules, failing the build on a violation. Existing services get migrated when they are next touched, never in a big-bang project. The written standard is only there to explain the automated check; the check is what actually changes behaviour.",
+            ar: "ليس عبر مستند أسلوب لا يقرأه أحد. سأكتب القواعد مرة واحدة — تسمية الـ resources، ومعاني الـ status codes، وشكل body الخطأ، والـ pagination — ثم أجعلها الوضع الافتراضي في template مشترك للمشاريع، ليكون أي service جديد ملتزماً منذ يوم إنشائه. بعدها فحص في الـ CI يتحقق من ملف OpenAPI لكل service مقابل تلك القواعد ويُفشل الـ build عند المخالفة. والخدمات القائمة تُهاجر عند أول تعديل عليها، لا في مشروع كبير دفعة واحدة. المعيار المكتوب موجود فقط لشرح الفحص الآلي؛ والفحص هو ما يغيّر السلوك فعلاً."
+          }
+        }
+      ]
+    },
+    {
+      key: "codereview",
+      blocks: [
+        {
+          t: "review",
+          severity: "high",
+          title: { en: "A read modelled as a POST", ar: "قراءة مصمّمة على شكل POST" },
+          bad: "[HttpPost(\"search\")]\npublic async Task<IActionResult> Search([FromBody] SearchRequest req)\n{\n    var results = await _queries.SearchAsync(req.Term, req.Page);\n    return Ok(results);\n}",
+          good: "[HttpGet]\npublic async Task<IActionResult> Search(\n    [FromQuery] string term,\n    [FromQuery] int page = 1,\n    CancellationToken ct = default)\n{\n    var results = await _queries.SearchAsync(term, page, ct);\n    Response.Headers.CacheControl = \"public, max-age=30\";\n    return Ok(results);\n}",
+          why: {
+            en: "The POST version is a read pretending to be a write. No cache will store it, no proxy will retry it after a dropped connection, and the query is invisible in access logs because it hides in the body. As a GET the same search becomes a URL you can cache, share, bookmark and grep for in logs. The only real reason to POST a search is a filter object too large for a URL, which is roughly 2,000 characters.",
+            ar: "نسخة الـ POST قراءة تتظاهر بأنها كتابة. لن يخزّنها أي cache، ولن يعيد أي proxy محاولتها بعد انقطاع اتصال، والـ query غير مرئي في access logs لأنه مختبئ في الـ body. وكـ GET يصبح نفس البحث URL يمكن تخزينه ومشاركته وحفظه والبحث عنه في الـ logs. السبب الحقيقي الوحيد لاستخدام POST في البحث هو كائن فلترة أكبر من أن يتسع في URL، أي نحو 2000 حرف."
+          }
+        },
+        {
+          t: "review",
+          severity: "medium",
+          title: { en: "A public GET with no cache instructions", ar: "GET عام دون تعليمات cache" },
+          bad: "[HttpGet(\"/catalog/categories\")]\npublic async Task<IActionResult> Categories()\n    => Ok(await _queries.CategoriesAsync());",
+          good: "[HttpGet(\"/catalog/categories\")]\npublic async Task<IActionResult> Categories(CancellationToken ct)\n{\n    // Same for every user, changes maybe twice a month.\n    Response.Headers.CacheControl = \"public, max-age=300\";\n    return Ok(await _queries.CategoriesAsync(ct));\n}",
+          why: {
+            en: "When a response says nothing about caching, each intermediary applies its own default, and those defaults disagree — some store it for a while, some not at all, and you cannot predict which. A category list is the same for everyone and changes rarely, so five minutes of shared caching removes almost all of that traffic from your database. Say it explicitly and the behaviour becomes something you chose rather than something you inherited.",
+            ar: "عندما لا يقول الـ response شيئاً عن الـ caching، يطبّق كل intermediary الوضع الافتراضي الخاص به، وهذه الأوضاع مختلفة — بعضها يخزّن لفترة وبعضها لا يخزّن إطلاقاً، ولا يمكنك التنبؤ بأيها. قائمة التصنيفات واحدة للجميع وتتغير نادراً، فخمس دقائق من الـ caching المشترك تزيل تقريباً كل هذا الـ traffic عن الـ database. صرّح بذلك ويصبح السلوك شيئاً اخترته لا شيئاً ورثته."
+          }
+        }
+      ]
+    },
+    {
+      key: "sysdesign",
+      blocks: [
+        {
+          t: "p",
+          en: "In a normal production system the constraints show up as the layers you can draw on a whiteboard. A request to the order API crosses a CDN, then an API gateway that checks the token and applies rate limits, then a load balancer, then one of N identical app instances, then a read replica of the database. Each layer was added at a different time, and none of them required a client change — that is the layered-system constraint being useful rather than theoretical.",
+          ar: "في نظام إنتاج عادي تظهر القيود على شكل الطبقات التي ترسمها على السبورة. طلب إلى API الطلبات يعبر CDN، ثم API gateway يتحقق من الـ token ويطبّق حدود المعدّل، ثم load balancer، ثم واحدة من N نسخ متطابقة من التطبيق، ثم read replica من الـ database. كل طبقة أُضيفت في وقت مختلف، ولم تتطلب أي منها تغييراً في الـ client — وهذه هي فائدة قيد الـ layered system عملياً لا نظرياً."
+        },
+        {
+          t: "ul",
           en: [
-            "GraphQL — gives up uniform interface and HTTP caching for precise client-shaped queries",
-            "gRPC — a bespoke binary contract; fast and strongly typed, but opaque to generic intermediaries",
-            "RPC over HTTP (POST /rpc/CalculateTax) — honest for genuinely procedural operations",
-            "Event-driven / message queues — when the interaction is not request/response at all",
-            "Backend-for-frontend — a resource API underneath, a screen-shaped aggregation layer on top"
+            "Autoscaling: instances are created and destroyed on demand, which only works because no instance holds anything unique.",
+            "Blue-green deploys: send traffic to a new set of servers, keep the old ones warm, roll back by flipping a switch — safe only if servers are interchangeable.",
+            "Edge caching: putting GET /catalog/categories on a CDN turns a database read into a lookup in a machine near the user.",
+            "Read replicas: GET requests can be routed to a replica because GET promises not to write, so the router can make that decision by method alone."
           ],
           ar: [
-            "GraphQL — يتنازل عن الواجهة الموحدة وعن الـ HTTP caching مقابل استعلامات مفصّلة على شكل العميل",
-            "gRPC — عقد ثنائي مفصّل؛ سريع وقوي التنميط، لكنه معتم أمام الوسطاء العامّين",
-            "RPC فوق HTTP (POST /rpc/CalculateTax) — صادق للعمليات الإجرائية فعلاً",
-            "المعمارية المدفوعة بالأحداث وطوابير الرسائل — حين لا يكون التفاعل request/response أصلاً",
-            "Backend-for-frontend — API موارد في الأسفل وطبقة تجميع على شكل الشاشات في الأعلى"
+            "الـ autoscaling: تُنشأ النسخ وتُدمَّر حسب الطلب، وهذا يعمل فقط لأن لا نسخة تحتفظ بشيء فريد.",
+            "الـ blue-green deploys: توجّه الـ traffic إلى مجموعة servers جديدة وتبقي القديمة جاهزة وتتراجع بقلب مفتاح — آمن فقط إذا كانت الـ servers قابلة للتبادل.",
+            "الـ edge caching: وضع GET /catalog/categories على CDN يحوّل قراءة من الـ database إلى بحث في جهاز قريب من المستخدم.",
+            "الـ read replicas: يمكن توجيه طلبات الـ GET إلى replica لأن الـ GET يَعِد بألا يكتب، فيتخذ الموجّه القرار بناءً على الـ method وحدها."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "warn",
+          en: "Layers only stay invisible if every layer forwards the headers that matter. A gateway that strips Cache-Control or ETag silently turns your cacheable API into an uncacheable one, and nothing in your code will show it.",
+          ar: "تبقى الطبقات غير مرئية فقط إذا مرّرت كل طبقة الـ headers المهمة. أي gateway يحذف Cache-Control أو ETag يحوّل بصمت الـ API القابل للـ caching إلى غير قابل له، ولن يظهر ذلك في أي مكان من الكود عندك."
+        }
+      ]
+    },
+    {
+      key: "perf",
+      blocks: [
+        {
+          t: "kv",
+          rows: [
+            {
+              k: { en: "Network", ar: "Network" },
+              v: {
+                en: "Statelessness makes every request carry its own context — a token adds roughly 0.5-2 KB per request. Real, but small next to what caching removes.",
+                ar: "الـ statelessness تجعل كل طلب يحمل سياقه — الـ token يضيف نحو 0.5 إلى 2 كيلوبايت لكل طلب. حقيقي، لكنه صغير مقارنة بما يزيله الـ caching."
+              }
+            },
+            {
+              k: { en: "Latency", ar: "Latency" },
+              v: {
+                en: "A CDN hit answers from a machine near the user, typically 20-50 ms instead of 200-400 ms for a full round trip to your origin.",
+                ar: "إصابة الـ CDN تُجاب من جهاز قريب من المستخدم، عادة 20-50 ms بدل 200-400 ms لرحلة كاملة إلى الأصل."
+              }
+            },
+            {
+              k: { en: "Database", ar: "Database" },
+              v: {
+                en: "Cacheable GETs are the cheapest load reduction available: in the example above, 78% of reads stopped reaching the database with no code rewrite.",
+                ar: "الـ GETs القابلة للـ caching أرخص وسيلة لتقليل الحمل: في المثال أعلاه توقفت 78% من القراءات عن الوصول إلى الـ database دون إعادة كتابة الكود."
+              }
+            },
+            {
+              k: { en: "Scalability", ar: "Scalability" },
+              v: {
+                en: "Interchangeable servers mean capacity is a linear knob — double the instances, roughly double the throughput, with no coordination between them.",
+                ar: "الـ servers القابلة للتبادل تجعل السعة مقبضاً خطياً — ضاعف عدد النسخ يتضاعف تقريباً الـ throughput، دون أي تنسيق بينها."
+              }
+            },
+            {
+              k: { en: "CPU", ar: "CPU" },
+              v: {
+                en: "Cost moves to per-request work: parsing and validating a token on every call instead of reading a session from memory once.",
+                ar: "تنتقل التكلفة إلى عمل لكل طلب: تحليل الـ token والتحقق منه في كل استدعاء بدل قراءة session من الذاكرة مرة واحدة."
+              }
+            }
           ]
         }
-      }
-    ]},
-
-    { key: "mistakes", blocks: [
-      { t: "mistake",
-        title: { en: "In-memory session state behind a load balancer", ar: "حالة جلسة في الذاكرة خلف موازن أحمال" },
-        body: { en: "A checkout wizard keeps the partially-built order in an in-memory dictionary keyed by session id. It works with one instance. In production behind three nodes, sticky sessions are enabled to make it work — and now a rolling deploy drops every in-progress checkout, autoscaling cannot scale down without losing carts, and one hot node cannot shed load because its clients are pinned to it. The stateless constraint was violated to save a database write of a few hundred bytes.", ar: "معالج دفع يحتفظ بالطلب نصف المكتمل في قاموس داخل الذاكرة مفتاحه معرّف الجلسة. يعمل مع نسخة واحدة. وفي الـ production خلف ثلاثة nodes تُفعَّل الجلسات اللاصقة ليعمل — والآن يُسقط النشر التدريجي كل عملية دفع جارية، ولا يستطيع التقليص التلقائي العمل دون فقدان السلال، ولا يستطيع node مزدحم تفريغ حمله لأن عملاءه مثبّتون عليه. خولف قيد انعدام الحالة لتوفير كتابة بضع مئات من البايتات في قاعدة بيانات." },
-        fix: "// make the in-progress state a real resource with a URI\nPOST /carts                 -> 201 Location: /carts/{id}\nPATCH /carts/{id}/items     -> any node can serve it" },
-      { t: "mistake",
-        title: { en: "Verbs in the URI instead of in the method", ar: "أفعال في الـ URI بدل الـ method" },
-        body: { en: "An API exposes POST /api/getOrders, POST /api/updateOrder and POST /api/deleteOrder. Everything works, but nothing generic does: the CDN cannot cache the read because it is a POST, the gateway's retry policy cannot distinguish the safe call from the destructive one, and the access log shows a single URL for every operation so you cannot tell reads from writes in your own metrics.", ar: "API يعرض POST /api/getOrders و POST /api/updateOrder و POST /api/deleteOrder. كل شيء يعمل، لكن لا شيء عام يعمل: فالـ CDN لا يستطيع تخزين القراءة لأنها POST، وسياسة إعادة المحاولة في الـ gateway لا تميّز الاستدعاء الآمن من المدمّر، وسجل الوصول يُظهر URL واحداً لكل عملية فلا تستطيع تمييز القراءات من الكتابات في مقاييسك أنت." },
-        fix: "GET    /orders?status=open\nPATCH  /orders/{id}\nDELETE /orders/{id}" },
-      { t: "mistake",
-        title: { en: "Hardcoded absolute URLs breaking the layered system", ar: "URLs مطلقة في الكود تكسر النظام الطبقي" },
-        body: { en: "Responses embed links built from a hardcoded https://api-prod-eu-1.internal base. When the team puts a CDN in front and moves to a regional gateway, every embedded link still points at the old origin — bypassing the cache, bypassing the WAF, and exposing an internal hostname to the public. The layered constraint exists precisely so that inserting a layer requires no client change; a hardcoded host destroys that.", ar: "الاستجابات تضمّن روابط مبنية على أساس ثابت https://api-prod-eu-1.internal في الكود. وحين يضع الفريق CDN في الأمام وينتقل إلى gateway إقليمي، تظل كل الروابط المضمّنة تشير إلى الـ origin القديم — متجاوزة الـ cache والـ WAF، وكاشفة اسم مضيف داخلي للعامة. وقيد الطبقية موجود تحديداً ليكون إدخال طبقة بلا تغيير لدى العملاء؛ والمضيف الثابت يدمّر ذلك." },
-        fix: "// build links from a configured public base URL, one place, per environment\nvar link = $\"{_options.PublicBaseUrl}/orders/{order.Id}\";" },
-      { t: "mistake",
-        title: { en: "A single /api endpoint dispatching on a body field", ar: "endpoint واحد /api يوزّع بناءً على حقل في الـ body" },
-        body: { en: "All traffic goes to POST /api with { \"action\": \"...\" } in the body. This is Richardson level 0 and it removes every property the constraints buy: no caching, no meaningful status codes, no per-operation rate limiting at the gateway, no per-endpoint latency metrics, and no way for a proxy to know a request is safe. Six months in, the team is writing a custom dashboard to recover information that a URL path would have given them for free.", ar: "كل الحركة تذهب إلى POST /api مع { \"action\": \"...\" } في الـ body. هذا هو المستوى صفر عند Richardson ويزيل كل خاصية تشتريها القيود: لا caching، ولا status codes ذات معنى، ولا تحديد معدل لكل عملية عند الـ gateway، ولا مقاييس زمن استجابة لكل endpoint، ولا سبيل لأي proxy ليعرف أن request آمن. وبعد ستة أشهر يكتب الفريق لوحة مخصصة لاستعادة معلومات كان مسار الـ URL سيمنحها له مجاناً." } },
-      { t: "mistake",
-        title: { en: "Treating statelessness as 'no state anywhere'", ar: "فهم انعدام الحالة على أنه «لا حالة في أي مكان»" },
-        body: { en: "A team reads the constraint literally and stuffs the entire user profile, permission set and feature flags into a JWT so the server 'holds no state'. The token reaches 6 KB, is sent on every request, blows past the proxy's header limit on some clients, and — worse — cannot be revoked, so a fired employee keeps access until expiry. Statelessness is about not storing per-client application state between requests; it was never an argument for putting a database row in a header.", ar: "فريق يقرأ القيد حرفياً فيحشو ملف المستخدم كاملاً ومجموعة صلاحياته وأعلام الميزات داخل JWT كي «لا يحمل السيرفر حالة». يصل الـ token إلى 6 كيلوبايت، ويُرسل في كل request، ويتجاوز حدّ الـ headers في الـ proxy لدى بعض العملاء، والأسوأ أنه لا يمكن إبطاله، فيحتفظ موظف مفصول بصلاحيته حتى انتهاء المدة. انعدام الحالة يخص عدم تخزين حالة تطبيق خاصة بالعميل بين الـ requests؛ ولم يكن يوماً حجة لوضع صف من قاعدة بيانات في header." },
-        fix: "// keep the token small: identity + a few claims + a version stamp\n{ \"sub\": \"u_991\", \"ver\": 7, \"exp\": 1770000000 }\n// resolve permissions server-side from a cache keyed by (sub, ver)" },
-      { t: "mistake",
-        title: { en: "Adding HATEOAS links nobody follows", ar: "إضافة روابط HATEOAS لا يتبعها أحد" },
-        body: { en: "A team adds a _links block to every response to be 'properly RESTful'. Payloads grow by 30%, the serializer gains a layer of link-building code, and every client team continues building URLs from string templates because their code generator ignores links entirely. The constraint delivers its benefit only when clients are written to be link-driven — adding the links without changing the clients is pure cost.", ar: "فريق يضيف كتلة _links إلى كل استجابة ليكون «RESTful بشكل صحيح». تكبر الـ payloads بنسبة 30%، ويكتسب الـ serializer طبقة كود لبناء الروابط، ويستمر كل فريق عميل في بناء الـ URLs من قوالب نصية لأن مولّد الكود لديه يتجاهل الروابط كلياً. هذا القيد لا يعطي فائدته إلا حين يُكتب العملاء ليكونوا مدفوعين بالروابط — وإضافة الروابط دون تغيير العملاء تكلفة خالصة." } }
-    ]},
-
-    { key: "interview", blocks: [
-      { t: "qa", level: "junior",
-        q: { en: "Name the six REST constraints.", ar: "اذكر قيود الـ REST الستة." },
-        a: { en: "Client–server, stateless, cacheable, uniform interface, layered system, and code-on-demand — the last one being explicitly optional. The uniform interface is the central one and itself has four parts: resource identification, manipulation through representations, self-descriptive messages, and hypermedia as the engine of application state.", ar: "الفصل بين الـ client والسيرفر، وانعدام الحالة، وقابلية الـ caching، والواجهة الموحدة، والنظام الطبقي، والكود عند الطلب — وهذا الأخير اختياري صراحةً. والواجهة الموحدة هي المركزية ولها أربعة أجزاء: تعريف الموارد، والتعديل عبر التمثيلات، والرسائل ذاتية الوصف، والـ hypermedia كمحرّك لحالة التطبيق." } },
-      { t: "qa", level: "junior",
-        q: { en: "Does stateless mean the server stores no data?", ar: "هل انعدام الحالة يعني أن السيرفر لا يخزّن بيانات؟" },
-        a: { en: "No. The server stores resource state — that is its job. What it must not store is application state: the client's position in a multi-step interaction, held between requests and tied to a specific node. If the context lives in the request or in an addressable resource, the constraint is satisfied no matter how much data is in the database.", ar: "لا. السيرفر يخزّن حالة الموارد — وهذه وظيفته. أما ما يجب ألا يخزّنه فهو حالة التطبيق: موقع الـ client في تفاعل متعدد الخطوات، محفوظاً بين الـ requests ومرتبطاً بـ node بعينه. فإن كان السياق يعيش في الـ request أو في مورد قابل للعنونة، فالقيد محقَّق مهما بلغت البيانات في قاعدة البيانات." } },
-      { t: "qa", level: "mid",
-        q: { en: "What does the layered system constraint actually buy you, concretely?", ar: "ما الذي يشتريه قيد النظام الطبقي فعلياً وبشكل ملموس؟" },
-        a: { en: "The ability to insert or remove infrastructure without coordinating with clients. A CDN, an API gateway, a WAF, a canary router, a regional failover layer — all of them work because a client talks to whatever answers on the hostname and cannot tell how many hops are behind it. The cost is latency per hop and harder end-to-end debugging, which is why trace context propagation matters so much in a layered system.", ar: "القدرة على إدخال بنية تحتية أو إزالتها دون تنسيق مع العملاء. الـ CDN والـ API gateway والـ WAF وموجّه الـ canary وطبقة التحويل الإقليمي — كلها تعمل لأن الـ client يخاطب ما يردّ على اسم المضيف ولا يستطيع معرفة كم قفزة خلفه. والتكلفة زمن استجابة لكل قفزة وتشخيص أصعب من طرف لطرف، ولهذا يهم نشر سياق التتبّع كثيراً في نظام طبقي." } },
-      { t: "qa", level: "mid",
-        q: { en: "Is an API that returns JSON over HTTP with proper verbs RESTful?", ar: "هل يُعدّ API يرجع JSON فوق HTTP بأفعال صحيحة RESTful؟" },
-        a: { en: "By Fielding's definition, no — it is Richardson level 2, missing hypermedia. But that is the wrong frame for a design review. The useful question is which properties you have and which you gave up: with proper methods, status codes and cache headers you get generic caching, safe retries and observable traffic, which is most of the practical value. What you give up without hypermedia is the ability to change your URL structure or state machine without a coordinated client release.", ar: "بتعريف Fielding لا — فهو المستوى الثاني عند Richardson وينقصه الـ hypermedia. لكن هذا إطار خاطئ لمراجعة تصميم. والسؤال المفيد هو أي خصائص لديك وأيها تنازلت عنها: فبالـ methods والـ status codes وheaders الـ caching الصحيحة تحصل على caching عام وإعادة محاولة آمنة وحركة قابلة للرصد، وهذه معظم القيمة العملية. وما تتنازل عنه بلا hypermedia هو القدرة على تغيير بنية الـ URLs أو آلة الحالة دون إصدار منسّق لدى العملاء." } },
-      { t: "qa", level: "mid",
-        q: { en: "How do you model an operation that is not a resource, like 'send a password reset email'?", ar: "كيف تنمذج عملية ليست مورداً، مثل «أرسل بريد إعادة تعيين كلمة المرور»؟" },
-        a: { en: "Two defensible options. Model the action as a resource that gets created: POST /password-reset-requests returning 201 with a Location — now the request itself is a thing with a URI, a status and a history, which is often genuinely useful. Or accept it is a command and expose POST /users/{id}/password-reset, documented as an action endpoint. What I would avoid is contorting it into a PUT on some invented resource just to look RESTful; the constraint that matters is that the method is honest about safety and idempotency, not that every URL is a noun.", ar: "خياران يمكن الدفاع عنهما. نمذج الإجراء كمورد يُنشأ: POST /password-reset-requests يرجع 201 مع Location — فيصبح الطلب نفسه شيئاً له URI وحالة وسجل، وهو مفيد فعلاً في أحيان كثيرة. أو اقبل أنه أمر واعرضه كـ POST /users/{id}/password-reset موثّقاً كـ endpoint إجراء. وما سأتجنبه هو لَيّه إلى PUT على مورد مخترع لمجرد أن يبدو RESTful؛ فالقيد المهم أن تكون الـ method صادقة بشأن الأمان والـ idempotency، لا أن يكون كل URL اسماً." } },
-      { t: "qa", level: "senior",
-        q: { en: "When would you deliberately violate a REST constraint, and how would you justify it?", ar: "متى تخالف قيداً من قيود الـ REST عن قصد، وكيف تبرّر ذلك؟" },
-        a: { en: "Whenever the property the constraint buys is worth less than what it costs in that specific context, and I can name both sides. Concrete examples: for an internal service-to-service path with strict latency budgets, I would use gRPC — giving up the uniform interface and generic cacheability, gaining a compact binary contract and streaming, and accepting that intermediaries become opaque. For a mobile client that would otherwise make six calls per screen, I would add a backend-for-frontend aggregation endpoint that is frankly RPC-shaped, keeping the resource API underneath for everything else. For a report that takes 90 seconds, I would break the synchronous request/response model entirely and return 202 with a status resource. The justification is always the same shape: here is the property I am losing, here is who depended on it, and here is what replaces it.", ar: "كلما كانت الخاصية التي يشتريها القيد أقل قيمة مما يكلّفه في ذلك السياق تحديداً، وأستطيع تسمية الطرفين. أمثلة ملموسة: لمسار داخلي بين الخدمات بميزانيات زمن صارمة سأستخدم gRPC — متنازلاً عن الواجهة الموحدة وقابلية الـ caching العامة، وكاسباً عقداً ثنائياً مضغوطاً وبثّاً، وقابلاً بأن يصبح الوسطاء معتمين. ولعميل موبايل كان سيجري ستة استدعاءات لكل شاشة سأضيف endpoint تجميع من نوع backend-for-frontend بشكل RPC صراحةً، مع إبقاء API الموارد في الأسفل لكل ما عداه. ولتقرير يستغرق 90 ثانية سأكسر نموذج الـ request/response المتزامن كلياً وأرجع 202 مع مورد لمتابعة الحالة. والتبرير دائماً بنفس الشكل: هذه الخاصية التي أخسرها، وهؤلاء من كانوا يعتمدون عليها، وهذا ما يحل محلها." } },
-      { t: "qa", level: "senior",
-        q: { en: "Why did HATEOAS never take hold in practice, and does that make it wrong?", ar: "لماذا لم يترسّخ الـ HATEOAS عملياً، وهل يجعله ذلك خاطئاً؟" },
-        a: { en: "It did not fail technically; it failed economically. HATEOAS pays off when clients are numerous, independently written and not upgradeable on your schedule — which describes the browser and the human operating it, and describes almost nothing else. In a typical company the API has three clients, all written by colleagues, all deployable within a sprint, and all using a generated SDK built from an OpenAPI document. In that world, link-driven navigation adds payload and client complexity to solve a coordination problem that a shared schema and a chat message already solve. It is not wrong; its preconditions are usually absent. Where they are present — public APIs with thousands of third-party integrators, or long-lived clients like embedded devices you cannot update — the calculation flips, and something like link relations or a well-defined state machine in the response earns its keep.", ar: "لم يفشل تقنياً بل اقتصادياً. الـ HATEOAS يُثمر حين يكون العملاء كثيرين ومكتوبين بشكل مستقل وغير قابلين للترقية على جدولك — وهذا يصف المتصفح والإنسان الذي يشغّله، ولا يصف شيئاً آخر تقريباً. وفي شركة نموذجية يكون للـ API ثلاثة عملاء كتبهم زملاء، وكلهم قابل للنشر خلال sprint، وكلهم يستخدم SDK مولَّداً من مستند OpenAPI. وفي ذلك العالم يضيف التنقّل بالروابط حجماً وتعقيداً لحل مشكلة تنسيق يحلها بالفعل schema مشترك ورسالة في المحادثة. وهو ليس خاطئاً؛ لكن شروطه المسبقة غائبة عادةً. وحيث تتوفر — APIs عامة بآلاف المتكاملين، أو عملاء طويلو العمر كأجهزة مدمجة لا تستطيع تحديثها — تنقلب الحسبة، ويستحق شيء مثل علاقات الروابط أو آلة حالة معرّفة في الاستجابة تكلفته." } },
-      { t: "qa", level: "staff",
-        q: { en: "Twelve teams each interpret 'RESTful' differently and API reviews have become philosophical arguments. What do you do?", ar: "اثنا عشر فريقاً يفسّر كل منهم كلمة «RESTful» بشكل مختلف وتحوّلت مراجعات الـ APIs إلى جدل فلسفي. ماذا تفعل؟" },
-        a: { en: "Take the word out of the vocabulary and replace it with properties. I would write an API guideline that never uses 'RESTful' as a criterion and instead states requirements that can be checked: reads use GET and are safe; writes declare their idempotency; error bodies follow one problem-details shape; responses carry explicit cache directives; no absolute internal hostnames in payloads; no per-node state. Then I would make it mechanical — an OpenAPI linter in CI enforcing the checkable subset, and a short design-review template whose first question is 'which constraint does this trade away and what do we lose?' rather than 'is this REST?'. I would also publish two reference services that embody the guideline, because teams copy code far more reliably than they read documents. The goal is not doctrinal purity across twelve teams; it is that a client written against one service works the same way against another, and that disagreements are about trade-offs with named costs rather than about definitions.", ar: "أخرج الكلمة من المفردات وأستبدلها بخصائص. سأكتب دليل APIs لا يستخدم «RESTful» كمعيار إطلاقاً، بل يذكر متطلبات قابلة للفحص: القراءات تستخدم GET وتكون آمنة؛ والكتابات تعلن الـ idempotency لديها؛ وأجسام الأخطاء تتبع شكل problem details واحداً؛ والاستجابات تحمل توجيهات caching صريحة؛ ولا أسماء مضيفين داخلية مطلقة في الـ payloads؛ ولا حالة خاصة بأي node. ثم سأجعله آلياً — linter لـ OpenAPI في الـ CI يفرض الجزء القابل للفحص، وقالب مراجعة تصميم قصير سؤاله الأول «أي قيد يقايضه هذا وماذا نخسر؟» بدل «هل هذا REST؟». وسأنشر أيضاً خدمتين مرجعيتين تجسّدان الدليل، لأن الفرق تنسخ الكود بموثوقية أعلى بكثير مما تقرأ المستندات. والهدف ليس النقاء العقائدي عبر اثني عشر فريقاً؛ بل أن يعمل client كُتب مقابل خدمة بنفس الطريقة مقابل أخرى، وأن يكون الخلاف حول مقايضات بتكاليف مسمّاة لا حول تعريفات." } }
-    ]},
-
-    { key: "codereview", blocks: [
-      { t: "review", severity: "high",
-        title: { en: "Per-node in-memory state on a scaled service", ar: "حالة في الذاكرة لكل node في خدمة موسّعة" },
-        bad: "public class WizardController : ControllerBase\n{\n    private static readonly ConcurrentDictionary<string, DraftOrder> _drafts = new();\n\n    [HttpPost(\"wizard/{step:int}\")]\n    public IActionResult Step(int step, StepDto dto)\n    {\n        var draft = _drafts.GetOrAdd(HttpContext.Session.Id, _ => new DraftOrder());\n        draft.Apply(step, dto);\n        return Ok();\n    }\n}",
-        good: "[HttpPatch(\"drafts/{id:guid}\")]\npublic async Task<IActionResult> Patch(Guid id, StepDto dto, CancellationToken ct)\n{\n    var draft = await _drafts.GetAsync(id, User.GetId(), ct);\n    if (draft is null) return NotFound();\n\n    draft.Apply(dto);\n    await _drafts.SaveAsync(draft, ct);      // shared store: any node can serve the next call\n    return Ok(draft);\n}",
-        why: { en: "The static dictionary makes correctness depend on which node received the request, so the service only works with sticky sessions — and then a rolling deploy discards every in-progress wizard, scale-in drops user work, and a hot node cannot shed load. It is also an unbounded memory leak, since nothing evicts abandoned drafts. Promoting the draft to an addressable resource in a shared store restores statelessness and gives you a URI the client can resume from on any device.", ar: "القاموس الساكن يجعل الصحة تعتمد على أي node استقبل الـ request، فلا تعمل الخدمة إلا بجلسات لاصقة — ثم يهدر النشر التدريجي كل معالج جارٍ، ويُسقط التقليص عمل المستخدمين، ولا يستطيع node مزدحم تفريغ حمله. وهو أيضاً تسريب ذاكرة بلا حد، إذ لا شيء يُخلي المسودات المهجورة. وترقية المسودة إلى مورد قابل للعنونة في مخزن مشترك تعيد انعدام الحالة وتمنحك URI يستطيع الـ client استئنافه من أي جهاز." }
-      },
-      { t: "review", severity: "medium",
-        title: { en: "Internal hostnames leaking into response payloads", ar: "تسرّب أسماء مضيفين داخلية إلى أجسام الاستجابات" },
-        bad: "return Ok(new OrderDto\n{\n    Id       = order.Id,\n    Invoice  = $\"http://orders-svc.prod-eu-1.internal:8080/invoices/{order.InvoiceId}\",\n    Customer = $\"http://users-svc.prod-eu-1.internal:8080/users/{order.CustomerId}\"\n});",
-        good: "// Options bound per environment; one place builds public links.\nreturn Ok(new OrderDto\n{\n    Id       = order.Id,\n    Invoice  = _links.To($\"/invoices/{order.InvoiceId}\"),\n    Customer = _links.To($\"/users/{order.CustomerId}\")\n});\n\npublic sealed class LinkBuilder(IOptions<ApiOptions> o)\n{\n    public string To(string path) => $\"{o.Value.PublicBaseUrl.TrimEnd('/')}{path}\";\n}",
-        why: { en: "Embedding the internal origin breaks the layered-system constraint: a client following these links bypasses the CDN, the gateway and the WAF, and any attempt to insert a new layer requires every client to change at once. It also discloses internal topology — hostnames, regions and ports — to anyone who can read a response, which is free reconnaissance. Building links from a single configured public base keeps the layers substitutable and keeps the internal names internal.", ar: "تضمين الـ origin الداخلي يكسر قيد النظام الطبقي: فالـ client الذي يتبع هذه الروابط يتجاوز الـ CDN والـ gateway والـ WAF، وأي محاولة لإدخال طبقة جديدة تتطلب تغيير كل العملاء دفعة واحدة. كما يكشف البنية الداخلية — أسماء المضيفين والمناطق والمنافذ — لكل من يستطيع قراءة استجابة، وهو استطلاع مجاني. وبناء الروابط من أساس عام مضبوط في مكان واحد يبقي الطبقات قابلة للاستبدال ويبقي الأسماء الداخلية داخلية." }
-      }
-    ]},
-
-    { key: "sysdesign", blocks: [
-      { t: "p", en: "In a system design discussion, the constraints are most useful as a diagnostic rather than a target. When someone proposes sticky sessions, the constraint tells you exactly what you are giving up: seamless deploys, autoscaling and load shedding. When someone proposes tunnelling everything through POST, it tells you that you have just made your CDN, your gateway retry policy and your per-endpoint metrics useless. The value is that the cost is predictable in advance instead of discovered in an incident.", ar: "في نقاش تصميم الأنظمة، تكون القيود أنفع كأداة تشخيص لا كهدف. فحين يقترح أحدهم جلسات لاصقة، يخبرك القيد بالضبط بما تتنازل عنه: النشر السلس والتوسّع التلقائي وتفريغ الحمل. وحين يقترح أحدهم تمرير كل شيء عبر POST، يخبرك أنك جعلت الـ CDN وسياسة إعادة المحاولة في الـ gateway ومقاييسك لكل endpoint بلا فائدة. والقيمة أن التكلفة تصبح متوقعة مسبقاً بدل اكتشافها أثناء حادثة." },
-      { t: "p", en: "The pattern that scales in most organisations is a resource-shaped API underneath and screen-shaped aggregation on top. The lower layer keeps the constraints and therefore keeps the infrastructure benefits; the upper layer is allowed to be pragmatic — batching, aggregating, occasionally RPC-shaped — because it is owned by the same team as the client and has no third-party consumers. Mixing the two concerns in a single API is what produces endpoints that are neither cacheable nor convenient.", ar: "والنمط الذي يتوسّع في معظم المؤسسات هو API على شكل موارد في الأسفل وتجميع على شكل الشاشات في الأعلى. فالطبقة السفلى تحافظ على القيود وبالتالي على فوائد البنية التحتية؛ والطبقة العليا يُسمح لها بالبراغماتية — تجميع ودفعات وأحياناً شكل RPC — لأن مالكها هو نفسه فريق الـ client وليس لها مستهلكون خارجيون. وخلط الاهتمامين في API واحد هو ما ينتج endpoints ليست قابلة للتخزين ولا مريحة." },
-      { t: "ul",
-        en: [
-          "Statelessness is the precondition for autoscaling, rolling deploys and load shedding — decide it before you decide instance counts",
-          "Cacheability determines whether origin capacity scales with total traffic or only with writes and misses",
-          "Uniform interface is what lets a gateway apply retry, rate-limit and auth policy without knowing the domain",
-          "Layering is what lets you add a CDN, a canary router or a regional failover without a client release",
-          "Where you break a constraint, write down which property you gave up and what replaces it — that note is the design doc"
-        ],
-        ar: [
-          "انعدام الحالة شرط مسبق للتوسّع التلقائي والنشر التدريجي وتفريغ الحمل — احسمه قبل أن تحسم عدد النسخ",
-          "قابلية الـ caching تحدد هل تتوسّع سعة الـ origin مع الحركة الكلية أم مع الكتابات والإخفاقات فقط",
-          "الواجهة الموحدة هي ما يتيح للـ gateway تطبيق سياسات إعادة المحاولة وتحديد المعدل والمصادقة دون معرفة المجال",
-          "الطبقية هي ما يتيح إضافة CDN أو موجّه canary أو تحويل إقليمي دون إصدار لدى العملاء",
-          "حيثما كسرت قيداً، دوّن أي خاصية تنازلت عنها وما الذي يحل محلها — تلك الملاحظة هي مستند التصميم"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "A single question surfaces most violations in a design review: \"if the next request from this client lands on a different instance, does anything break?\" If yes, you are not stateless, and everything downstream of that — scaling, deploys, failover — is now harder than it needs to be.", ar: "سؤال واحد يكشف معظم المخالفات في مراجعة التصميم: «إن هبط الـ request التالي من هذا الـ client على نسخة مختلفة، هل ينكسر شيء؟» إن كانت الإجابة نعم فأنت لست stateless، وكل ما بعد ذلك — التوسّع والنشر والتحويل عند الفشل — أصبح أصعب مما يلزم." }
-    ]},
-
-    { key: "perf", blocks: [
-      { t: "kv", rows: [
-        { k: { en: "Scalability", ar: "قابلية التوسّع" }, v: { en: "Statelessness makes capacity linear in instance count; sticky sessions cap effective utilisation because a hot node cannot shed its pinned clients", ar: "انعدام الحالة يجعل السعة خطية مع عدد النسخ؛ والجلسات اللاصقة تحدّ الاستغلال الفعلي لأن node مزدحم لا يستطيع تفريغ عملائه المثبّتين" } },
-        { k: { en: "Network", ar: "الشبكة" }, v: { en: "Statelessness re-sends context on every request — a 1 KB token on 10k req/s is 10 MB/s of pure repetition; hypermedia links add 20–40% to payload size", ar: "انعدام الحالة يعيد إرسال السياق في كل request — token بحجم كيلوبايت عند 10 آلاف request/ثانية يعني 10 ميغابايت/ثانية تكراراً خالصاً؛ وروابط الـ hypermedia تضيف 20–40% إلى حجم الـ payload" } },
-        { k: { en: "Latency", ar: "زمن الاستجابة" }, v: { en: "Each layer adds a hop of 1–5 ms internally, more across regions; resource-shaped APIs can turn one screen into 3–6 sequential round trips", ar: "كل طبقة تضيف قفزة بـ 1–5 ملّي ثانية داخلياً وأكثر عبر المناطق؛ وAPIs الموارد قد تحوّل شاشة واحدة إلى 3–6 رحلات متتابعة" } },
-        { k: { en: "CPU", ar: "المعالج" }, v: { en: "Re-validating a token and re-resolving permissions on every request is the recurring cost of statelessness — cache the resolution, not the decision", ar: "إعادة التحقق من الـ token وإعادة استنتاج الصلاحيات في كل request هي التكلفة المتكررة لانعدام الحالة — خزّن نتيجة الاستنتاج لا القرار" } },
-        { k: { en: "Database", ar: "قاعدة البيانات" }, v: { en: "Cacheable reads at the edge remove the majority of query load; a mutating GET forces no-store and puts all of it back", ar: "القراءات القابلة للتخزين على الحافة تزيل معظم حمل الاستعلامات؛ وGET يغيّر الحالة يفرض no-store ويعيده كاملاً" } },
-        { k: { en: "Memory", ar: "الذاكرة" }, v: { en: "Per-node session dictionaries grow unbounded without eviction and are lost on restart — the classic hidden cost of violating statelessness", ar: "قواميس الجلسات لكل node تنمو بلا حدّ دون إخلاء وتضيع عند إعادة التشغيل — وهي التكلفة الخفية الكلاسيكية لمخالفة انعدام الحالة" } }
-      ]}
-    ]},
-
-    { key: "debug", blocks: [
-      { t: "ul",
-        en: [
-          "Send the same sequence of requests twice while forcing different backends (curl --resolve, or scale to two instances) — if behaviour differs, you have per-node state",
-          "Restart one instance mid-flow and see what breaks; anything that logs a user out or loses a draft is a statelessness violation",
-          "grep the codebase for 'static readonly ConcurrentDictionary' and 'HttpContext.Session' to find application state hiding in memory",
-          "grep response payloads for 'internal', ':8080' or a region name to find absolute internal URLs breaking the layering",
-          "Check access logs for POST requests whose path contains get, list, fetch or search — a fast signal of verbs migrated into URIs",
-          "Diff the header set produced by the origin against what the client receives, to confirm no layer is stripping cache directives or trace context"
-        ],
-        ar: [
-          "أرسل نفس تسلسل الـ requests مرتين مع إجبار backends مختلفة (curl --resolve أو التوسّع إلى نسختين) — فإن اختلف السلوك فلديك حالة خاصة بكل node",
-          "أعد تشغيل نسخة واحدة في منتصف التدفق وانظر ما ينكسر؛ فأي شيء يُخرج مستخدماً أو يفقد مسودة هو مخالفة لانعدام الحالة",
-          "ابحث في الكود عن 'static readonly ConcurrentDictionary' و'HttpContext.Session' لتجد حالة تطبيق مختبئة في الذاكرة",
-          "ابحث في أجسام الاستجابات عن 'internal' أو ':8080' أو اسم منطقة لتجد URLs داخلية مطلقة تكسر الطبقية",
-          "افحص سجلات الوصول عن requests من نوع POST تحتوي مساراتها على get أو list أو fetch أو search — إشارة سريعة لأفعال هاجرت إلى الـ URIs",
-          "قارن مجموعة الـ headers التي ينتجها الـ origin بما يستقبله الـ client، للتأكد أن لا طبقة تحذف توجيهات الـ caching أو سياق التتبّع"
-        ]
-      },
-      { t: "callout", kind: "tip", en: "The fastest way to find statefulness is to run two instances locally behind a round-robin proxy and use the app normally for five minutes. Anything that depends on a node will fail within a few clicks, and it will fail in a way that is obvious rather than intermittent.", ar: "أسرع طريقة لاكتشاف الاعتماد على الحالة هي تشغيل نسختين محلياً خلف proxy يوزّع بالتناوب واستخدام التطبيق بشكل عادي خمس دقائق. فأي شيء يعتمد على node سيفشل خلال بضع نقرات، وسيفشل بطريقة واضحة لا متقطعة." }
-    ]},
-
-    { key: "realworld", blocks: [
-      { t: "p", en: "The constraints show up most visibly in the gap between what an organisation says its APIs are and what its infrastructure can actually do with them. Teams that hold the line on statelessness and cacheable reads get elastic capacity and boring deploys almost for free; teams that do not end up building bespoke replacements for infrastructure that would otherwise have come for nothing.", ar: "تظهر القيود بأوضح صورها في الفجوة بين ما تقوله مؤسسة عن APIs لديها وما تستطيع بنيتها التحتية فعله بها. فالفرق التي تتمسك بانعدام الحالة وبقراءات قابلة للتخزين تحصل على سعة مرنة ونشر مملّ شبه مجاناً؛ والفرق التي لا تفعل تنتهي ببناء بدائل مفصّلة لبنية تحتية كانت ستأتيها بلا مقابل." },
-      { t: "ul",
-        en: [
-          "Public developer platforms: the uniform interface is the product — thousands of integrators must be able to guess correctly from documentation alone",
-          "Content and media delivery: cacheable, stateless reads are what make edge delivery economically possible at all",
-          "Payment and banking integrations: self-descriptive messages and honest method semantics are what let a partner's retry logic be safe",
-          "Long-lived embedded and IoT clients: the one setting where hypermedia genuinely pays, because you cannot ship a client update to reflect a changed workflow"
-        ],
-        ar: [
-          "منصات المطوّرين العامة: الواجهة الموحدة هي المنتج — فآلاف المتكاملين يجب أن يستطيعوا التخمين الصحيح من التوثيق وحده",
-          "توصيل المحتوى والوسائط: القراءات عديمة الحالة والقابلة للتخزين هي ما يجعل التوصيل من الحافة ممكناً اقتصادياً أصلاً",
-          "تكاملات الدفع والبنوك: الرسائل ذاتية الوصف ودلالات الـ methods الصادقة هي ما يجعل منطق إعادة المحاولة لدى الشريك آمناً",
-          "العملاء المدمجون وأجهزة إنترنت الأشياء طويلة العمر: الموضع الوحيد الذي يُثمر فيه الـ hypermedia فعلاً، لأنك لا تستطيع شحن تحديث للعميل ليعكس تدفقاً تغيّر"
-        ]
-      }
-    ]},
-
-    { key: "exercises", blocks: [
-      { t: "ex", diff: "easy", en: "Take a service you work on and score it against Richardson's maturity model, with one line of evidence per level. Then list the three constraints it violates and, for each, name the specific capability you are losing.", ar: "خذ خدمة تعمل عليها وقيّمها وفق نموذج نضج Richardson مع سطر دليل واحد لكل مستوى. ثم اسرد القيود الثلاثة التي تخالفها، وسمِّ لكل منها القدرة المحددة التي تخسرها." },
-      { t: "ex", diff: "medium", en: "Find one piece of per-node state in a codebase (a static dictionary, an in-memory session, a local file) and refactor it into an addressable resource backed by shared storage. Prove it with a test that runs the flow across two instances behind a round-robin proxy.", ar: "اعثر على قطعة حالة خاصة بـ node في قاعدة كود (قاموس ساكن، جلسة في الذاكرة، ملف محلي) وأعد هيكلتها إلى مورد قابل للعنونة مدعوم بتخزين مشترك. وأثبت ذلك باختبار يشغّل التدفق عبر نسختين خلف proxy يوزّع بالتناوب." },
-      { t: "ex", diff: "hard", en: "Add hypermedia controls to one resource so that the legal transitions are computed server-side from the entity's state, then write a client that performs a full workflow using only the links — no hardcoded URL templates. Report honestly what it cost and what it bought.", ar: "أضف ضوابط hypermedia إلى مورد واحد بحيث تُحسب الانتقالات المشروعة على السيرفر من حالة الكيان، ثم اكتب client ينفّذ تدفقاً كاملاً بالروابط وحدها — بلا قوالب URL مكتوبة في الكود. وأبلغ بصدق عما كلّفه وما اشتراه." },
-      { t: "ex", diff: "senior", en: "Write your organisation's API guideline without using the word 'RESTful' anywhere. State every rule as a checkable property with the capability it protects, mark which are enforced by the linter versus by review, and get one team to adopt it on a real service.", ar: "اكتب دليل الـ APIs لمؤسستك دون استخدام كلمة «RESTful» في أي موضع. اذكر كل قاعدة كخاصية قابلة للفحص مع القدرة التي تحميها، وحدّد أيها يفرضه الـ linter وأيها يفرضه المراجع، واجعل فريقاً واحداً يتبنّاه على خدمة حقيقية." }
-    ]},
-
-    { key: "refs", blocks: [
-      { t: "ref", label: { en: "Fielding — Architectural Styles, Chapter 5 (REST)", ar: "Fielding — الأنماط المعمارية، الفصل الخامس (REST)" }, url: "https://ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm", meta: { en: "Dissertation", ar: "أطروحة" } },
-      { t: "ref", label: { en: "Fielding — REST APIs must be hypertext-driven", ar: "Fielding — يجب أن تكون APIs الـ REST مدفوعة بالنص التشعبي" }, url: "https://roy.gbiv.com/untangled/2008/rest-apis-must-be-hypertext-driven", meta: { en: "Article", ar: "مقال" } },
-      { t: "ref", label: { en: "Martin Fowler — Richardson Maturity Model", ar: "Martin Fowler — نموذج نضج Richardson" }, url: "https://martinfowler.com/articles/richardsonMaturityModel.html", meta: { en: "Article", ar: "مقال" } },
-      { t: "ref", label: { en: "RFC 9110 — HTTP Semantics", ar: "RFC 9110 — دلالات الـ HTTP" }, url: "https://www.rfc-editor.org/rfc/rfc9110.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "RFC 8288 — Web Linking", ar: "RFC 8288 — الربط على الويب" }, url: "https://www.rfc-editor.org/rfc/rfc8288.html", meta: { en: "Spec", ar: "مواصفة" } },
-      { t: "ref", label: { en: "Microsoft — Web API design best practices", ar: "Microsoft — أفضل ممارسات تصميم Web API" }, url: "https://learn.microsoft.com/azure/architecture/best-practices/api-design", meta: { en: "Docs", ar: "توثيق" } }
-    ]}
+      ]
+    },
+    {
+      key: "debug",
+      blocks: [
+        {
+          t: "ul",
+          en: [
+            "curl -i https://api.example.com/orders/1042 — the -i flag prints response headers; look for Cache-Control and ETag actually being present.",
+            "curl -H 'If-None-Match: \"v7\"' -i <url> — you should get 304 Not Modified with an empty body; a 200 means your ETag check is not running.",
+            "Browser DevTools, Network tab, Size column — it says 'disk cache' or 'memory cache' when the response never left the machine.",
+            "CDN analytics, cache hit ratio — under 50% on a read-heavy endpoint usually means a missing or too-short max-age, or a Vary header splitting the cache.",
+            "Load-balancer access logs, grouped by upstream server — if one server gets far more requests than the others, something is pinning sessions."
+          ],
+          ar: [
+            "curl -i https://api.example.com/orders/1042 — الخيار -i يطبع headers الـ response؛ ابحث عن وجود Cache-Control وETag فعلياً.",
+            "curl -H 'If-None-Match: \"v7\"' -i <url> — يجب أن تحصل على 304 Not Modified مع body فارغ؛ ورود 200 يعني أن فحص الـ ETag لا يعمل.",
+            "أدوات المطور في الـ browser، تبويب Network، عمود Size — يكتب 'disk cache' أو 'memory cache' عندما لا يغادر الـ response الجهاز.",
+            "تحليلات الـ CDN، نسبة cache hit — أقل من 50% على endpoint كثير القراءة تعني عادة max-age مفقوداً أو قصيراً جداً، أو header اسمه Vary يقسّم الـ cache.",
+            "سجلات وصول الـ load balancer مجمّعة حسب الـ upstream server — إذا استقبل server واحد طلبات أكثر بكثير من غيره، فهناك شيء يثبّت الجلسات."
+          ]
+        },
+        {
+          t: "callout",
+          kind: "tip",
+          en: "The fastest statelessness test: run two instances locally, send the same authenticated request to each, and compare responses. If one succeeds and the other fails or returns different data, something is being held in one process's memory.",
+          ar: "أسرع اختبار للـ statelessness: شغّل نسختين محلياً، وأرسل نفس الطلب الموثّق إلى كل منهما، وقارن الردود. إذا نجحت واحدة وفشلت الأخرى أو أعادت بيانات مختلفة، فهناك شيء محفوظ في ذاكرة عملية واحدة."
+        }
+      ]
+    },
+    {
+      key: "realworld",
+      blocks: [
+        {
+          t: "p",
+          en: "The constraints pay off differently depending on who your clients are. When you control every client — an internal service mesh — you can break the rules cheaply, because you can redeploy both sides together. When you do not control them, the rules are what keeps an app installed on a phone two years ago from breaking today.",
+          ar: "تختلف فائدة القيود حسب هوية الـ clients عندك. عندما تتحكم في كل client — مثل service mesh داخلي — يمكنك كسر القواعد بتكلفة قليلة، لأنك تستطيع إعادة نشر الطرفين معاً. أما عندما لا تتحكم فيهم، فالقواعد هي ما يمنع تطبيقاً مثبتاً على هاتف منذ سنتين من التعطل اليوم."
+        },
+        {
+          t: "ul",
+          en: [
+            "Public platform APIs: thousands of unknown integrators, so stable URLs and standard status codes are the product, not a detail.",
+            "Content and media sites: almost all traffic is cacheable GETs, and correct cache headers are the difference between one origin server and forty.",
+            "Payment systems: writes must never be retried blindly, so the safe/unsafe method split is a correctness rule, not a style preference.",
+            "Internal microservice meshes: no CDN in the path and both sides deployed together, so many teams pick gRPC here and keep REST for the public edge."
+          ],
+          ar: [
+            "الـ APIs العامة للمنصات: آلاف المتكاملين المجهولين، فالـ URLs الثابتة وstatus codes القياسية هي المنتج نفسه لا تفصيلاً فيه.",
+            "مواقع المحتوى والوسائط: شبه كل الـ traffic عبارة عن GETs قابلة للـ caching، وheaders الـ cache الصحيحة هي الفرق بين origin server واحد وأربعين.",
+            "أنظمة الدفع: يجب ألا تُعاد الكتابات عمياً، فالتفريق بين الـ methods الآمنة وغير الآمنة قاعدة صحة لا تفضيل أسلوب.",
+            "شبكات الـ microservices الداخلية: لا CDN في المسار والطرفان يُنشران معاً، لذلك تختار فرق كثيرة gRPC هنا وتُبقي الـ REST للحافة العامة."
+          ]
+        }
+      ]
+    },
+    {
+      key: "exercises",
+      blocks: [
+        {
+          t: "ex",
+          diff: "easy",
+          en: "Take three RPC-style endpoints from any codebase you have — names like getUser, updateUserEmail, deleteCart — and rewrite each as a resource URL plus a method. You are done when every URL contains only nouns and the method alone tells you whether it writes.",
+          ar: "خذ ثلاثة endpoints بأسلوب RPC من أي كود لديك — بأسماء مثل getUser وupdateUserEmail وdeleteCart — وأعد كتابة كل واحد على شكل resource URL مع method. تنتهي عندما يحتوي كل URL على أسماء فقط، وتكون الـ method وحدها كافية لمعرفة إن كان يكتب."
+        },
+        {
+          t: "ex",
+          diff: "medium",
+          en: "Add ETag and Cache-Control to one GET endpoint. Prove it works by calling it twice with curl -i, copying the ETag from the first response into an If-None-Match header on the second, and getting back 304 with an empty body.",
+          ar: "أضف ETag وCache-Control إلى endpoint واحد من نوع GET. أثبت أنه يعمل باستدعائه مرتين عبر curl -i، بنسخ الـ ETag من الرد الأول إلى header اسمه If-None-Match في الثاني، والحصول على 304 مع body فارغ."
+        },
+        {
+          t: "ex",
+          diff: "hard",
+          en: "Run two instances of your API on different ports behind a tiny round-robin proxy. Log in once, then send ten authenticated requests through the proxy. You pass when all ten succeed and return identical data, whichever instance handled them.",
+          ar: "شغّل نسختين من الـ API على منفذين مختلفين خلف proxy صغير يوزّع بالتناوب. سجّل الدخول مرة واحدة، ثم أرسل عشرة طلبات موثّقة عبر الـ proxy. تنجح عندما تنجح الطلبات العشرة كلها وتعيد بيانات متطابقة، أياً كانت النسخة التي عالجتها."
+        },
+        {
+          t: "ex",
+          diff: "senior",
+          en: "Write a one-page standard for your team covering resource naming, which status codes you use and what each means, the error body shape, and pagination. Then add a CI step that reads each service's OpenAPI file and fails the build on a violation. It is finished when a deliberately non-compliant pull request goes red without a human commenting on it.",
+          ar: "اكتب معياراً من صفحة واحدة لفريقك يغطي تسمية الـ resources، وأي status codes تستخدمون وماذا يعني كل منها، وشكل body الخطأ، والـ pagination. ثم أضف خطوة في الـ CI تقرأ ملف OpenAPI لكل service وتُفشل الـ build عند المخالفة. ينتهي العمل عندما يتحوّل pull request مخالف عمداً إلى أحمر دون أن يعلّق عليه إنسان."
+        }
+      ]
+    },
+    {
+      key: "refs",
+      blocks: [
+        {
+          t: "ref",
+          label: { en: "Fielding — Architectural Styles, chapter 5 (the original REST chapter)", ar: "Fielding — Architectural Styles، الفصل الخامس (فصل الـ REST الأصلي)" },
+          url: "https://ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm",
+          meta: { en: "Paper", ar: "بحث" }
+        },
+        {
+          t: "ref",
+          label: { en: "RFC 9110 — HTTP Semantics: methods, status codes, headers", ar: "RFC 9110 — دلالات الـ HTTP: الـ methods وstatus codes وheaders" },
+          url: "https://www.rfc-editor.org/rfc/rfc9110.html",
+          meta: { en: "Spec", ar: "مواصفة" }
+        },
+        {
+          t: "ref",
+          label: { en: "MDN — HTTP caching", ar: "MDN — الـ HTTP caching" },
+          url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching",
+          meta: { en: "Docs", ar: "توثيق" }
+        },
+        {
+          t: "ref",
+          label: { en: "Microsoft — Web API design best practices", ar: "Microsoft — أفضل ممارسات تصميم Web API" },
+          url: "https://learn.microsoft.com/en-us/azure/architecture/best-practices/api-design",
+          meta: { en: "Guide", ar: "دليل" }
+        }
+      ]
+    }
   ],
-
   quiz: [
     {
-      q: { en: "Which REST constraint is explicitly optional?", ar: "أي قيد من قيود الـ REST اختياري صراحةً؟" },
+      q: {
+        en: "Which REST constraint is explicitly optional?",
+        ar: "أي قيد من قيود الـ REST اختياري صراحةً؟"
+      },
       options: [
-        { en: "Layered system", ar: "النظام الطبقي" },
-        { en: "Cacheable", ar: "قابلية الـ caching" },
-        { en: "Code-on-demand", ar: "الكود عند الطلب" },
-        { en: "Uniform interface", ar: "الواجهة الموحدة" }
+        { en: "Cacheable", ar: "Cacheable" },
+        { en: "Layered system", ar: "Layered system" },
+        { en: "Code-on-demand", ar: "Code-on-demand" },
+        { en: "Stateless", ar: "Stateless" }
       ],
       correct: 2,
-      why: { en: "Fielding marks code-on-demand — the server shipping executable code such as JavaScript to extend the client — as the only optional constraint, because it improves client extensibility at the cost of visibility. The other five are required for a system to be considered RESTful.", ar: "يصنّف Fielding الـ code-on-demand — إرسال السيرفر كوداً قابلاً للتنفيذ مثل JavaScript لتوسيع الـ client — بوصفه القيد الاختياري الوحيد، لأنه يحسّن قابلية توسيع العميل على حساب الوضوح. والخمسة الأخرى إلزامية ليُعدّ النظام RESTful." }
+      why: {
+        en: "Fielding marks code-on-demand — the server sending runnable code to the client — as optional. The other five are required for an API to be called REST.",
+        ar: "يصنّف Fielding الـ code-on-demand — إرسال الـ server كوداً قابلاً للتنفيذ إلى الـ client — كقيد اختياري. أما الخمسة الأخرى فإلزامية حتى يُسمّى الـ API بـ REST."
+      }
     },
     {
-      q: { en: "A service keeps a checkout draft in a static ConcurrentDictionary keyed by session id. Which constraint is violated and what is the concrete consequence?", ar: "خدمة تحتفظ بمسودة دفع في ConcurrentDictionary ساكن مفتاحه معرّف الجلسة. أي قيد يُخالَف وما النتيجة الملموسة؟" },
+      q: {
+        en: "An API stores the shopping cart in a static dictionary in process memory. What breaks first when you add a second server?",
+        ar: "API يخزّن سلة التسوق في dictionary ثابت داخل ذاكرة العملية. ما الذي ينكسر أولاً عند إضافة server ثانٍ؟"
+      },
       options: [
-        { en: "Cacheable — the draft cannot be cached at the edge", ar: "قابلية الـ caching — لا يمكن تخزين المسودة على الحافة" },
-        { en: "Stateless — a rolling deploy or scale-in destroys in-progress work and forces sticky sessions", ar: "انعدام الحالة — النشر التدريجي أو التقليص يدمّر العمل الجاري ويفرض جلسات لاصقة" },
-        { en: "Client–server — the UI and the server are now coupled", ar: "الفصل بين الـ client والسيرفر — أصبحت الواجهة والسيرفر مترابطين" },
-        { en: "Uniform interface — the endpoint no longer has a resource URI", ar: "الواجهة الموحدة — لم يعد للـ endpoint مورد بـ URI" }
+        { en: "Requests routed to the other server see an empty cart", ar: "الطلبات الموجّهة إلى الـ server الآخر ترى سلة فارغة" },
+        { en: "The database runs out of connections", ar: "تنفد اتصالات الـ database" },
+        { en: "ETag validation stops working", ar: "يتوقف التحقق من الـ ETag عن العمل" },
+        { en: "TLS handshakes start failing", ar: "تبدأ عمليات TLS handshake بالفشل" }
+      ],
+      correct: 0,
+      why: {
+        en: "The cart lives in one process's memory, so only that process can see it. Any request the load balancer sends elsewhere finds nothing — this is exactly the failure the stateless constraint prevents.",
+        ar: "السلة موجودة في ذاكرة عملية واحدة، فتلك العملية وحدها تراها. أي طلب يرسله الـ load balancer إلى مكان آخر لا يجد شيئاً — وهذا بالضبط الفشل الذي يمنعه قيد الـ stateless."
+      }
+    },
+    {
+      q: {
+        en: "Why can a CDN cache GET /orders/1042 but not POST /api/getOrderById?",
+        ar: "لماذا يستطيع الـ CDN تخزين GET /orders/1042 ولا يستطيع تخزين POST /api/getOrderById؟"
+      },
+      options: [
+        { en: "POST bodies are encrypted and GET URLs are not", ar: "أجسام الـ POST مشفّرة وعناوين الـ GET ليست كذلك" },
+        { en: "GET is defined as a read with a cacheable URL as its key; POST is defined as a write", ar: "الـ GET معرّف كقراءة مفتاحها URL قابل للتخزين؛ والـ POST معرّف ككتابة" },
+        { en: "POST requests are always larger than the CDN size limit", ar: "طلبات الـ POST دائماً أكبر من حد الحجم في الـ CDN" },
+        { en: "CDNs only understand HTTP/2, and POST requires HTTP/1.1", ar: "الـ CDNs تفهم HTTP/2 فقط، والـ POST يتطلب HTTP/1.1" }
       ],
       correct: 1,
-      why: { en: "Application state is being held on a specific node between requests, which is exactly what statelessness forbids. The practical fallout is that correctness now depends on request routing: you need sticky sessions, deploys become disruptive, autoscaling cannot scale in, and a hot node cannot shed load.", ar: "حالة التطبيق محفوظة على node بعينه بين الـ requests، وهذا بالضبط ما يمنعه انعدام الحالة. والأثر العملي أن الصحة صارت تعتمد على توجيه الـ requests: تحتاج جلسات لاصقة، ويصبح النشر معطّلاً، ولا يستطيع التوسّع التلقائي التقليص، ولا يستطيع node مزدحم تفريغ حمله." }
+      why: {
+        en: "The uniform interface gives GET a fixed meaning — read, change nothing, identified fully by its URL — so a cache can key on that URL. POST is defined as a write with meaning hidden in the body, so caching it would be unsafe.",
+        ar: "يعطي الـ uniform interface للـ GET معنى ثابتاً — اقرأ ولا تغيّر شيئاً، ومعرَّف بالكامل بواسطة الـ URL — فيستطيع الـ cache استخدام ذلك الـ URL كمفتاح. أما الـ POST فمعرّف ككتابة معناها مخبّأ في الـ body، فتخزينه غير آمن."
+      }
     },
     {
-      q: { en: "Which of these best describes what the uniform interface constraint buys a system?", ar: "أي مما يلي يصف أفضل وصف ما يشتريه قيد الواجهة الموحدة للنظام؟" },
+      q: {
+        en: "An endpoint returns 200 OK with { \"success\": false, \"error\": \"NOT_FOUND\" }. What is the practical harm?",
+        ar: "endpoint يرجع 200 OK مع { \"success\": false, \"error\": \"NOT_FOUND\" }. ما الضرر العملي؟"
+      },
       options: [
-        { en: "Smaller payloads, because representations are standardised", ar: "أجسام أصغر، لأن التمثيلات موحّدة" },
-        { en: "Faster serialization, because the format is fixed", ar: "تسلسل أسرع، لأن الصيغة ثابتة" },
-        { en: "Generic intermediaries can cache, retry and route without domain knowledge", ar: "وسطاء عامّون يستطيعون الـ caching وإعادة المحاولة والتوجيه دون معرفة بالمجال" },
-        { en: "Type safety between client and server", ar: "أمان الأنواع بين الـ client والسيرفر" }
-      ],
-      correct: 2,
-      why: { en: "The uniform interface deliberately trades efficiency for generality: because every participant uses the same methods, status codes and self-descriptive messages, a cache or gateway can act correctly on traffic for an application it has never seen. Fielding is explicit that it degrades efficiency relative to a bespoke protocol — options 1 and 2 have it backwards.", ar: "الواجهة الموحدة تقايض الكفاءة بالعمومية عن قصد: فلأن كل مشارك يستخدم نفس الـ methods والـ status codes والرسائل ذاتية الوصف، يستطيع cache أو gateway التصرف بشكل صحيح مع حركة تطبيق لم يره من قبل. ويصرّح Fielding بأن ذلك يقلّل الكفاءة مقارنةً ببروتوكول مفصّل — فالخياران الأول والثاني معكوسان." }
-    },
-    {
-      q: { en: "An API returns JSON, uses GET/POST/PUT/DELETE correctly and sets proper status codes, but has no links in its responses. What is it?", ar: "API يرجع JSON ويستخدم GET/POST/PUT/DELETE بشكل صحيح ويضبط status codes سليمة، لكن بلا روابط في استجاباته. ما تصنيفه؟" },
-      options: [
-        { en: "Fully RESTful — hypermedia is optional", ar: "RESTful بالكامل — فالـ hypermedia اختياري" },
-        { en: "Richardson level 2; it lacks the hypermedia sub-constraint of the uniform interface", ar: "المستوى الثاني عند Richardson؛ ينقصه القيد الفرعي للـ hypermedia ضمن الواجهة الموحدة" },
-        { en: "Richardson level 0, because it uses JSON rather than XML", ar: "المستوى صفر عند Richardson، لأنه يستخدم JSON بدل XML" },
-        { en: "Not an HTTP API at all", ar: "ليس API يعمل على HTTP أصلاً" }
+        { en: "The JSON body is larger than a 404 response", ar: "جسم الـ JSON أكبر من رد 404" },
+        { en: "Caches and clients treat the failure as a successful answer and may store or reuse it", ar: "الـ caches والـ clients تعامل الفشل كإجابة ناجحة وقد تخزّنها أو تعيد استخدامها" },
+        { en: "The server cannot log the error", ar: "لا يستطيع الـ server تسجيل الخطأ" },
+        { en: "It forces the connection to close", ar: "يجبر الاتصال على الإغلاق" }
       ],
       correct: 1,
-      why: { en: "This describes the overwhelming majority of production APIs: level 2, with resources, correct verbs and status codes, but no hypermedia controls. Hypermedia is not the optional constraint — code-on-demand is — so by Fielding's definition this is not REST, though it still captures most of the practical benefit.", ar: "هذا يصف الغالبية الساحقة من APIs الـ production: المستوى الثاني، بموارد وأفعال وstatus codes صحيحة، لكن بلا ضوابط hypermedia. والـ hypermedia ليس القيد الاختياري — فالـ code-on-demand هو الاختياري — فبتعريف Fielding هذا ليس REST، وإن كان يلتقط معظم الفائدة العملية." }
+      why: {
+        en: "Machines on the path act on the status line, not your JSON. A 200 tells them the request succeeded, so a not-found answer can be cached and served for the whole max-age window.",
+        ar: "الأجهزة على المسار تتصرف بناءً على سطر الحالة لا على الـ JSON عندك. الـ 200 يخبرها أن الطلب نجح، فيمكن تخزين إجابة «غير موجود» وتقديمها طوال مدة الـ max-age."
+      }
     },
     {
-      q: { en: "Responses embed links like http://orders-svc.prod-eu-1.internal:8080/invoices/9. Which constraint does this break, and why does it matter?", ar: "الاستجابات تضمّن روابط مثل http://orders-svc.prod-eu-1.internal:8080/invoices/9. أي قيد يكسره ذلك ولماذا يهم؟" },
+      q: {
+        en: "Which choice best models 'cancel order 1042' in a REST API?",
+        ar: "أي خيار ينمذج «ألغِ الطلب 1042» بشكل أفضل في REST API؟"
+      },
       options: [
-        { en: "Cacheable — internal URLs cannot carry cache headers", ar: "قابلية الـ caching — الـ URLs الداخلية لا تحمل headers للـ caching" },
-        { en: "Stateless — the hostname is a form of session state", ar: "انعدام الحالة — اسم المضيف شكل من حالة الجلسة" },
-        { en: "Layered system — clients bypass the CDN and gateway, and no layer can be inserted without changing every client", ar: "النظام الطبقي — العملاء يتجاوزون الـ CDN والـ gateway، ولا يمكن إدخال طبقة دون تغيير كل عميل" },
-        { en: "Client–server — the client now stores server data", ar: "الفصل بين الـ client والسيرفر — أصبح الـ client يخزّن بيانات السيرفر" }
+        { en: "GET /orders/1042/cancel", ar: "GET /orders/1042/cancel" },
+        { en: "POST /api/cancelOrder with { \"id\": 1042 }", ar: "POST /api/cancelOrder مع { \"id\": 1042 }" },
+        { en: "POST /orders/1042/cancellations", ar: "POST /orders/1042/cancellations" },
+        { en: "DELETE /orders/1042", ar: "DELETE /orders/1042" }
       ],
       correct: 2,
-      why: { en: "The layered system constraint says a component should not see beyond its immediate layer. Hardcoding the origin means a client following the link skips the CDN, gateway and WAF, and any future layer requires a coordinated client change. It also leaks internal topology — hostnames, regions and ports — to anyone reading a response.", ar: "قيد النظام الطبقي يقول إن المكوّن لا يجب أن يرى أبعد من طبقته المباشرة. وتثبيت الـ origin يعني أن الـ client الذي يتبع الرابط يتخطى الـ CDN والـ gateway والـ WAF، وأن أي طبقة مستقبلية تتطلب تغييراً منسّقاً لدى العملاء. كما يسرّب البنية الداخلية — أسماء المضيفين والمناطق والمنافذ — لكل من يقرأ استجابة." }
+      why: {
+        en: "The cancellation becomes a resource with its own URL and history, created with a method that writes. GET must never change data, the RPC-style URL hides its meaning from every intermediary, and DELETE would say the order no longer exists rather than that it was cancelled.",
+        ar: "يصبح الإلغاء resource له URL وتاريخ خاص به، ويُنشأ عبر method تكتب. الـ GET يجب ألا يغيّر البيانات أبداً، والـ URL بأسلوب RPC يخفي معناه عن كل intermediary، والـ DELETE سيقول إن الطلب لم يعد موجوداً بدل أنه أُلغي."
+      }
     }
   ]
 };
